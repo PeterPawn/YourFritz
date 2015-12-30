@@ -1,0 +1,286 @@
+#! /bin/sh
+table()
+{
+	copies()
+	{
+		local d=$1 i=$2
+		while [ $i -gt 0 ]; do
+			echo -n "$d"
+			let i=i-1
+		done
+	}
+	row()
+	{
+		local i=1 show="" valname val len colname alignname align
+		while [ $i -le $column_count ]; do
+			eval valname=COL${i}
+			eval colname=column_${i}_len
+			eval alignname=column_${i}_align
+			eval val=\$$valname
+			eval len=\$$colname
+			eval align=\$$alignname
+			if [ ${#val} -lt $len ]; then
+				if [ x"$align" == x"R" ]; then
+					val="$(copies " " $(( $len - ${#val} )))$val"
+				elif [ x"$align" == x"C" ]; then
+					val="$(copies " " $(( ( $len - ${#val} ) / 2 )))$val"
+					val="$val$(copies " " $(( $len - ${#val} )))"
+				else
+					val="$val$(copies " " $(( $len - ${#val} )))"
+				fi
+			fi
+			show="${show}| $val "
+			let i=i+1
+		done
+		show="${show}|"
+		echo "$show"
+	}
+	if [ ${#1} -eq 0 ]; then
+		op="empty"
+	else
+		case "$1" in
+			"init")
+				op="init"
+				shift
+				;;
+			"empty")
+				op="empty"
+				shift
+				;;
+			"output")
+				op="output"
+				shift
+				;;
+			"outside")
+				op="outside"
+				shift
+				;;
+			"columns")
+				op="columns"
+				shift
+				;;
+			"header")
+				op="header"
+				shift
+				;;
+			"repeatheader")
+				op="repeatheader"
+				shift
+				;;
+			"delimiter")
+				op="delimiter"
+				shift
+				;;
+			"footer")
+				op="footer"
+				shift
+				;;
+			"row")
+				op="row"
+				shift
+				;;
+			*)
+				return 1
+				;;
+		esac
+	fi
+	case "$op" in
+		init)
+			rm $td/lines $td/columns 2>/dev/null
+			return 0
+			;;
+		empty)
+			echo "EMPTY" >>$td/lines
+			return 0
+			;;
+		outside)
+			echo "OUTSIDE=\"$*\"" >>$td/lines
+			return 0
+			;;
+		columns)
+			cols=$(cat $td/columns 2>/dev/null | wc -l)
+			if [ $cols -gt 0 ]; then
+				return 1
+			else
+				while [ ${#1} -gt 0 ]; do
+					expr index ':' "$1" 2>&1 1>/dev/null
+					if [ $? -eq 0 ]; then
+						name="${1%%:*}"
+						align="${1##*:}"
+					else
+						name="$1"
+						align=L
+					fi
+					echo "NAME=\"$name\" LEN=${#name} ALIGN=$align" >>$td/columns
+					shift
+				done
+				return 0
+			fi
+			;;
+		header)
+			echo "HEADER" >>$td/lines
+			return 0
+			;;
+		repeatheader)
+			echo "REPEATHEADER" >>$td/lines
+			return 0
+			;;
+		delimiter)
+			echo "DELIMITER" >>$td/lines
+			return 0
+			;;
+		footer)
+			echo "FOOTER" >>$td/lines
+			return 0
+			;;
+		row)
+			i=0
+			line=""
+			while [ ${#1} -gt 0 ]; do
+				let i=i+1
+				line="${line}COL$i=\"$1\" "
+				eval $(sed -n -e "${i}p" $td/columns)
+				if [ ${#1} -gt $LEN ]; then
+					sed -i -e "${i}s/LEN=$LEN/LEN=${#1}/1" $td/columns
+				fi
+				shift
+			done
+			echo "$line" >>$td/lines
+			return 0
+			;;
+		output)
+			i=0
+			headline=""
+			while read line; do
+				let i=i+1
+				eval $line
+				eval "column_${i}_name=\"$NAME\""
+				eval "column_${i}_len=\"$LEN\""
+				eval "column_${i}_align=\"$ALIGN\""
+				headline="$headline COL${i}=\"$NAME\""
+			done <$td/columns
+			column_count=$i
+			while read line; do
+				if [ "${line:0:5}" == "EMPTY" ]; then
+					echo ""
+				elif [ "${line:0:6}" == "HEADER" ]; then
+					delimiter=""
+					i=1
+					while [ $i -le $column_count ]; do
+						eval "len=\${column_${i}_len} value=\"\${column_${i}_name}\""
+						delimiter="${delimiter}+$(copies - $(( $len + 2 )))"
+						let i=i+1
+					done
+					delimiter="${delimiter}+"
+					echo "$delimiter"
+					eval "$headline"
+					row
+					echo "$delimiter"
+					footer="$delimiter"
+				elif [ "${line:0:12}" == "REPEATHEADER" ]; then
+					echo "$delimiter"
+					eval "$headline"
+					row
+					echo "$delimiter"
+				elif [ "${line:0:9}" == "DELIMITER" ]; then
+					echo "$delimiter"
+				elif [ "${line:0:6}" == "FOOTER" ]; then
+					echo "$delimiter"
+				elif [ "${line:0:7}" == "OUTSIDE" ]; then
+					unset COL1 COL2 COL3 COL4 COL5 COL6 COL7 COL8 COL9 COL10
+					eval "$line"
+					echo "$OUTSIDE"
+				elif [ "${line:0:3}" == "COL" ]; then
+					unset COL1 COL2 COL3 COL4 COL5 COL6 COL7 COL8 COL9 COL10
+					eval "$line"
+					row
+				fi
+			done <$td/lines
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+display()
+{
+	table init
+	table outside "TFFS content listing"
+	table outside "===================="
+	table outside "TFFS major device ID : $major"
+	table outside "TFFS MTD partitions  : $mtd_a/$mtd_b"
+	table outside "TFFS size            : $size KByte ($space Byte)"
+	table outside "TFFS fill level      : $fill %"
+	table empty
+	table columns "minor:R" "hex:R" "size:R" "visible:C" "name" "comment"
+	table header 
+	for minor in $(seq 0 255); do
+		echo -n -e "\rProcessing minor $minor of 255 ..." 1>&2
+		mknod $td/cdev c $major $minor
+		checkempty $td/cdev >/dev/null 2>&1
+		empty=$?
+		if [ $empty -eq 1 ]; then
+			fsize=$(cat $td/cdev | wc -c)
+		else
+			fsize=0
+		fi
+		let used=used+fsize
+		line=$(grep "^$minor " $mydir/tffs.files)
+		if [ -n "$line" ]; then
+			comment=$(echo "$line" | sed -n -e 's/^[^ ]* [^ ]* *\(.*\)$/\1/p')
+			if [ -z "$comment" ]; then
+				name=$(echo "$line" | sed -n -e 's/^[^ ]* \(.*\)/\1/p')
+			else
+				name=$(echo "$line" | sed -n -e 's/^[^ ]* \([^ ]*\) *.*$/\1/p')
+			fi
+		else
+			name=""
+			comment=""
+		fi
+		grep -q "^$minor " $td/visible_names && vis=yes || vis=no
+		len=$(echo -e "$minor\t$fsize\t$vis\t$name" | wc -c)
+		table row "$minor" $(printf "0x%02X" $minor) "$fsize" "$vis" "$name" "$comment"
+		rm $td/cdev
+		if [ $(( minor % 64 )) -eq 63 ]; then
+			table repeatheader
+		elif [ $minor -eq 99 ]; then
+			table delimiter
+		fi
+	done
+	echo -n -e "\r\x1B[0KPreparing output table ..." 1>&2
+	table empty
+	table outside "Cumulated file sizes : $used"
+	table output
+}
+myself=$(realpath $0)
+myname=${myself##*/}
+mydir=${myself%/*}
+td=/var/tmp/tfls_$$_$(date +%s)
+mkdir -p $td || exit 1
+#echo cleanup >/proc/tffs
+echo info >/proc/tffs
+major=$(grep tffs /proc/devices | sed -n -e 's/^\(.*\) .*/\1/p')
+mtd=$(grep '^mount=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p' | sed -n -e ':x;N;$!bx;s/\n/ /p')
+set -- $mtd
+mtd_a=$1
+mtd_b=$2
+mtd_a_num=$(echo $mtd_a | sed -n -e 's/^mtd\(.*\)/\1/p')
+size=$(grep mtdblock$mtd_a_num /proc/partitions | sed -n -e 's/^.* .* \(.*\) .*/\1/p')
+let space=size*1024
+fill=$(grep '^fill=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p')
+used=0
+touch $td/vnames
+popd=$(pwd)
+cd /var/flash
+for file in $(ls *); do
+	if [ -c $file ]; then
+		eval "minor=\$((0x$(stat -c %T $file)))"
+		echo "$minor $file" >>$td/vnames
+	fi
+done
+cd $popd
+sort -n $td/vnames >$td/visible_names
+display >$td/display
+vi -R $td/display
+rm -r $td

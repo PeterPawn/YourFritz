@@ -1,0 +1,28 @@
+#! /bin/sh
+FIRST_LINE="##### BEGIN SECTION TFFS_DUMP TFFS Dump"
+LAST_LINE="##### END SECTION TFFS_DUMP"
+decode_to_tar()
+{
+	local input="$1"
+	sed -e "1,/^$FIRST_LINE/d" "$input" | sed -e "/^$LAST_LINE/,\$d" | base64 -d
+}
+INPUT="$1"
+OUTPUT="$2"
+INDEX=$3
+tmp=$(mktemp)
+[ $? -ne 0 ] && tmp=/var/tmp/tmp.$(date +%s).$$
+trap "rm -r $tmp" EXIT HUP
+rm $tmp
+mkdir -p $tmp
+tarfile=$tmp/tffs-dump.tar
+decode_to_tar "$INPUT" >$tarfile
+for file in $(tar -t -f $tarfile); do
+	[ $file == var/tmp/tffs-dump/ ] && continue
+	out=${file##*/}
+	out=${out%.gz}
+	out=${out/\(/}
+	out=${out/\)/}
+	[ $(expr index $out $INDEX) -eq 0 ] && continue
+	tar -x -O -f $tarfile $file | gunzip -c >$OUTPUT/$out
+	break
+done

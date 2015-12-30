@@ -1,0 +1,25 @@
+#! /bin/sh
+SYM_NAME="TFFS_Name_Table"
+get_name()
+{
+	local addr=$1 name="" char
+	while true; do
+		char=$(devmem $addr 8)
+		[ $char == 0x00 ] && break
+		name="$name\\${char:1}"
+		addr=$(( addr + 1 ))
+	done
+	echo -e "$name"
+}
+start=$(sed -n -e "s/^\(.*\) B $SYM_NAME/\1/p" /proc/kallsyms)
+[ x$start == x ] && echo "$SYM_NAME not found" && exit 1
+first=$(( 0x$start & 0x3FFFFFFF ))
+index=0
+while true; do
+	val=$(devmem $(( first + ( index * 68 ) )) 32)
+	[ $val == 0x00000000 ] && break
+	id=$(( $val ))
+	name=$(get_name $(( first + index * 68 + 4 )))
+	index=$(( index + 1 ))
+	echo "$id $name"
+done

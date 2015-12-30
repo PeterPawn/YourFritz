@@ -1,0 +1,35 @@
+#! /bin/sh
+if [ -z $1 ]; then
+	echo "Usage: $0 <id>" 1>&2
+	echo "" 1>&2
+	echo "cat an invisible TFFS file" 1>&2
+	echo "" 1>&2
+	echo "<id>       - TFFS character device minor id" 1>&2
+	exit 127
+fi
+tffs_major=$(grep tffs /proc/devices | sed -n -e 's/^\([0-9]*\) .*/\1/p')
+let i=$1 2>/dev/null
+if [ $? -ne 0 ]; then
+	i=0
+fi
+if [ $i -gt 0 -a $i -le 255 ]; then
+	tffs_minor=$i
+	fn="/var/tmp/mknod_$$_$(date +%s)"
+	mknod $fn c $tffs_major $tffs_minor
+	checkempty $fn 2>/dev/null
+	if [ $? -eq 1 ]; then
+		cat $fn | gunzip -c 2>/dev/null
+		if [ $? -ne 0 ]; then
+			cat $fn
+		fi
+		rc=0
+	else
+		echo "The file is empty." 1>&2
+		rc=1
+	fi
+	rm $fn
+	exit $rc
+else
+	echo "The specified minor id '$1' is invalid." 1>&2
+	exit 127
+fi

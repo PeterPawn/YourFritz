@@ -1,0 +1,86 @@
+#! /bin/sh
+decode()
+{
+	local b=/bin l=/lib f=/var/flash t=$1/dc$$ m=mount r=proc
+	mkdir -p $t$f $t$l $t$b $t/$r
+	cd $t
+	cat >i
+	sed -ne's/.*\(\$\$\$\$[A-Z1-6]*\).*/\1/p' <i >p
+	cat >s <<'Q'
+		q=\\\\
+		while read x;do
+			echo -e "$1$2 {$5=$x;}" >$4
+			o="$($1$3 -p$5)"
+			o="${o//$q/$q$q}"
+			o="${o//|/\\|}"
+			o="${o//&/\\&}"
+			o="${o//\"/$q\"}"
+			echo "s|$x|$o|" >>c
+		done <p
+Q
+	$m -o bind $l .$l
+	$m -o bind $b .$b
+	$m -t $r . ./$r
+	chroot . sh s webdav client cfginfo $f/usb.cfg username
+	sed -fc <i
+	cd ..
+	u$m $t/$r $t$b $t$l
+	rm -r $t
+}
+backup()
+{
+	for minor in $(seq 0 255); do
+		echo -n -e "\r\x1B[0KProcessing minor $minor (will go from 0 to 255) ..." 1>&2
+		mknod $td/cdev c $major $minor
+		checkempty $td/cdev >/dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			if grep -q '$$$$[A-Z1-6]*' $td/cdev 2>/dev/null; then
+				echo -n -e "\x1B[5m decoding content\x1B[25m" 1>&2
+				decode $td <$td/cdev >$td/$minor
+				decoded=",decoded=1"
+			else
+				cat $td/cdev >$td/$minor
+				unset decoded
+			fi
+			fsize=$(cat $td/$minor | wc -c)
+			echo "$minor" >>$td/files
+			echo -n -e "minor=$minor,size=$fsize$decoded\n" >>$td/minors
+			let used=used+fsize
+		else
+			echo -n -e "minor=$minor,size=0\n" >>$td/minors
+		fi
+		rm $td/cdev
+	done
+	echo -n -e "used=$used\n" >>$td/info
+	cat $td/minors >>$td/info
+	echo -n -e "\r\x1B[0KCreating archive file from saved content ..." 1>&2
+	cd $td
+	echo "info" >>$td/files
+	tar -c -C $td -f $td/tffs.tar -T $td/files
+	cd $popd
+	echo -n -e "\r\x1B[0KCompressing archive file ..." 1>&2
+	gzip -9 -c $td/tffs.tar
+	echo -n -e "\r\x1B[0K" 1>&2
+}
+myself=$(realpath $0)
+myname=${myself##*/}
+mydir=${myself%/*}
+echo -n -e "\r\x1B[0KBacking up TFFS content ..." 1>&2
+td=/var/tmp/tbkp_$$_$(date +%s)
+mkdir -p $td || exit 1
+#echo cleanup >/proc/tffs
+echo info >/proc/tffs
+major=$(grep tffs /proc/devices | sed -n -e 's/^\(.*\) .*/\1/p')
+mtd=$(grep '^mount=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p' | sed -n -e ':x;N;$!bx;s/\n/ /p')
+set -- $mtd
+mtd_a=$1
+mtd_b=$2
+mtd_a_num=$(echo $mtd_a | sed -n -e 's/^mtd\(.*\)/\1/p')
+size=$(grep mtdblock$mtd_a_num /proc/partitions | sed -n -e 's/^.* .* \(.*\) .*/\1/p')
+let space=size*1024
+fill=$(grep '^fill=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p')
+echo -n -e "major=$major\npart1=$mtd_a\npart2=$mtd_b\nsize=$space\nfill=$fill\n" >$td/info
+used=0
+popd=$(pwd)
+backup 
+rm -r $td

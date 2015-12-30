@@ -1,0 +1,115 @@
+#! /bin/sh
+if [ -z $1 ]; then
+	echo "Usage: $0 <filename | id>" 1>&2
+	echo "" 1>&2
+	echo "View/edit a TFFS file" 1>&2
+	echo "" 1>&2
+	echo "<filename> - file name within /var/flash directory" 1>&2
+	echo "<id>       - TFFS character device minor id" 1>&2
+	echo "" 1>&2
+	echo "The file content will be copied to a temporary file, 'vi' will be called for it and" 1>&2
+	echo "it will be copied back after user committed intentional changes to the file." 1>&2
+	echo "If the changed content is related to 'ctlmgr' (e.g. it's a .cfg file at /var/flash), you" 1>&2
+	echo "will be asked to restart 'ctlmgr'." 1>&2
+	exit 127
+fi
+tffs_major=$(grep tffs /proc/devices | sed -n -e 's/^\([0-9]*\) .*/\1/p')
+let i=$1 2>/dev/null
+if [ $? -ne 0 ]; then
+	i=0
+fi
+if [ $i -gt 0 -a $i -le 255 ]; then
+	tffs_minor=$i
+	fn="/var/tmp/mknod_$$_$(date +%s)"
+	mknod $fn c $tffs_major $tffs_minor
+	rmf=$fn
+else
+	fn="$1"
+	dir=/var/flash
+	if [ -c $dir/$fn ]; then
+		tffs_minor=$(( 0x$(stat -c %T $dir/$fn) ))
+		fn="$dir/$fn"
+	else
+		echo "The specified file '$fn' isn't a character device at '$dir'."
+		exit 127
+	fi
+	unset rmf
+fi
+tf=$(echo /var/tmp/temp_$$_$(date +%s))
+cat $fn | gunzip -c >$tf 2>/dev/null
+if [ $? -ne 0 ]; then
+	cat $fn >$tf
+	zip=0
+else
+	zip=1
+fi
+cks_before=$(md5sum <$tf | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+vi $tf
+cks_after=$(md5sum <$tf | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+if [ "$cks_after" != "$cks_before" ]; then
+	error=2
+	while [ $error -eq 2 ]; do
+		read -n 1 -p "The file was changed. Do you want to commit the changes to TFFS ? (y/N): " answr
+		if [ ${#answr} -eq 0 ]; then
+			answr='n'
+		fi
+		if [ "$answr" == "Y" -o "$answr" == "y" ]; then
+			fe="${fn#*.}"
+			if [ "$fe" == "cfg" ]; then
+				restart=2
+				echo "" 1>&2
+			else
+				restart=0
+				restartmsg=" not"
+			fi	
+			while [ $restart -eq 2 ]; do
+				read -n 1 -p "Do you want to restart 'ctlmgr' to activate your changes ? (y/N): " answr
+				if [ ${#answr} -eq 0 ]; then
+					answr='n'
+				fi	
+				if [ "$answr" == "Y" -o "$answr" == "y" ]; then
+					restart=1
+					restartmsg=""
+				else
+					if [ "$answr" == "N" -o "$answr" == "n" ]; then
+						restart=0
+						restartmsg=" not"
+					else
+						echo -e "\nPlease choose 'y' or 'n' and answer again ..." 1>&2
+					fi
+				fi
+			done
+			if [ $restart -eq 1 ]; then
+				echo -n "Stopping ctlmgr ... " 1>&2
+				ctlmgr -s
+				echo "done, error = $?"
+			fi
+			if [ $zip -eq 0 ]; then
+				cat $tf >$fn
+			else
+				gzip -c $tf | cat >$fn
+			fi
+			echo -e "\nChanges saved." 1>&2
+			error=0
+			if [ $restart -eq 1 ]; then
+				echo -n "Starting ctlmgr ... " 1>&2
+				LD_LIBRARY_PATH= ctlmgr
+				echo "done, error = $?"
+			fi
+			eventadd 1 "The configuration file with minor ID $tffs_minor was changed and ctlmgr was$restartmsg restarted."
+		else
+			if [ "$answr" == "N" -o "$answr" == "n" ]; then
+				echo -e "\nThe changes were not saved." 1>&2
+				error=1
+			else
+				echo -e "\nPlease choose 'y' or 'n' and answer again ..." 1>&2
+			fi
+		fi
+	done
+else
+	echo "The file was not changed." 1>&2
+	error=1
+fi
+rm $tf
+[ ${#rmf} -gt 0 ] && rm $rmf
+exit $error
