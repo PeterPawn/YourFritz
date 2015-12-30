@@ -1,0 +1,126 @@
+#! /bin/bash
+cleanup()
+{
+	cleanup_file()
+	{
+		while [ $# -gt 0 ]; do
+			[ ${#1} -lt 6 ] && return # /tmp/. is min valid length
+			[ -d $1 -o -f $1 ] && rm -f $([ -d $1 ] && echo -n "-r") $1 2>/dev/null
+			shift
+		done
+	}
+	cleanup_file $configfile $envfile $boxconfig $postdata $request $cfgdir $form $output
+	exit $1
+}
+if ! [ -x ./crc32_filter ]; then
+	gcc -o ./crc32_filter ./crc32.c
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "For faster operation there's a small utility included to calculate the CRC32 value for a file." 1>&2
+		echo "It has to be compiled first (source is crc32.c), but gcc has failed with error $rc." 1>&2
+		echo "Please make sure first, the utility will be built without errors." 1>&2
+		echo "Use 'gcc -o crc32_filter crc32.c' to compile." 1>&2
+		echo "If you've got another CRC32 calculator for the right CRC32 version (LE, all ones), you can" 1>&2
+		echo "place a link to it in the scripts directory as crc32_filter." 1>&2
+		echo "But beware, the output has to be the value with uppercase letters and without any other text around it." 1>&2
+		exit $(cleanup 126)
+	fi
+fi
+CALL_FB="$(which bash) ./fritzbox"
+CALL_MPFD="$(which bash) ./multipart_form"
+CALL_DECOMP="$(which bash) ./decompose"
+CALL_CHKSUM="$(which bash) ./checksum"
+CALL_COMPOSE="$(which bash) ./compose"
+configfile=$(mktemp)
+if [ -z "$1" ]; then
+	echo "FRITZ_BOX=fritz.box\nFRITZ_USER=\nFRITZ_PASSWD=\n" >$configfile
+else
+	cat $1 >$configfile
+	if [ $? -ne 0 ]; then
+		echo "Configuration file '$1' is not usable." 1>&2
+		exit $(cleanup 127)
+	fi
+fi
+envfile=$(mktemp)
+$CALL_FB login --config-file=$configfile --environment-file=$envfile 
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Unable to login to your device." 1>&2
+	exit $(cleanup $rc)
+fi
+boxinfo="$($CALL_FB get --config-file=$configfile --environment-file=$envfile /jason_boxinfo.xml)"
+rc=$?
+if [ $rc -ne 0 ]; then
+	$CALL_FB logout --config-file=$configfile --environment-file=$envfile
+	echo "Error $rc reading box info file." 1>&2
+	exit $(cleanup $rc)
+fi
+hwrev="$(echo "$boxinfo" | sed -n -e 's|.*<j:HW>\([0-9]*\)</j:HW>|\1|p')"
+version="$(echo "$boxinfo" | sed -n -e 's|.*<j:Version>\([0-9\.]*\)</j:Version>|\1|p')"
+if [ ${#version} -gt 0 ]; then
+	eval "$(echo $version | sed -n -e 's|\([^\.]*\)\.\([^.]*\)\.\(.*\)|model=\1 major=\2 minor=\3|p')"
+fi
+if [ x"$hwrev" == x"185" ]; then
+fi
+boxconfig=$(mktemp)
+. $envfile
+form=$($CALL_MPFD new)
+$CALL_MPFD addfield $form sid $FRITZ_SID
+$CALL_MPFD addfield $form ImportExportPassword
+$CALL_MPFD addfield $form ConfigExport
+postdata=$($CALL_MPFD postfile $form)
+echo "Reading current configuration file ..." 1>&2
+$CALL_FB post --config-file=$configfile --environment-file=$envfile /cgi-bin/firmwarecfg $postdata >$boxconfig
+rc=$?
+if [ $rc -ne 0 ]; then
+	$CALL_FB logout --config-file=$configfile --environment-file=$envfile
+	echo "Error $rc reading box configuration file." 1>&2
+	exit $(cleanup $rc)
+fi
+$CALL_MPFD cleanup $form
+echo "Preparing new configuration file ..." 1>&2
+echo -e "Please be patient, it may take a while using only shell scripts ..." 1>&2
+cfgdir=$($CALL_DECOMP <$boxconfig)
+echo -e "Still running, next step starts ..." 1>&2
+#
+# modify settings files
+#
+echo "Mods done, prepare upload file now ..."
+$CALL_CHKSUM $cfgdir >/dev/null
+$CALL_COMPOSE $cfgdir >$boxconfig
+echo "Ok, the modified configuration file is prepared now ..." 1>&2
+form=$($CALL_MPFD new)
+$CALL_MPFD addfield $form sid $FRITZ_SID
+$CALL_MPFD addfield $form ImportExportPassword
+$CALL_MPFD addfile $form ConfigImportFile $boxconfig application/octet-stream
+$CALL_MPFD addfield $form apply
+postdata=$($CALL_MPFD postfile $form)
+echo "Uploading the new configuration file to your device ..." 1>&2
+request=$(mktemp)
+echo -e -n "POST /cgi-bin/firmwarecfg HTTP/1.0\r\n" >$request
+echo -e -n "Host: $FRITZ_ADDR\r\n" >>$request
+echo -e -n "User-Agent: Mozilla/5.0 (Windows NT 6.3; rv:32.0) Gecko/20100101 Firefox/32.0\r\n" >>$request
+echo -e -n "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n" >>$request
+echo -e -n "Accept-Language: de-de,en-us;q=0.8,en;q=0.5,de;q=0.3\r\n" >>$request
+echo -e -n "Accept-Encoding: gzip, deflate\r\n" >>$request
+echo -e -n "Referer: http://$FRITZ_ADDR/system/import.lua?sid=$FRITZ_SID\r\n" >>$request
+echo -e -n "Connection: keep-alive\r\n" >>$request
+cat $postdata >>$request
+output=$(mktemp)
+nc -q 30 $FRITZ_ADDR 80 <$request >$output
+rc=$?
+if ! grep -q "Bitte warten Sie eine Minute und klicken Sie dann auf" $output; then
+	echo "Unexpected response received from your device." 1>&2
+	cat $output
+	exit $(cleanup $rc)
+fi
+$CALL_MPFD cleanup $form
+if [ $rc -ne 0 ]; then
+	$CALL_FB logout --config-file=$configfile --environment-file=$envfile
+	echo "Error $rc uploading new box configuration file." 1>&2
+	exit $(cleanup $rc)
+fi
+rm $envfile 2>/dev/null # the device is restarting, our SID is useless now
+echo "Your device will reboot now." 1>&2
+exit $(cleanup 0)
+

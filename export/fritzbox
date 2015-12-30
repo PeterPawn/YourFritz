@@ -1,0 +1,1778 @@
+#!/bin/bash 
+#
+# exit code meanings 
+#
+# bit 0   (1) => error encountered, read the associated error message
+# bit 1   (2) => login failed
+# bit 2   (4) => network communication error
+# bit 3   (8) => missing required parameter or option
+# bit 4  (16) => configuration file error
+# bit 5  (32) => invalid call to script, read the error message for explanation, usage help was shown
+# bit 6  (64) => internal error during processing
+# bit 7 (128) =>
+
+# we'll check the presence of needed commands only, not their versions
+check_executables()
+{
+	lines=""
+	cmds=""
+	while read line; do
+		if [ "${line:1:1}" != "#" ]; then
+			name=${line%%=*}
+			eval $line
+			cmds="$cmds $name"
+			echo $line
+		fi
+	done
+	for cmd in $cmds; do
+		eval executable=\$$cmd
+		if [ ! -x $executable ]; then
+			echo "Fatal error: file '$executable' is missing or not executable." 1>&2
+			return 255
+		fi
+	done
+	return 0
+}
+
+builtins="echo set declare test export source eval exit local [ return shift"
+
+# our needed external commands (some could be available as internal bash commands - remove the absolute path for such commands)
+source <(check_executables <<'###END_AUTO_CHECK###'
+###BEGIN_AUTO_CHECK###
+WGET="$(which wget)"
+ICONV="$(which iconv)"
+MD5SUM="$(which md5sum)"
+GREP="$(which grep)"
+SED="$(which sed)"
+TAIL="$(which tail)"
+MKTEMP="$(which mktemp)"
+WHOAMI="$(which whoami)"
+ENV="$(which env)"
+LS="$(which ls)"
+STAT="$(which stat)"
+CUT="$(which cut)"
+CAT="$(which cat)"
+RM="$(which rm)"
+GETOPT="$(which getopt)"
+LESS="$(which less)"
+DATE="$(which date)"
+CP="$(which cp)"
+MV="$(which mv)"
+READLINK="$(which readlink)"
+DIRNAME="$(which dirname)"
+CHMOD="$(which chmod)"
+DIG="$(which dig)"
+###END_AUTO_CHECK###
+)
+
+DATE_TS="$DATE +%s"
+DIG_CMD="$DIG -t A +recurse +search +short"
+DIG6_CMD="$DIG -t AAAA +recurse +search +short"
+
+# symbolic link names and subcommands
+declare -A symlink_commands
+symlink_commands=(["fblogin"]="login" ["fblogout"]="logout" ["fbget"]="get" ["fbpost"]="post" ["fbqry"]="query" ["fbbulkq"]="bulkquery")
+script_name="fritzbox"
+
+# FRITZ!OS based variables, 
+SID_PARM_NAME="sid"
+RESP_PARM_NAME="response"
+USER_PARM_NAME="username"
+SID_XML_NAME="$SID_PARM_NAME"
+CHALLENGE_XML_NAME="challenge"
+RIGHTS_XML_NAME="rights"
+RIGHTNAMES_XML_NAME="name"
+RIGHTVALUES_XML_NAME="access"
+LOGINURL="/login_sid.lua"
+WGET_PREFIX="http://"
+WGET_PORT=""
+WGET_IPV6=""
+DEFAULT_BOX_NAME="fritz.box"
+SID_INVALID="0000000000000000"
+
+# variable names for config files and environment
+CONFIG_FILE="$HOME/.fritzbox"
+FB_PREFIX="FRITZ_"
+FB_BOX="FRITZ_BOX"
+FB_PORT="FRITZ_PORT"
+FB_ADDR="FRITZ_ADDR"
+FB_USER="FRITZ_USER"
+FB_PASSWD="FRITZ_PASSWD"
+FB_SID="FRITZ_SID"
+FB_RIGHTS="FRITZ_ACCESS"
+FB_ACC="FRITZ_SID_TIME"
+FB_LOGINMODE="FRITZ_LOGIN"
+
+openbox=0
+
+# fb_configfile filename value
+fb_configfile()
+{
+	local rc mode var val 
+	if [ -z "$1" -o -z "$2" ]; then
+		rc=255 # invalid call
+	else
+		if [ -r $1 ]; then
+			mode=$($STAT -c %a $1)
+			if [ x"${mode:1}" == x"00" ]; then
+				var=$($GREP $2 $1)
+				if [ "$?" -eq 0 ]; then
+					val=${var#*=}
+					rc=0 # setting found
+					echo -n "$val"
+				else
+					rc=1 # setting not found
+				fi
+			else
+				rc=2 # file is accessible for too many users
+			fi
+		else
+			rc=4 # file is not readable or does not exist
+		fi
+	fi
+	return $rc
+}
+
+# fb_environment value
+fb_environment()
+{
+	local rc vn
+	[ -z "$1" ] && return 255 # missing name
+	vn="$1"
+	if [ -n "${!vn}" ]; then
+		rc=0 # setting found
+		echo -n "${!vn}"
+	else
+		rc=1 # setting not found
+	fi
+	return $rc	
+}
+
+# fb_usage symlink subcommand error_message
+fb_usage()
+{
+	local symlink command tf 
+	symlink=$1
+	command=$2
+	shift 2
+	if [ "$BASH_SUBSHELL" -eq 0 ]; then
+		[ -n "$*" ] && echo -n -e "$*" 1>&2
+		$CAT 1>&2 <<EOT
+(C) 2013-2014 PeH Consulting - Peter Haemmerlein
+This script is NOT licensed under the GPL. It's only provided as an utility to be used by the
+package where it was bundled to and there's no permission to redistribute it in any way, if you're
+not the author.
+Any mentioned manufacturer and/or device name(s) and/or any other name may be a registered word 
+and/or figurative mark of someone. There's no assumption of any right to use them to promote an
+own service. They're only used to describe a "class of devices" from a special manufacturer.
+
+Access AVM routers (FRITZ!Box with FRITZ!OS >05.50) from command line
+
+Usage:
+
+fritzbox [ options ] [ subcommand ] [ subcommand parameters ]
+
+Valid subcommands are:
+
+|------------|----------|---------------------------------------------------------------------------|
+| subcommand | symlink  | meaning                                                                   |
+|------------|----------|---------------------------------------------------------------------------|
+| login      | fblogin  | login to the box or check current session id                              |
+|------------|----------|---------------------------------------------------------------------------|
+| logout     | fblogout | invalidate the current session id                                         |
+|------------|----------|---------------------------------------------------------------------------|
+| get        | fbget    | execute HTTP-GET request within the current session                       |
+|------------|----------|---------------------------------------------------------------------------|
+| post       | fbpost   | execute HTTP-POST request within the current session                      |
+|------------|----------|---------------------------------------------------------------------------|
+| query      | fbqry    | execute a special HTTP-Get (query.lua) within the current session         |
+|------------|----------|---------------------------------------------------------------------------|
+| bulkquery  | fbbulkq  | execute a bulk query within the current session                           |
+|------------|----------|---------------------------------------------------------------------------|
+
+The 'subcommand' parameter has to be specified, if the script is called with its original file name.
+
+You may create symbolic links (see names above) for direct invocation with the specified subcommand.
+
+Environmental and configuration file variables:
+
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| name           | read | write | file  | meaning                                                   |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_BOX      | yes  |  yes  |  yes  | name or address of the FRITZ!Box to use (def. fritz.box)  |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_PORT     | yes  |  yes  |  yes  | port at the FRITZ!Box to use (def. 80)                    |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_ADDR     | no   |  yes  |  no   | ip address of the used FRITZ!Box (may be the same         |
+|                |      |       |       | as FRITZ_BOX above, if the ip address was specified)      |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_USER     | yes  |  yes  |  yes  | a valid user name to login into the box                   |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_PASSWD   | yes  |  no   |  yes  | the password for the specfied user                        |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_SID      | yes  |  yes  |  no   | the id of the current session, if logged in               |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_SID_TIME | no   |  yes  |  no   | the timestamp (unix time) of last successful access       |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_ACCESS   | no   |  yes  |  no   | the access rights within the current session              |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+| FRITZ_LOGIN    | no   |  yes  |  no   | the login mode at the box: 0 - username + password        |
+|                |      |       |       |                            1 - password only              |
+|                |      |       |       |                            2 - no credentials needed      |
+|----------------|------|-------|-------|-----------------------------------------------------------| 
+
+Do not quote values at the configuration file, the file will not be sourced into the script. Every 
+line should look like that, the value starts always immediately after the equal sign (=). 
+
+FRITZ_PASSWD=very_secret_password
+
+Do not use the same variable name multiple times within one file. The file will be read using the 
+'grep' command and multiple occurences of the same keyword will not be handled correctly.
+
+If any value exists at the configuration file AND at the environment, the value from environment
+takes precedence if the '-i' option is not specified. An option at the command line takes precedence 
+anytime.
+The FRITZ_SID variable is set/unset by login/logout and read by all other subcommands.
+
+The following options are valid for all subcommands:
+-h, --help
+    + display that help
+-c, --config-file=FILE
+    + specifies an alternate file name for the default configuration file ~/.fritzbox
+    + configuration file(s) will be ignored, if they are accessible by other users
+-n, --no-export
+    + do not export the used configuration values to the environment
+    + if this option is not used, the values of FRITZ_BOX, FRITZ_ADDR, FRITZ_USER and FRITZ_SID are 
+      exported to the current environment
+    + the FRITZ_SID variable will be not unset by the 'logout' subcommand, if it exists
+-s, --sid=SID
+    + override FRITZ_SID variable from environment
+-t, --target=ADDR
+    + override FRITZ_BOX variable from configuration file and environment, may be the name or ip
+      address of the box
+-P, --port=PORT
+    + override FRITZ_PORT variable from configuration file and environment
+-i, --ignore-env
+    + ignore environmental variables, even if they are present
+-f, --env-suffix=SUFFIX
+    + if this option is specified, the environmental variable names will be expanded with an 
+      underscore character followed by the specified SUFFIX (e.g. FRITZ_BOX_(SUFFIX))
+    + use the option, if you need to access multiple boxes within one single shell instance
+-e, --environment-file=FILE
+    + read/write environment settings from/to the specified file for subshells
+-R, --referer=REFERER
+    + use the specified string as referer header for requests
+-d, --debug
+    + display some debug messages
+
+The following options are valid only for the 'login' subcommand:
+-u, --user-name=USERNAME
+    + override FRITZ_USER variable from configuration file or environment
+-p, --user-passwd=PASSWORD
+    + override FRITZ_PASSWD variable from configuration file or environment
+
+Some subcommands need additional parameters. If an URL will be specified, omit the session id
+parameter from the query string part; it will be added automatically.
+
+|----------------|-----------|-----------|----------------------------------------------------------| 
+| subcommand     | parameter | specified | description                                              |
+|----------------|-----------|-----------|----------------------------------------------------------| 
+| get            | url       | required  | URL of the file to get, with query string as needed      |
+|----------------|-----------|-----------|----------------------------------------------------------| 
+| post           | url       | required  | URL of the target file, with query string as needed      |
+|                |-----------|-----------|----------------------------------------------------------| 
+|                | postdata  | required  | file name of form data for posting  string as needed,    |
+|                |           |           | specify a single minus sign (-) for reading from stdin   |
+|----------------|-----------|-----------|----------------------------------------------------------| 
+| query          | string    | required  | parameter string for /query.lua at the router            |
+|----------------|-----------|-----------|----------------------------------------------------------| 
+| bulkquery      | queries   | required  | name of file with query definitions                      |
+|                |           |           | Each query definition consists of a variable name, an    |
+|                |           |           | equal sign (=) and the path to the requested value on    |
+|                |           |           | one single line. The file may contain one or more of     |
+|                |           |           | such lines. If the file name is a minus sign (-), the    |
+|                |           |           | query definitions will be read from stdin.               |
+|----------------|-----------|-----------|----------------------------------------------------------| 
+
+This version can handle IPv6 names and/or addresses now.
+EOT
+		return 32
+	else
+		echo "invalid call to $0, check your code please" 1>&2
+		return 32
+	fi
+}
+
+# fb_get_value name required source [...]
+fb_get_value()
+{
+	local val val_set var required srctype src 
+	val=""
+	val_set=1
+	[ -z "$1" ] && return 255 # missing name
+	var="$1"
+	shift	
+	[ -z "$1" ] && return 255 # missing required indication
+	required="$1"
+	shift	
+	while [ -n "$1" ]; do
+		srctype="${1%%:*}"
+		src="${1#*:}"
+		case "$srctype" in
+			("D")
+				if [ -n "$src" ]; then
+					val="$src"
+					val_set=0
+				fi
+				;;
+			("F")
+				value=$(fb_configfile "$src" "$var")
+				[ "$?" -eq 0 ] && val_set=0 && val="$value"
+				;;
+			("E")
+				if [ $ignore_env -eq 1 ]; then
+					value=$(fb_environment "$src")
+					[ "$?" -eq 0 ] && val_set=0 && val="$value"
+				fi
+				;;
+			("O")
+				if [ -n "$src" ]; then
+					val="$src"
+					val_set=0
+				fi
+				;;
+			("*")
+				return 255 # invalid source type
+				;;
+		esac
+		shift	
+	done
+	if [ $val_set -eq 1 -a $required -eq 1 ]; then
+		return 1
+	fi
+	echo -n "$val"
+	return 0
+}
+
+# fb_extract_rights serialized_xml_part
+fb_extract_rights()
+{
+	local val val_set xml oldopt regexp res right rval
+	val=""
+	val_set=1
+	[ -z "$1" ] && return 255 # missing xml
+	xml="$*"
+	shift
+	oldopt=$(shopt -p nocasematch)
+	shopt -s nocasematch
+	regexp="^<$RIGHTNAMES_XML_NAME>([^<]*)</$RIGHTNAMES_XML_NAME><$RIGHTVALUES_XML_NAME>([^<]*)</$RIGHTVALUES_XML_NAME>(.*)\$"
+	while true; do	
+		[[ "$xml" =~ $regexp ]]
+		res=$?
+		[ $res -gt 0 ] && break
+		right="${BASH_REMATCH[1]}"
+		case "${BASH_REMATCH[2]}" in
+			("0")
+				rval="none"
+				;;
+			("1")
+				rval="ro"
+				;;
+			("2")
+				rval="rw"
+				;;
+			("*")
+				rval="unknown"
+				;;
+		esac
+		val="${val}${val:+,}${right}:${rval}"
+		val_set=0
+		xml="${BASH_REMATCH[3]}"
+	done
+	$oldopt
+	if [ $val_set -eq 0 ]; then
+		echo "$val"
+		return 0 # value found
+	else
+		return 1 # value not found
+	fi
+}
+
+# fb_xml_extract tag serialized_xml
+fb_xml_extract()
+{
+	local val val_set tag xml oldopt regexp res
+	val=""
+	val_set=1
+	[ -z "$1" ] && return 255 # missing tag
+	tag="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing xml 
+	xml="$*"
+	oldopt=$(shopt -p nocasematch)
+	shopt -s nocasematch
+	regexp="^(.*)<$tag>(.*)</$tag>(.*)\$"
+	while true; do	
+		[[ "$xml" =~ $regexp ]]
+		res=$?
+		[ $res -gt 0 ] && break
+		val="${val}${val:+ }${BASH_REMATCH[2]}"
+		val_set=0
+		xml="${BASH_REMATCH[3]}"
+	done
+	$oldopt
+	if [ $val_set -eq 0 ]; then
+		echo "$val"
+		return 0 # value found
+	else
+		return 1 # value not found
+	fi
+}
+
+# fb_xml_insert serialized_xml before_or_after tag newtagandvalue
+fb_xml_insert()
+{
+	local xml tag new res newxml val_set=1 before=0
+	[ -z "$1" ] && return 255 # missing xml
+	xml="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing before
+	before="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing tag 
+	tag="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing new
+	new="$1"
+	oldopt=$(shopt -p nocasematch)
+	shopt -s nocasematch
+	regexp="^(.*)(<$tag>.*</$tag>)(.*)\$"
+	[[ "$xml" =~ $regexp ]]
+	res=$?
+	if [ $res -eq 0 ]; then
+		if [ $before -eq 0 ]; then
+			newxml="${BASH_REMATCH[1]}${BASH_REMATCH[2]}$new${BASH_REMATCH[3]}"
+		else
+			newxml="${BASH_REMATCH[1]}$new${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
+		fi
+		val_set=0
+	fi
+	$oldopt
+	if [ $val_set -eq 0 ]; then
+		echo "$newxml"
+		return 0 # value found
+	else
+		return 1 # value not found
+	fi
+}
+
+# fb_export name value
+fb_export()
+{
+	local name value
+	[ -z "$1" ] && return 255 # missing name
+	name="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing value
+	value="$1"
+	shift
+	if [ "$value" == "-" ]; then
+		echo -n "$name"
+	else
+		echo -n "$name=\"${value}\""
+	fi
+	return 0
+}
+
+# fb_gettimestamp
+fb_gettimestamp()
+{
+	echo $($DATE_TS)
+}
+
+# fb_setenvfile filename exportmode settings
+fb_setenvfile()
+{
+	local fn mode settings rn dn nf
+	[ -z "$1" ] && return 255 # missing file name
+	fn="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing export mode
+	mode="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing settings
+	settings="$1"
+	rn="$($READLINK -f $fn)"
+	dn="$($DIRNAME $rn)"
+	if [ -w $dn ]; then
+		nf="${rn}.new"
+		nl=$'\n'
+		if [ "$mode" == "unset" ]; then
+			settings="${settings//$nl/=$nl}="
+		fi
+		echo -e "$settings" >$nf
+		if [ -f $fn ]; then
+			$CHMOD --reference=$rn $nf
+		else
+			$CHMOD 600 $nf
+		fi
+		$MV $nf $fn
+		return 0
+	fi
+	return 1
+}
+
+# fb_is_number value
+fb_is_number()
+{
+	[ -z "$1" ] && return 255 # missing value
+	[[ "$1" =~ ^[0-9]+$ ]] && return 0 || return 1
+}
+
+# fb_is_hexnumber value
+fb_is_hexnumber()
+{
+	[ -z "$1" ] && return 255 # missing value
+	[[ "$1" =~ ^[0-9a-fA-F]+$ ]] && return 0 || return 1
+}
+
+# fb_is_ipv4_address address
+fb_is_ipv4_address()
+{
+	local addr part i oifs
+	[ -z "$1" ] && return 255 # missing address
+	addr="$1"
+	oifs="$IFS"
+	IFS=. 
+	set -- $addr
+	IFS="$oifs"
+	[ "$#" -ne 4 ] && return 1 # not 4 tupels
+	for (( i=1; i <= 4; i++ )); do
+		part=${!i}
+		fb_is_number $part || return 1 # not numeric tupel
+		[ $part -lt 0 -o $part -gt 255 ] && return 1 # tupel outside valid range
+	done
+	return 0
+}
+
+# fb_is_ipv6_address address
+fb_is_ipv6_address()
+{
+	local addr part i oifs short=1
+	[ -z "$1" ] && return 255 # missing address
+	addr="$1"
+	if [ "${addr:0:1}" != "[" ] || [ "${addr:${#addr}-1:1}" != "]" ]; then
+		return 1 # address not within square brackets
+	fi
+	addr=${addr:1:-1}
+	oifs="$IFS"
+	IFS=:
+	set -- $addr
+	IFS="$oifs"
+	if [ $# -eq 0 -o $# -gt 8 ]; then
+		return 1 # no colon found or too much address tupels
+	fi
+	for (( i=1; i <= $#; i++ )); do
+		part=${!i}
+		if [ "${#part}" -gt 0 ]; then
+			if [ ${#part} -gt 4 ]; then
+				return 1 # too much digits for a valid hexadecimal tupel
+			else
+				fb_is_hexnumber $part || return 1 # not a hexadecimal tupel
+			fi
+		else
+			if [ $short -eq 0 ]; then
+				return 1 # double shortening not allowed
+			else
+				short=0
+			fi
+		fi
+	done
+	if [ $short -ne 0 -a $# -lt 8 ]; then
+		return 1 # insufficient address tupels
+	fi
+	return 0
+}
+
+# fb_getipaddr host
+fb_getipaddr()
+{
+	local host ip
+	[ -z "$1" ] && return 255 # missing host name
+	host="$1"
+	if fb_is_ipv4_address $host; then # host name is ipv4 address
+		echo $host
+		return 1
+	else
+		if fb_is_ipv6_address $host; then # host name is ipv6 address
+			echo $host
+			return 2
+		else
+			ip=$($DIG6_CMD $host)
+			if [ -n "$ip" ]; then # name resolution done
+				echo "[$ip]"
+				return 3
+			else
+				ip=$($DIG_CMD $host)
+				if [ -n "$ip" ]; then # name resolution done
+					echo $ip
+					return 0
+				else
+					return 4 # host name not found
+				fi
+			fi
+		fi
+	fi
+}
+
+# fb_debug_params
+fb_debug_params()
+{
+	if [ $debug -eq 0 ]; then
+		echo "script=$myself" 1>&2
+		echo "config=$cfgfile" 1>&2
+		echo "parm-sid=$sid" 1>&2
+		[ -n "$WGET_IPV6" ] && echo "prefer-ipv6=0" 1>&2
+		echo "parm-box=$my_box" 1>&2
+		echo "parm-port=$port" 1>&2
+		echo "parm-user=$my_user" 1>&2
+		echo "parm-pass=$my_passwd" 1>&2
+		echo "env-suffix=$env_suffix" 1>&2
+		echo "export-vars=$export_vars" 1>&2
+		echo "env-file=$fbenv" 1>&2
+		echo "ignore-env=$ignore_env" 1>&2
+		echo "subcommand=$command" 1>&2
+		[ -z "$1" ] && echo "command-params=$cmdparms" 1>&2
+	fi
+}
+
+# fb_build_query - query definitions read from stdin
+fb_build_query()
+{
+	set -u
+	local query="" delim="" line varname varpath mq=0
+	while read line; do
+		varname="${line%%=*}"	
+		varpath="${line#*=}"
+		[ -z "$varname" -o -z "$varpath" ] && continue
+		[ "${varname:0:1}" == "#" ] && continue
+		[ "${varname:0:1}" == ";" ] && continue
+		if [[ "$varpath" =~ ^(.*/list)[[:space:]]+.*$ ]]; then
+			mq=1
+			[ "${varname:0:3}" != "mq_" ] && varname="mq_$varname"
+			varpath="${BASH_REMATCH[1]}"
+		fi
+		if [[ "$varpath" =~ ^(.*/list\(.*\))[[:space:]]+.*$ ]]; then
+			mq=1
+			[ "${varname:0:3}" != "mq_" ] && varname="mq_$varname"
+			varpath="${BASH_REMATCH[1]}"
+		fi
+		query="$query$delim$varname=$varpath"
+		[ "${#query}" -gt 0 ] && delim="&"
+	done
+	echo "$query"
+	return $mq
+}
+
+# fb_rename_json_array jsonfile arrayname firstline lastline renames
+fb_rename_json_array()
+{
+	local jsf array first last renames
+	local oldname newname field
+	[ -z "$1" ] && return 255 # missing JSON file name
+	jsf="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing array name
+	array="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing first line number
+	first="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing last line number
+	last="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing rename field names
+	renames="$1"
+	set -- ${renames//,/ }
+	index=1
+	for field in $*; do
+		if [[ "$field" =~ ^(.*)=(.*)$ ]]; then
+			oldname="${BASH_REMATCH[1]}"
+			newname="${BASH_REMATCH[2]}"
+		else
+			oldname="row_$index"
+			[ "$index" -eq 1 ] && oldname="_node"
+			newname=$field
+		fi
+		$SED -e "$first,$last s/^\(\s*\)\"$oldname\"/\\1\"$newname\"/1" -i $jsf
+		(( index++ )) 
+	done
+}
+
+# fb_modify_json jsonfile querydefinitionsfile
+fb_modify_json()
+{
+	local jsf qdf rename definition varname arname original
+	[ -z "$1" ] && return 255 # missing file name
+	jsf="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing file name
+	qdf="$1"
+	shift
+	local -a jsonarray
+	local -i count i start end
+	mapfile -t < <($SED -e '/^\s*"[^"]*"\s*:\s*\[$/=' -e '/^\s*\],\?\s*$/=' -n $jsf) 
+	count=0
+	for i in ${MAPFILE[*]}; do
+		if [ -z "${jsonarray[$count]}" ]; then
+			jsonarray[$count]="$i"
+		else
+			jsonarray[$count]="${jsonarray[$count]} $i"
+			(( count += 1 ))
+		fi
+	done
+	[ -n "${jsonarray[$count]}" ] && return 2 # odd number of lines from sed
+	for (( count=0; count<${#jsonarray[*]}; count++ )); do
+		start="${jsonarray[$count]%% *}"
+		end="${jsonarray[$count]##* }"
+		line=$($SED -e "$start p" -n $jsf)
+		quot=$'\x22'
+		[[ "$line" =~ ^[[:space:]]+$quot([^$quot]*)$quot.*$ ]]
+		[ "$?" -ne 0 ] && continue # unable to detect JSON array name
+		arname="${BASH_REMATCH[1]}"
+		original=0
+		definition=""
+		while read line; do
+			varname="${line%%=*}"
+			if [ "$varname" == "$arname" ]; then
+				original=1
+				definition="$line"
+				break
+			elif [ "${arname:0:3}" == "mq_" ] && [ "${arname:3}" == "$varname" ]; then
+				definition="$line"
+				break
+			fi
+		done <$qdf
+		if [ -n "$definition" ]; then
+			if [ "$original" -eq 0 ]; then
+				$SED -e "/^\s*\"${arname}\"\s*:\s*\[$/ s/$arname/${arname:3}/1" -i $jsf
+				arname="${arname:3}"
+			fi
+			[[ "$definition" =~ ^.*[[:space:]]([^[:space:]]*)[[:space:]]*$ ]]
+			if [ "$?" -eq 0 ]; then
+				rename="${BASH_REMATCH[1]}"
+				fb_rename_json_array $jsf $arname $start $end $rename
+			fi
+		fi
+	done
+	$CAT $jsf
+}
+
+# fb_login sid box user passwd 
+fb_login()
+{
+	local rc tf url uri sid challenge resp md5pwd req_body 
+	rc=0
+	tf=$($MKTEMP)
+	url="${WGET_PREFIX}${2}${WGET_PORT}${LOGINURL}"
+	uri="$url"
+	if [ -n "$1" ] && [ "$1" != "$SID_INVALID" ]; then
+		uri="$url?${SID_PARM_NAME}=$1"	
+	fi
+	$WGET -O $tf -q ${WGET_IPV6} "$uri" &>/dev/null
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		xml="$($CAT $tf)"
+		sid=$(fb_xml_extract "$SID_XML_NAME" "$xml")
+		if [ x"$sid" == x"${SID_INVALID}" ]; then
+			challenge=$(fb_xml_extract "$CHALLENGE_XML_NAME" "$xml")
+			resp="$challenge-$4"
+			md5pwd=$(echo -n "$resp" | $ICONV --from-code=UTF-8 --to-code=UTF-16LE | $MD5SUM | $SED -e 's/ .*//')
+			req_body="${RESP_PARM_NAME}=$challenge-$md5pwd&${USER_PARM_NAME}=$3"
+			$WGET -O $tf -q --post-data="$req_body" ${WGET_IPV6} "$url" >/dev/null 
+			xml="$($CAT $tf)"
+			sid=$(fb_xml_extract "$SID_XML_NAME" "$xml")
+			if [ x"$sid" == x"${SID_INVALID}" ]; then
+				echo "Login failed - box=$2, user=$3, passwd=*hidden*" 1>&2
+				# uncomment the following line if you know what you're doing
+				# echo "Login failed - box=$2, user=$3, passwd=$4"
+				rc=2 # login failed
+			else
+				[ ${#3} -gt 0 ] && openbox=0 || openbox=1
+				xml="$(fb_xml_insert "$xml" 1 Rights "<LoginMode>$openbox</LoginMode>")"
+				echo "$xml"
+				rc=0 # login successful
+			fi
+		else
+			if [ "$sid" != "$1" ]; then
+				openbox=2
+				xml="$(fb_xml_insert "$xml" 1 Rights "<LoginMode>$openbox</LoginMode>")"
+				echo "$xml"
+				rc=0 # session created without username/password (unprotected box)
+			else
+				rc=1 # valid session already exists
+			fi
+		fi
+	fi
+	$RM -f $tf &>/dev/null
+	return $rc
+}
+
+# fb_logout sid box
+fb_logout()
+{
+	local rc tf url uri sid 
+	rc=0
+	tf=$($MKTEMP)
+	url="${WGET_PREFIX}${2}${WGET_PORT}${LOGINURL}?${LOGOUT_PARM}"
+	if [ -n "$1" ] && [ "$1" != "$SID_INVALID" ]; then
+		uri="$url\&${SID_PARM_NAME}=$1"
+		$WGET -O $tf -q ${WGET_IPV6} "$uri" >/dev/null
+	fi
+	sid="$SID_INVALID"
+	$RM -f $tf &>/dev/null
+	echo $sid
+	return $rc
+}
+
+# fb_get sid box url referer
+fb_get()
+{
+	local rc tf ef url uri res err ref
+	rc=0
+	tf=$($MKTEMP)
+	ef=$($MKTEMP)
+	url="${WGET_PREFIX}${2}${WGET_PORT}"
+	if [ "${3:0:1}" == "/" ]; then
+		url="${url}${3}"
+	else
+		url="${url}/${3}"
+	fi
+	if [ -n "$1" ] && [ "$1" != "$SID_INVALID" ]; then
+		[ $(expr index $3 '?') == "0" ] && c="?" || c="&"
+		uri="$url${c}${SID_PARM_NAME}=$1"
+	fi
+	if [ ${#4} -gt 0 ]; then
+		ref="--referer=$4 "
+	else
+		ref=""
+	fi
+	$WGET -O $tf -o $ef $ref ${WGET_IPV6} "$uri"
+	rc=$?
+	if [ "$rc" -eq 0 ]; then
+		echo $tf
+		$RM -f $ef &>/dev/null
+		return $rc
+	else
+		$RM -f $tf &>/dev/null
+		res=$($GREP 'HTTP request sent' $ef | $TAIL -n 1 | $SED -e 's/.*\.\.\. //')	
+		[ -z "$res" ] && res=$($CAT $ef)
+		$RM -f $ef &>/dev/null
+		err=${res%% *}
+		if ! fb_is_number $err; then
+			err=254
+		fi
+		echo "$res"
+		return $err
+	fi
+}
+
+# fb_post sid box url postdata referer
+fb_post()
+{
+	local rc tf ef url uri res err ref
+	rc=0
+	tf=$($MKTEMP)
+	ef=$($MKTEMP)
+	url="${WGET_PREFIX}${2}${WGET_PORT}"
+	if [ "${3:0:1}" == "/" ]; then
+		url="${url}${3}"
+	else
+		url="${url}/${3}"
+	fi
+	if [ -n "$1" ] && [ "$1" != "$SID_INVALID" ]; then
+		[ $(expr index $3 '?') == "0" ] && c="?" || c="\\&"
+		uri="$url${c}${SID_PARM_NAME}=$1"
+	fi
+	if [ ${#5} -gt 0 ]; then
+		ref="--referer=$5 "
+	else
+		ref=""
+	fi
+	$WGET -O $tf -o $ef --post-file=$4 $ref ${WGET_IPV6} "$uri"
+	rc=$?
+	if [ "$rc" -eq 0 ]; then
+		echo $tf
+		$RM -f $ef &>/dev/null
+		return $rc
+	else
+		$RM -f $tf &>/dev/null
+		res=$($GREP 'HTTP request sent' $ef | $TAIL -n 1 | $SED -e 's/.*\.\.\. //')	
+		[ -z "$res" ] && res=$($CAT $ef)
+		$RM -f $ef &>/dev/null
+		err=${res%% *}
+		if ! fb_is_number $err; then
+			err=254
+		fi
+		echo "$res"
+		return $err
+	fi
+}
+
+DEFAULT_USER_NAME=$($WHOAMI)
+
+rc=0
+myself="${0##*/}"
+symlink=1
+command="-"
+
+if [ "$myself" == "$script_name" ]; then
+	command="-"
+else
+	for link in ${!symlink_commands[@]}; do
+		if [ "$myself" == "$link" ]; then
+			symlink=0
+			command="${symlink_commands[$link]}"
+			break
+		fi
+	done
+	if [ $symlink -eq 1 ]; then
+		fb_usage $symlink $command "Unknown symbolic link name '${myself}' - please check the usage help.\n\n" 
+		rc=$?
+		exit $rc
+	fi
+fi
+
+tf=$($MKTEMP)
+options=$($GETOPT -o c:ns:t:P:if:u:p:e:R:hd --long config-file:,no-export,sid:,target:,port:,ignore-env,env-suffix:,user-name:,user-passwd:,environment-file:,referer:,help,debug -n ${myself} -s bash -- "$@" 2>$tf)
+rc=$?
+
+if [ $rc -ne 0 ]; then
+	emsg="$($CAT $tf)"
+	fb_usage $symlink $command "$emsg\n\n"
+	rc=$?
+fi
+$RM -f $tf &>/dev/null
+
+[ "$rc" -ne 0 ] && exit $rc
+
+eval set -- "$options"
+
+cfgfile="~/.fritzbox"
+opt_exists_c=1
+
+export_vars=0
+opt_exists_n=1
+
+sid=""
+opt_exists_s=1
+
+target=""
+opt_exists_t=1
+
+port=""
+opt_exists_P=1
+
+ignore_env=1
+opt_exists_i=1
+
+env_suffix=""
+opt_exists_f=1
+
+fbuser=""
+opt_exists_u=1
+
+fbpass=""
+opt_exists_p=1
+
+fbenv=""
+opt_exists_e=1
+
+fbreferer=""
+opt_exists_R=1
+
+debug=1
+
+while true; do
+	case "$1" in
+		("-c"|"--config-file")
+			cfgfile="$2"
+			shift 2
+			opt_exists_c=0
+			;;
+		("-n"|"--no-export")
+			export_vars=1
+			shift
+			opt_exists_n=0
+			;;
+		("-s"|"--sid")
+			sid="$2"
+			shift 2
+			opt_exists_s=0
+			;;
+		("-t"|"--target")
+			target="$2"
+			shift 2
+			opt_exists_t=0
+			;;
+		("-P"|"--port")
+			port="$2"
+			shift 2
+			opt_exists_P=0
+			;;
+		("-i"|"--ignore-env")
+			ignore_env=0
+			shift
+			opt_exists_i=0
+			;;
+		("-f"|"--env-suffix")
+			env_suffix="_$2"
+			shift 2
+			opt_exists_f=0
+			;;
+		("-u"|"--user-name")	
+			fbuser="$2"
+			shift 2
+			opt_exists_u=0
+			;;
+		("-p"|"--user-passwd")
+			fbpass="$2"
+			shift 2
+			opt_exists_p=0
+			;;
+		("-e"|"--environment-file")
+			fbenv="$2"
+			shift 2
+			opt_exists_e=0
+			;;
+		("-R"|"--referer")
+			fbreferer="$2"
+			shift 2
+			opt_exists_R=0
+			;;
+		("-d"|"--debug")
+			debug=0
+			shift
+			;;
+		("-h"|"--help")
+			fb_usage 1 -
+			exit $?
+			;;
+		("--")
+			shift
+			break
+			;;
+		(*)
+			echo -n -e "Internal error processing command line !\n\n"
+			exit 64
+			;;
+	esac
+done
+
+if [ $opt_exists_e -eq 0 ]; then
+	if [ -r "$fbenv" ]; then
+		source $fbenv
+		if [ $debug -eq 0 ]; then
+			echo "read environment settings from file '$fbenv'" 1>&2
+			tmp="\${!$FB_PREFIX*}"
+			eval names="$tmp"
+			for var in $names; do
+				echo "$var=${!var}" 1>&2
+			done
+		fi
+	fi
+fi
+
+for argument in $@; do
+	if [ $symlink -eq 0 ]; then
+		cmdparms="$@"
+	else
+		if [ -z "$command" ] || [ "$command" == "-" ]; then
+			command="$argument"
+			shift
+		else
+			cmdparms="$@"
+		fi
+	fi
+done
+
+if [ $symlink -eq 1 ] && ( [ -z "$command" ] || [ "$command" == "-" ] ); then
+		fb_usage $symlink $command "Missing 'subcommand' parameter - please check the usage help.\n\n"
+		exit 32
+fi
+
+if [ $symlink -eq 1 ]; then
+	cmdfound=1
+	for chkcmd in ${!symlink_commands[@]}; do
+		chk="${symlink_commands[$chkcmd]}"
+		if [ "$chk" == "$command" ]; then
+			cmdfound=0
+			break
+		fi
+	done
+	if [ $cmdfound -eq 1 ]; then
+		fb_usage $symlink $command "The specified subcommand '$command' is unknown.\n\n"
+		exit 32
+	fi
+fi
+
+if [ "$command" != "login" ]; then
+	if [ $opt_exists_u -eq 0 -o $opt_exists_p -eq 0 ]; then
+		fb_usage $symlink $command "The options '-u', '-p' and '-C' are only valid for 'login' subcommand.\n\n"
+		exit 32
+	fi
+fi
+
+if [ $opt_exists_c -eq 0 ]; then
+	tst=$(fb_configfile "$cfgfile" "TEST")
+	tst=$?
+	if [ "$tst" -eq 2 ]; then
+		echo -e -n "The specified configuration file '$cfgfile' is accessible by other users.\n\n"
+		exit 16
+	elif [ "$tst" -eq 4 ]; then
+		echo -e -n "The specified configuration file '$cfgfile' does not exist or is not accessible.\n\n"
+		exit 16
+	fi
+fi
+
+case "$command" in
+	("login")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 0 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n"
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n"
+			exit 8
+		fi
+		my_user="$(fb_get_value "$FB_USER" 1 "D:$DEFAULT_USER_NAME" "F:$cfgfile" "E:$FB_USER$env_suffix" "O:$fbuser")"
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required user name for '$command' subcommand.\n\n"
+			exit 8
+		fi
+		my_passwd="$(fb_get_value "$FB_PASSWD" 1 "F:$cfgfile" "E:$FB_PASSWD$env_suffix" "O:$fbpass")"
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required password for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -n "$port" ]; then
+			WGET_PORT=":$port"
+		fi
+		if [ -n "$cmdparms" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n"
+			exit $?
+		fi
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 4 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		else
+			if [ $tmp -ge 2 ]; then
+				WGET_IPV6=" --prefer-family=IPv6"
+			fi
+		fi
+		fb_debug_params
+		nl=$'\n'
+		res=$(fb_login ${my_sid:-$SID_INVALID} "$my_ipaddr" "$my_user" "$my_passwd")
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			openbox=$(fb_xml_extract "LoginMode" "$res")
+			new_sid=$(fb_xml_extract "$SID_XML_NAME" "$res")
+			new_rights=""
+			tmp=$(fb_xml_extract "$RIGHTS_XML_NAME" "$res")
+			if [ -n "$tmp" ]; then
+				new_rights="$(fb_extract_rights $tmp)"
+			fi
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+			if [ $debug -eq 0 ]; then
+				echo "login successful" 1>&2
+				echo "sid=$new_sid" 1>&2
+				echo "rights=$new_rights" 1>&2
+			fi
+		elif [ $rc -eq 1 ]; then # session still valid
+			[ $debug -eq 0 ] && echo "no login needed, current session id '$my_sid' is still valid" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		elif [ $rc -eq 2 ]; then # login failed
+			if [ $debug -eq 0 ]; then
+				echo "login failed" 1>&2
+				echo "$res" 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				export_mode="unset"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		else # unknown error
+			[ $debug -eq 0 ] && echo "unknown error during login" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="unset"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		;;
+
+	("logout")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 1 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -n "$cmdparms" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 2 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		fi
+		fb_debug_params
+		nl=$'\n'
+		res=$(fb_logout $my_sid "$my_ipaddr")
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			[ $debug -eq 0 ] && echo "logout done" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="unset"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		else # unknown error
+			[ $debug -eq 0 ] && echo "unknown error during logout"
+			if [ $export_vars -eq 0 ]; then
+				export_mode="unset"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" -)"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		;;
+
+	("get")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 1 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -z "$cmdparms" ]; then
+			fb_usage $symlink $command "Missing url parameter for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		set -- $cmdparms
+		my_url="$1"
+		shift
+		if [ -n "$1" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 2 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		fi
+		fb_debug_params
+		if [ "$debug" -eq 0 ]; then
+			echo "url=$my_url" 1>&2
+		fi
+		nl=$'\n'
+		res=$(fb_get $my_sid "$my_ipaddr" $my_url $fbreferer)
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			[ $debug -eq 0 ] && echo "get done" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		else 
+			[ $debug -eq 0 ] && echo "error $rc during get" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		if [ "$rc" -eq 0 ]; then
+			if [ -n "$res" ]; then
+				$CAT $res
+				$RM -f $res &>/dev/null
+			fi
+		else
+			echo "$res"
+		fi
+		;;
+
+	("post")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 1 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -z "$cmdparms" ]; then
+			fb_usage $symlink $command "Missing url parameter for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		set -- $cmdparms
+		my_url="$1"
+		shift
+		if [ -z "$1" ]; then
+			fb_usage $symlink $command "Missing post data file parameter for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		postfile="$1"
+		shift
+		if [ -n "$1" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		if [ "$postfile" == "-" ]; then
+			pf=$($MKTEMP)
+			$CAT - >$pf
+			postfile=$pf
+			rm_pf=0
+		else
+			rm_pf=1
+		fi
+		if [ ! -r $postfile ]; then
+			fb_usage $symlink $command "The post data file '$postfile' does not exist or is not accessible.\n\n" 1>&2
+			exit $?
+		fi
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 2 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		fi
+		fb_debug_params
+		if [ "$debug" -eq 0 ]; then
+			echo "url=$my_url" 1>&2
+			echo "postdata=$postfile" 1>&2
+			echo "post data file content:" 1>&2
+			$CAT $postfile 1>&2
+		fi
+		nl=$'\n'
+		res=$(fb_post $my_sid "$my_ipaddr" $my_url $postfile $fbreferer)
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			[ $debug -eq 0 ] && echo "post done" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		else 
+			[ $debug -eq 0 ] && echo "error $rc during get" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		if [ "$rm_pf" -eq 0 ]; then
+			$RM -f $postfile &>/dev/null
+		fi
+		if [ "$rc" -eq 0 ]; then
+			if [ -n "$res" ]; then
+				$CAT $res
+				$RM -f $res &>/dev/null
+			fi
+		else
+			echo "$res"
+		fi
+		;;
+
+	("query")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 1 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -z "$cmdparms" ]; then
+			fb_usage $symlink $command "Missing query string parameter for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		set -- $cmdparms
+		my_query="$1"
+		shift
+		if [ -n "$1" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 2 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		fi
+		fb_debug_params
+		if [ "$debug" -eq 0 ]; then
+			echo "query=$my_query" 1>&2
+		fi
+		nl=$'\n'
+		res=$(fb_get $my_sid "$my_ipaddr" /query.lua?$my_query $fbreferer)
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			[ $debug -eq 0 ] && echo "query done" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		else 
+			[ $debug -eq 0 ] && echo "error $rc during get" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		if [ "$rc" -eq 0 ]; then
+			if [ -n "$res" ]; then
+				$CAT $res
+				$RM -f $res &>/dev/null
+			fi
+		else
+			echo "$res"
+		fi
+		;;
+
+	("bulkquery")
+		openbox=$(fb_get_value "$FB_LOGINMODE" 0 "D:0" "E:$FB_LOGINMODE$env_suffix")
+		my_sid=$(fb_get_value "$FB_SID" 1 "E:$FB_SID$env_suffix" "O:$sid")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required session id for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		my_box=$(fb_get_value "$FB_BOX" 1 "D:$DEFAULT_BOX_NAME" "F:$cfgfile" "E:$FB_BOX$env_suffix" "O:$target")
+		if [ "$?" -ne 0 ]; then
+			echo -e -n "Missing required target (box address) for '$command' subcommand.\n\n" 1>&2
+			exit 8
+		fi
+		if [ -z "$cmdparms" ]; then
+			fb_usage $symlink $command "Missing query file name parameter for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		set -- $cmdparms
+		my_file="$1"
+		shift
+		if [ -n "$1" ]; then
+			fb_usage $symlink $command "Too many arguments specified for '$command' subcommand - please check the usage help.\n\n" 1>&2
+			exit $?
+		fi
+		qdf=$($MKTEMP)
+		if [ "$my_file" != "-" ]; then
+			if [ ! -r $my_file ]; then
+				fb_usage $symlink $command "The query data file '$my_file' does not exist or is not accessible.\n\n" 1>&2
+				exit 16
+			fi
+		fi
+		$CAT $my_file >$qdf
+		my_query=$(fb_build_query <$qdf)
+		mq=$?
+		my_ipaddr="$(fb_getipaddr $my_box)"
+		tmp=$?
+		if [ $tmp -eq 2 ]; then
+			echo "Unable to resolve host name '$my_box'." 1>&2
+			exit 4
+		fi
+		fb_debug_params
+		if [ "$debug" -eq 0 ]; then
+			echo "query=$my_query" 1>&2
+		fi
+		nl=$'\n'
+		jsf=$(fb_get $my_sid "$my_ipaddr" /query.lua?$my_query $fbreferer)
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			[ $debug -eq 0 ] && echo "query done" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+			if [ "$mq" -eq 1 ]; then
+				tf=$($MKTEMP)
+				fb_modify_json $jsf $qdf >$tf
+				$RM -f $jsf &>/dev/null
+				jsf="$tf"	
+			fi
+		else 
+			[ $debug -eq 0 ] && echo "error $rc during get" 1>&2
+			if [ $export_vars -eq 0 ]; then
+				export_mode="set"
+				new_sid=$my_sid
+				vn="${FB_RIGHTS}${env_suffix}"
+				new_rights="${!vn}"
+				vn="${FB_USER}${env_suffix}"
+				my_user="${!vn}"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_BOX$env_suffix" "$my_box")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ADDR$env_suffix" "$my_ipaddr")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_USER$env_suffix" "$my_user")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_SID$env_suffix" "$new_sid")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_ACC$env_suffix" "$(fb_gettimestamp)")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_RIGHTS$env_suffix" "$new_rights")"
+				exp="${exp}${exp:+$nl}$(fb_export "$FB_LOGINMODE$env_suffix" "$openbox")"
+			fi
+		fi
+		if [ -n "$exp" ]; then # something to do with the environment
+			if [ $opt_exists_e -eq 0 ]; then
+				fb_setenvfile $fbenv $export_mode "$exp"
+				[ "$?" -eq 0 -a $debug -eq 0 ] && echo "saved environment variables to file '$fbenv'" 1>&2 && $CAT $fbenv 1>&2
+			fi
+			if [ $export_vars -eq 0 ]; then
+				tmpfile=$($MKTEMP)
+				if [ "$export_mode" == "set" ]; then
+					echo -e "declare -x ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "exporting environment variables" 1>&2
+					source $tmpfile
+				else
+					echo -e "export -n ${exp//$nl/ }" >$tmpfile
+					[ $debug -eq 0 ] && echo "removing exported environment variables" 1>&2
+					source $tmpfile
+				fi
+				$RM -f $tmpfile &>/dev/null
+			fi
+		fi
+		$CAT $jsf
+		$RM -f $jsf $qdf &>/dev/null
+		;;
+esac
+
+exit $rc

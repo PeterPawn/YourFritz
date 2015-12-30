@@ -1,0 +1,59 @@
+#! /bin/bash
+td=$(mktemp -d)
+hdr=1
+cat - >$td/input
+mkdir $td/parts
+touch $td/filelist $td/header
+__h2b()
+{
+	while read line; do
+		while [ -n "${line}" ] && [ x${line} != x"\x0a" ]; do
+			echo -e -n "\x${line:0:2}"
+			line="${line:2}"
+		done
+	done
+}
+grep -n '^\*\*\*\*' $td/input |
+while read line; do
+	lineno=$(echo "$line" | sed -n -e 's/^\([0-9]*\):\*.*/\1/p')
+	content=$(echo "$line" | sed -n -e 's/^[0-9]*:\*\*\*\* \(.*\)/\1/p')
+	case "$content" in 
+		(CFGFILE:*)
+			if [ "$hdr" -eq 1 ]; then
+				let last=lineno-1
+				sed -n -e "1,$last p" <$td/input >>$td/header
+				hdr=0
+			fi
+			fn=$(echo "$content" | sed -n -e 's/CFGFILE:\(.*\)/\1/p')
+			fs=$lineno
+			ft=c
+			;;
+		(BINFILE:*)
+			if [ "$hdr" -eq 1 ]; then
+				let last=lineno-1
+				sed -n -e "1,$last p" <$td/input >>$td/header
+				hdr=0
+			fi
+			fn=$(echo "$content" | sed -n -e 's/BINFILE:\(.*\)/\1/p')
+			fs=$lineno
+			ft=b
+			;;
+		(END\ OF\ FILE*)
+			let first=fs+1
+			let last=lineno-1
+			if [ "$ft" == "b" ]; then
+				sed -n -e "$first,$last p" <$td/input | __h2b >$td/parts/$fn
+			else
+				sed -n -e "$first,$last p" <$td/input >$td/parts/$fn
+			fi
+			echo "$ft $first $last $fn" >>$td/filelist
+			;;
+		(END\ OF\ EXPORT*)
+			chksum=$(echo "$content" | sed -n -e 's/END OF EXPORT \(.*\) \*.*/\1/p')
+			echo "chksum=$chksum" >>$td/tail
+			;;
+		(*)
+			;;
+	esac
+done
+echo $td

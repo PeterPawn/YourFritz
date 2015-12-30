@@ -1,0 +1,30 @@
+#! /bin/true
+crc32()
+{
+	cksum=$(./crc32_filter <$1)
+	cksum="${cksum^^}"
+	printf "%s\n" $cksum
+}
+fldr="$1"
+rm $fldr/rawdata >/dev/null 2>&1
+touch $fldr/rawdata
+grep -v '^\*\*\*\*' $fldr/header |
+while read line; do
+	echo -n -e "$line\0" | sed -e 's/=//1' >>$fldr/rawdata
+done
+cat $fldr/filelist |
+while read file; do
+	set -- $file
+	ft=$1
+	fn=$4
+	if [ "$ft" == "c" ]; then
+		echo -n -e "$fn\0" >>$fldr/rawdata
+		sed -e 's/\\\\/\\/g' -e '$d' <$fldr/parts/$fn >>$fldr/rawdata
+	else
+		echo -n -e "$fn\0" >>$fldr/rawdata
+		cat $fldr/parts/$fn >>$fldr/rawdata
+	fi
+done
+cksum=$(crc32 $fldr/rawdata)
+echo "chksum=$cksum" >$fldr/tail
+cat $fldr/tail

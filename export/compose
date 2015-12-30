@@ -1,0 +1,25 @@
+#! /bin/true
+fldr="$1"
+cat $fldr/header >$fldr/output
+cat $fldr/filelist |
+while read file; do
+	set -- $file
+	ft=$1
+	fn=$4
+	if [ "$ft" == "c" ]; then
+		echo "**** CFGFILE:$fn" >>$fldr/output
+		cat $fldr/parts/$fn >>$fldr/output
+	else
+		echo "**** BINFILE:$fn" >>$fldr/output
+		size=$(stat -c %s $fldr/parts/$fn)
+		if [ $size -eq 0 ]; then
+			echo >>$fldr/output
+		else
+			hexdump -v -e '40/1 "%02X" "\n"' $fldr/parts/$fn | sed -e 's/ *$//g' >>$fldr/output
+		fi
+	fi
+	echo "**** END OF FILE ****" >>$fldr/output
+done
+cksum=$(cat $fldr/tail | sed -n -e 's/^.*=\(.*\)/\1/p')
+echo "**** END OF EXPORT $cksum ****" >>$fldr/output
+cat $fldr/output
