@@ -1,0 +1,57 @@
+#! /bin/sh
+#
+# hexdump a file like: hexdump -e '40/1 "%02X" "\n"'
+tv=/bin/testvalue
+test -x $tv || exit 1
+td=/var/tmp/hd$(date +%s)
+cleanup()
+{
+	rm -r $td
+}
+trap cleanup EXIT HUP KILL TERM
+mkdir -p $td
+cat - >$td/input
+fs=$(stat -c %s $td/input)
+filesize=$fs
+linesize=0
+line=""
+offset=0
+while [ $fs -gt 0 ]; do
+	if [ $fs -ge 4 ]; then
+		mask="%08X"
+		size=4
+	else
+		if [ $fs -ge 2 ]; then
+			mask="%04X"
+			size=2
+		else
+			mask="%02X"
+			size=1
+		fi
+	fi
+	part=$(printf $mask $($tv $td/input $size $offset))
+	let ressize=size*2
+	if [ ${#part} -gt $ressize ]; then
+		eval let off=${#part}-ressize
+		part=${part:$off:$ressize}
+	fi
+	let offset=offset+size
+	let fs=fs-size
+	line="$line$part"
+	let linesize=linesize+size
+	if [ $linesize -eq 40 ]; then
+		echo "$line"
+		linesize=0
+		line=""
+	fi
+	if [ ${#1} -gt 0 ]; then
+		let percent=offset*100/filesize
+		echo -n -e "\r$percent%" 1>&2
+	fi
+done
+if [ ${#1} -gt 0 ]; then
+	echo -n -e "\r\x1B[K" 1>&2
+fi
+if [ ${#line} -gt 0 ]; then
+	echo "$line"
+fi
