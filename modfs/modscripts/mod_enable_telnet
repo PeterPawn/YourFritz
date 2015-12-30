@@ -1,0 +1,66 @@
+# MODFS_MODSCRIPT
+# SUPPORTS precheck postcheck install language(en,de)
+# NAME \(re\)enable telnet daemon
+# DESCRIPTION en
+# create symlink to execute busybox telnetd applet 
+# DESCRIPTION de
+# Erstellen eines Symlinks, um die Ausführung des telnetd-Applets der
+# Busybox wieder zu ermöglicen
+# EOH
+#
+# process parameters
+#
+language=$1
+rootdir=$2
+mode=$3
+step=$4
+[ ${#4} -eq 0 ] && exit 59 # invalid call
+#
+# execute the requested step
+#
+rc=0
+symlink=/usr/sbin/telnetd
+case $step in
+	precheck)
+		[ -L $rootdir$symlink ]
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			case "$language" in
+				de)
+					echo "Die Modifikation wurde bereits angewendet oder ist nicht erforderlich." 1>&2
+					;;
+				*)
+					echo "The startup file is modified already or modification isn't necessary." 1>&2
+					;;
+			esac
+			rc=1
+		else
+			rc=0
+		fi
+		;;
+	postcheck)
+		[ -L $rootdir$symlink ]
+		rc=$?
+		if [ $rc -eq 1 ]; then
+			case "$language" in
+				de)
+					echo "Die Modifikation war nicht erfolgreich." 1>&2
+					;;
+				*)
+					echo "The startup file seems to be unmodified." 1>&2
+					;;
+			esac
+			rc=1
+		else
+			rc=0
+		fi
+		;;
+	install)
+		ln -s ../../bin/busybox $rootdir$symlink
+		rc=0
+		;;
+	*)
+		rc=59
+		;;
+esac
+exit $rc

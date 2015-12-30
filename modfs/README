@@ -1,0 +1,381 @@
+Copyright (C) 2014 P.Haemmerlein (http://www.yourfritz.de)
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program, please look for the file COPYING.
+
+All embedded binary files may be reproduced using the
+sqfstools-3.4 package of the FREETZ project.
+
+Please refer to http://freetz.org for further information.
+
+You can find the current version of this package at:
+
+http://yourfritz.de/modfs.tgz
+
+There are no plans to establish any versioning for the package,
+any error found will be corrected as soon as possible and a new
+download file will be built.
+If there are any enhancements which will break the I14Y with
+earlier versions, a new file name will be used.
+
+===================================================================
+---- please cut here ---- please cut here ---- please cut here ----
+------- bitte hier trennen ------------- bitte hier trennen -------
+===================================================================
+
+If you'd prefer to read the description in german, you could
+look for a file 'README.ger' within the package. If it's not
+present, I'm still writing it.
+
+WHY THAT PACKAGE ?
+==================
+The purpose of this package is a root file system modification
+"on the fly" for AVM's FRITZ!Box 7490 router devices to regain 
+the ability to execute own services after some very new and
+unexpected behavior changes within the original firmware. 
+
+In my opinion these changes are - after an annoying incident in 
+the past - a very first step in the right direction. 
+But the the absence of a defined hook is upsetting for some 
+user-supplied extensions to the firmware, which attracted a wide
+interest in the past and an "advanced mode" for experienced users
+seems to be out of sight in the near future.
+
+QUICKSTART
+==========
+Unpack, check integrity and call the script to modify the running
+system.
+
+# ./modfs
+
+After some checks of your system and after answering the one or
+other question to apply or deny a modification, your system will
+be changed and you can reboot it. The modified root file system
+will be used after that restart.
+
+SUPPORTED MODELS
+================
+7490   - thoroughly tested
+7362SL - only one box tested yet (09-23-2014), not as easy to
+         handle as the 7490 due to lack of free space at RAM and
+         NAND, but it's possible with >256MB of free space on an
+         USB volume; be aware, that it's *slower a lot* while 
+         packing the new file system
+
+It looks like devices have to be updated to a firmware version
+>= 06.10 first to get the ability to 'dual boot' under abuse of
+the 'hot flash' capability.
+It's possible that the boot loader EVA is able to select the boot
+partition with the 'linux_fs_start' variable at the outset, but it
+seems to be unused up to firmware version 06.10. But there was no
+thorough investigation yet ... I would need additional feedback,
+because I do not own enough different devices myself.
+
+If you'd like to add support for your own device yourself, be
+aware of the requirement to supply an unsquashfs/mksquashfs pair
+of utilities too (or to create another symlink to the present
+utilities (compiled for VR9 processors)  within the 'bin' sub-
+directory with the appropriate hardware revision number part). 
+An additional FTP server path ('ftp_path_${hwrev}') is needed and 
+the new hardware revision has to be put into the 
+'hwrevs_supported' variable. 
+After you've tested the changes and everything is working as 
+expected, I'd feel happy about a short note to my e-mail address
+with the specifications of your device.
+
+HOW IT WORKS
+============
+The script first checks your device to make sure, that all the
+needed requirements are satisfied. The requirements are in detail:
+
+- the hardware revision of the device is found within the list of
+  supported devices (hwrevs_supported)
+- the environment variable to select the boot time partition for
+  the EVA loader is present and valid (linux_fs_start)
+- the variable mentioned above points to the running system yet
+
+The conditions above are tested too, if you want to undo an
+earlier modification while you've not restarted the device.
+If there's no 'undo' request to handle (see below), the following
+conditions are tested now:
+
+- the system has to have a MTD partition named 'kernel' and a
+  corresponding file system partition 'filesystem'
+- there has to be a mirrored kernel and file system partition with
+  the 'reserved-' prefix to the names
+- if one of the partitions above is missing, even an earlier check
+  (to detect an already modified root file system) could have 
+  failed already
+- the kernel images are compared (based on their MD5 hash values)
+  and if there are different kernel versions found, the user will
+  get the opportunity to copy the running system to the inactive
+  partitions too and start over the modification process after
+  restarting the whole device
+- the available space at the tmpfs (that's a volatile storage at
+  the RAM of the device) will be checked
+- at last prerequisite there has to be enough free storage (either
+  at the tmpfs, the NAND flash or an USB volume) to unpack, modify
+  and repack the root file system; if such a place is found at a
+  file system without linux rights management, a loopback device
+  with an ext3 file system image will be used
+
+If all of the above conditions are complied with, the user has to
+choose a base for the modifications. There are three possible 
+origins:
+
+1. The root file system image of the running system.
+2. The root file system image extracted from a new download of a
+   firmware image from manufacturer's FTP server.
+3. An earlier extracted or saved image file, which could be a
+   complete firmware image (usually a tar file with an 'image'
+   extension) or an already extracted squashfs root image, but
+   not a 'wrapper' image.
+
+The root file system of the running OS may contain some changes
+compared to the original file system already. It's solely the
+responsibility of a modscript to detect if such changes are 
+present and to avoid an invalid result of 'double' modifications.
+The included script examples will take care about it.
+If the user decided to download a fresh system copy from the FTP
+server, he is given a chance to save the extracted root file
+system image for later use to persistent storage, if it's present.
+If he wants to use an earlier saved image file, he's given the
+opportunity to select a mounted drive (even the yaffs2 image at
+the NAND space presented to the user is seen as a 'drive', but it
+has enough free space at the 7490 model only at the time of this
+writing), where the saved image will be searched. If has to have
+an appropriate file name for this 'automatic search', else it
+will not be found.
+Another chance to point the script to the correct template is to
+enter the full path to it. But beware, there's no edit capability
+while entering the name due to missing readline support for the
+'read' command within AVM's busybox. I was not interested in 
+writing my own line editor with ANSI control sequences, so you
+have to take what you get there. If you've made a mistake while
+typing, press 'return' and start the input again, after the file
+was not found.
+
+After looking for suitable places to store the intermediate
+results of processing, an overview of that places is shown and
+one has to be choosen by the user.
+If the selected place isn't using a native linux file system, a
+container image will be unpacked (128MB ext3 file system stored
+as compressed file in the 'files' subdirectory) and mounted via
+a loopback device. All further file operations will then be done
+within that container. After processing has finished, the image
+will be dismounted and removed without any chance to store it
+elsewhere. In my opinion it's useless to save that intermediate
+result for later use, you've to waste the time it takes to 
+prepare the image at every call. If you'd like to cut short here,
+you can prepare your own container and mount it prior to calling
+the script again.
+
+At the next step, the squashfs root image is unpacked and the
+block size and endianess of the present image is recorded.
+
+Now the modification process will take place. 
+Every file found within the 'modscripts' subdirectory is written
+to a list file, which will be sorted alphabetically next. 
+The resulting file is read line by line and the executable flags 
+of every file found are examined. To be recognized as a modscript,
+the flags have to be set as 'ug+x' at least (the file has to be 
+readable too). If the 'o+x' flag is present too, the script will 
+be executed at first pass without any user intervention possible. 
+
+The order of calls to the script will be described later, see 
+below for an explanation.
+
+After the first pass is done, every processed modscript name will
+be removed from the list file and the second pass starts. Now
+every file is examined again and if its flags are set as expected,
+the user gets a display of the script name, its description and
+the decision to apply or deny that modification.
+
+After all modscripts have been processed, the resulting file
+system tree will be packed again. This process will take some 
+time.
+
+On a 7490 device packing the 55MB of the 06.20 root file system 
+tree into a 21MB image file was done after 3 minutes. All file 
+I/O took place at the fast tmpfs only during that measure.
+
+If you use a slower storage device (which is additonally slowed
+down due to using a loopback device) or your router is equipped
+with another (probably slower) processing unit, it could take
+ages to finish packing.
+
+After the new root file system image has been packed, it will be
+copied into wrapper file system at the unused partition.
+
+If no error occured until this point, the environment variable
+'linux_fs_start' will be set to the alternative value to select
+the unused partitions as active system at next restart of your
+router.
+
+After some cleanup actions (removing a mounted container image
+and removing all intermediate directories and files) the script
+is finished.
+
+You're in charge to check the made modifications before you
+restart your router. There is an interactive step before the
+packing of the new image starts. While the script is waiting for
+your reaction, you're able to inspect the resulting file system
+tree at the displayed location. If you suppose any mistakes, you
+can enter a single 'q' letter at that point and the script will
+not waste your time while packing an unusable file system image.
+
+If you've finished the whole process and decide later (but 
+before the next restart) to abandon your changes, you can call
+the script with 'undo' as argument. If the preliminary checks
+will succeed (especially, if the linux_fs_start value was set
+to start the inactive system next time), the linux_fs_start
+value will be set back to the running system. The changes to
+to root file system image within the inactive wrapper will not
+be undone. Another run of the script or the next regular 
+firmware update will overwrite the file system image later.
+
+Changes 05/11/2015:
+Added an 'update' parameter to load a newer version from the FTP
+server, in this mode the prerequisite of identical system
+versions in both flash storage sets is not checked. An update
+will only be detected, if the new version number is higher than
+the running system's version.
+If an additional file name is specified after the 'update'
+parameter, no version check will be done and the specified file
+will be used as the modification source (it has to be an firm-
+ware image file with 'kernel.image' and 'filesystem.image' con-
+tained within). The user is responsible to ensure the compati-
+bility of existing settings or to clean existing ones.
+
+SUPPLIED MODSCRIPTS
+===================
+I've added only four 'basic' modscripts to regain the bread and 
+butter function of executing the shell commands in the TFFS file
+'rc.user', which was called 'debug.cfg' by the manufacturer.
+
+One script enables the execution of that commands at the very
+end of the init process. That's the only modification, which
+will be done without user's approval (that means, the script
+has the "executable for others" flag set).
+
+A second one modifies the 'shell profile' at /etc/profile to 
+check for the presence of another file at /var/custom/profile 
+and 'source' that file as final action, if it exists.
+
+The third script will create a new command called 'edit_rcuser',
+which can (and should) be used to modify the commands within the 
+rc.user file stored at the TFFS.
+This new command is intended to replace the 'nvi' command for 
+rc.user. If you use it to edit the file, any unnecessary writes
+(if you had a look at the content only and made no changes or if
+you decide to reject your changes after writing to the file) are
+avoided. But the most important difference to 'nvi' is, that the
+rc.user (or even debug.cfg, if you prefer that name) file can be
+modified without any needs to create an appropriate char-device
+for the minor id 98 first. The 'edit_rcuser' command will create
+it as neccessary and remove it later too. 
+Because the latest changes to the original firmware 'hide' the
+existence of that file, my modification in the first supplied
+script will not change that point to prevent any unwanted side
+effects (a.e. from writing an "empty file" into that node).
+
+The fourth script adds two radio buttons to the original 'restart'
+page (or frame) to select the system to load after next restart.
+To function properly, it needs an additional shell script called
+'guibootmanager' anywhere within the root file system tree and a
+modification to the file /usr/www/<branding>/system/reboot.lua.
+If your device can use more than one possible branding, only the
+file with the selected branding as of the time running the script
+will be modified.
+
+WHY DO YOU NOT USE A PREDEFINED PACKAGE FORMAT ?
+================================================
+There is no builtin support for any predefined package format at
+the regular firmware from the manufacturer. Because the whole
+script has to run the first time on such an original system, I
+wanted to avoid any unnecessary dependency on other binaries.
+I did not find a usable solution to exchange the supplied tools
+for squashfs images (unsquashfs and mksquashfs) with a scripted
+shell based solution, so I had to swallow that particular toad.
+
+WRITING YOUR OWN MODSCRIPTS
+===========================
+Each modscript has to start with a defined header. Each header
+line is a shell comment (starting with a hash sign - #), which
+consists of a keyword and - depending on the keyword - one or
+more options. The following keywords are known:
+
+MODFS_MODSCRIPT (mandatory)
+- this is the first line of the header, it takes no options
+
+EOH (mandatory)
+- this is the last line of the header, it take no options
+
+SUPPORTS (mandatory)
+- that keyword defines the supported calls to the script and 
+  the supported languages for error messages and/or generated 
+  code as part of a modification
+
+NAME (mandatory)
+- here you have to specify a short name for the modification
+
+DESCRIPTION [language] (optional, mandatory for 'onrequest')
+- the next (one or more) line(s) contains a description for the
+  modification in the specified language; if no language is 
+  specified or the script does not support different languages,
+  the description is used as a fallback variant for unknown or
+  unsupported languages
+- a description is not needed, if the script will be executed
+  without user's approval only
+
+The SUPPORTS keyword describes the supported languages and the
+wanted calls in different stages of processing. The execution
+of a modification script will be splitted into three phases.
+First, a prerequisites check can be executed. If the script 
+finds any circumstances which should lead to a block of further
+actions for that script (a.e. the modification is present
+already), it can return an exit code of 1 and the calling script
+will not process any further steps for the running modscript.
+The support for that 'preflight check' is expressed with the
+'precheck' option at the 'SUPPORTS' line.
+The next (and only mandatory supported) step is called 'install'.
+During this step the script should modify and/or create all files
+that build up the modification.
+The last possible step can be used to check the success of a
+modification. The support for this step is signalled with the
+'postcheck' option.
+The supported languages are specified with the 'language' option
+followed by a comma separated list of language codes (ISO 639-1)
+which is enclosed in parentheses (a.e. 'language(de,en)').
+
+The script will be called with the busybox shell at the router,
+specifying the following parameters as arguments:
+
+<language> <root directory> <mode> <step>
+
+'language' is the required interface language for message display
+and code generation.
+'root directory' is the base directory of the new file system.
+'mode' will be set to 'auto' at first pass of script execution
+and to 'onrequest' during the second pass.
+'step' will be set to 'precheck', 'install' or 'postcheck'
+according to the current state of execution.
+
+The script has to return an exit code of 0, if it made a new
+modification to the file system tree or 1, if no modification
+took place.
+Any other exit code will abort of the execution of the modfs 
+script after all modscripts have been processed.
+Any messages written by the modscript to stdout will be shown
+after the progress messages. Output to stderr should be avoided,
+it would ruin the progress messages.

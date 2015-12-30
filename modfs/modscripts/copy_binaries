@@ -1,0 +1,43 @@
+# MODFS_MODSCRIPT
+# SUPPORTS install 
+# NAME own files
+# DESCRIPTION en
+# add/replace some binaries at the target system
+# DESCRIPTION de
+# Programme hinzufügen/ersetzen 
+# EOH
+#
+# process parameters
+#
+language=$1
+rootdir=$2
+mode=$3
+step=$4
+[ ${#4} -eq 0 ] && exit 59 # invalid call
+#
+# execute the requested step
+#
+rc=0
+srcfile=files/binaries_7490_\$version.tgz
+case $step in
+	install)
+		version=$(cd $rootdir/lib/modules;find -type d -maxdepth 1 | sed -n -e "s/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p")
+		if [ ${#version} -eq 0 ]; then
+			echo "Unable to detect kernel version."
+			rc=2
+		else
+			eval srcfile=$srcfile
+			if [ -r $srcfile ]; then
+				gunzip -c $srcfile | tar x -C $rootdir
+				rc=0
+			else
+				echo "Unable to find binaries file for kernel version $version."
+				rc=3
+			fi
+		fi
+		;;
+	*)
+		rc=59
+		;;
+esac
+exit $rc
