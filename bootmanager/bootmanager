@@ -1,0 +1,612 @@
+#
+# Boot Manager for AVM FRITZ!Box 7490
+#
+# Copyright (C) 2014 P.Haemmerlein (http://www.yourfritz.de)
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License under 
+# http://www.gnu.org/licenses/gpl-2.0.html
+# for more details.
+#
+# "FRITZ!Box" is a registered word mark and "AVM" is a registered
+# word and figurative mark of:
+# AVM Computersysteme Vertriebs GmbH, 10559, Berlin, DE.
+#
+# EOH - let's start now
+#
+# some 'constants' ... in case of changes by AVM they're pooled here for easy maintenance
+urenv="/proc/sys/urlader/environment"
+mtd_procfs="/proc/mtd"
+mtd_prefix="mtd"
+krnl_mtd_name="kernel"
+fs_mtd_name="filesystem"
+res_mtd_prefix="reserved-"
+mtd_groups="0:1 2:3"
+fs_select_var="linux_fs_start"
+tffs_name="tffs"
+flash_dir="/var/flash"
+wrapper_mp="/wrapper"
+mtdblock="/dev/mtdblock"
+rootfs_squash="filesystem_core.squashfs"
+avm_etcversion="etc/version"
+avm_version="$avm_etcversion -v"
+avm_subversion="$avm_etcversion -vsub"
+avm_project="$avm_etcversion --project"
+avm_date="$avm_etcversion -d"
+hwrev_var_name="HWRevision"
+# 3370 7362SL 7490
+hwrevs_supported="175 185 203"
+runclock="run_clock"
+runclock_start="$runclock -c /dev/$tffs_name -d"
+# TFFS backup/restore settings
+tffs_minminor=30
+tffs_maxminor=255
+tffs_ignore_set="95 96 116 121 122 129 130 131 132 133 142 143 145 161 176 177 178"
+tffs_ignore_back="95 96"
+tffs_filenames="97:rc.user_add 98:debug.cfg 87:fwattrib 60:freetz"
+# you may change these settings, if you know what you're doing
+shield_mp="/var/shield"
+delim="-----------------------------------------------------------------------------------"
+myname="Boot Manager for FRITZ!Box 7490"
+color_alert=$(echo -e "\033[1;31m")
+color_bright_white=$(echo -e "\033[1;37m")
+color_reset=$(echo -e "\x1b[0m")
+# functions
+check_commands()
+{
+	local d c x=0 rc=0
+	cmds="cat checkempty cp date echo find grep gunzip gzip ln lsof md5sum mkdir mknod mount pwd rm rmdir sed sort stat tar touch umount"
+	dirs="$(echo $PATH | sed -e 's/:/ /g')"
+	for c in $cmds; do
+		x=0
+		for d in $dirs; do
+			[ -x $d/$c ] && x=1 && break
+		done
+		[ $x -eq 0 ] && echo -e "$Missing needed command '$c'." && rc=1
+	done
+	return $rc
+}
+get_mtd() { sed -n -e "s/^$mtd_prefix\(.*\):.*\"$1\".*/\1/p" $mtd_procfs; }
+yesno()
+{
+	local def=$1 yes no prompt answr nl
+	prompt="$2"
+	if [ $def == n ]; then
+		yes=y
+		no=N
+	else
+		yes=Y
+		no=n
+	fi
+	while [ 1 -eq 1 ]; do
+		read -n 1 -p "$prompt ($yes/$no) " answr 1>&2
+		nl="\n"
+		[ ${#answr} -eq 0 ] && answr=$def && nl=""
+	        if [ $answr == Y -o $answr == y ]; then
+			echo -n  'Y'
+			echo -e -n "$nl" 1>&2
+			return 0
+		else
+		        if [ $answr == N -o $answr == n ]; then
+				echo -n  'N'
+				echo -e -n "$nl" 1>&2
+				return 0
+			else
+				echo -e "\nPlease choose 'y' or 'n' and answer again ..." 1>&2
+			fi
+		fi
+	done
+	return 1
+}
+check_excluded()
+{
+	local needle="$1" haystack="$2"
+	for item in $haystack; do
+		[ x"$item" == x"$needle" ] && return 1
+	done
+	return 0
+}
+backup_settings()
+{
+	local td="$1" target="$2" major minor popd file td fsize line bfn 
+	major=$(sed -n -e "s/^\(.*\) .*$tffs_name.*/\1/p" /proc/devices)
+	touch "$td/vnames"
+	popd=$(pwd)
+	cd "$flash_dir"
+	for file in $(ls -d *); do
+		if [ -c $file ]; then
+			eval "minor=\$((0x$(stat -c %T $file)))"	
+			echo "$minor $file" >>"$td/vnames"
+		fi
+	done
+	cd "$popd"
+	sort -n "$td/vnames" >"$td/visible"
+	rm "$td/vnames"
+	mkdir -p "$td/backup" "$td/tffs"
+	for minor in $(seq $tffs_minminor $tffs_maxminor); do
+		check_excluded $minor "$tffs_ignore_back" || continue	
+		rm "$td/tffs/cdev" 2>/dev/null
+		mknod "$td/tffs/cdev" c $major $minor
+		checkempty "$td/tffs/cdev" >/dev/null 2>&1
+		[ $? -eq 1 ] && fsize=$(cat $td/tffs/cdev | wc -c | sed -n -e 's/^\([0-9]*\).*/\1/p') || fsize=0
+		line=$(grep "^$minor " $td/visible)
+		if [ -n "$line" ]; then
+			bfn=$(echo "$line" | sed -n -e 's/^[0-9]* \([^ ]*\).*/\1/p')
+		else
+			bfn=tffs.$minor
+		fi
+		if [ $fsize -ne 0 -o -n "$line" ]; then
+			[ $fsize -eq 0 ] && touch "$td/backup/$bfn" || cat "$td/tffs/cdev" >"$td/backup/$bfn"
+		fi
+	done
+	rm "$td/tffs/cdev" "$td/visible" 2>/dev/null
+	popd="$(pwd)"
+	cd "$td/backup"
+	tar c * | gzip -c >"$target"
+	cd "$popd"
+	rm -r "$td/tffs" "$td/visible" "$td/backup" 2>/dev/null
+}
+get_version()
+{
+	local tf
+	tf="$2/src$(date +%s)$(echo $1_$(date +%s) | md5sum | sed -n -e 's/\(.\{4\}\).*/\1/p')"
+	echo -e "VERSION=$(sh $1$avm_version)\nSUBVERSION=$(sh $1$avm_subversion)\nPROJECT=$(sh $1$avm_project)\nDATE=\"$(sh $1$avm_date)\"" >$tf
+	echo "$tf"
+}
+next_equals_current()
+{
+	local next=$1 run_kernel_from run_filesys_from g k0 f0 k1 f1 i=0
+	for g in $mtd_groups; do
+		eval "k$i=${g%%:*}"
+		eval "f$i=${g##*:}"
+		let i+=1
+	done
+	run_kernel_from=$(get_mtd $krnl_mtd_name)
+	run_filesys_from=$(get_mtd $fs_mtd_name)
+	[ $run_kernel_from -eq $(eval echo \$k$next) -a $run_filesys_from -eq $(eval echo \$f$next) ] && return 0 || return 1
+}
+count_backups()
+{
+	local base="$1" hash=$2 file count=0
+	for file in $(find "$base" -name "[0-9]*-[01]-settings-${hash}.tgz"); do
+		let count+=1
+	done
+	echo $count
+}
+orphaned_backups()
+{
+	local base="$1" hash=$2 mode=$3 file count=0 oifs fn
+	for file in $(find "$base" -name "[0-9]*-[01]-settings-[0-9a-f]*.tgz"); do
+		fn="${file##*/}"
+		set oifs="$IFS"
+		IFS=-.
+		set -- $fn
+		IFS="$oifs"
+		if [ $# -eq 5 ]; then
+			dv=$1
+			si=$2
+			mk=$3
+			hs=$4
+			fe=$5
+			if [ x$fe == xtgz -a x$mk == xsettings ]; then
+				if [ $2 -eq 0 -o $2 -eq 1 ]; then
+					if [ x$hs != x$hash ]; then
+						if [ $mode -eq 1 ]; then
+							echo "Orphaned settings backup file $fn found." 1>&2
+							a=$(yesno n "Do you want to delete it now ?")
+							if [ x$a == xY ]; then
+								rm "$file"
+								echo "File $file removed." 1>&2
+							fi
+						else
+							let count+=1
+						fi
+					fi
+				fi
+			fi
+		fi
+	done
+	echo $count
+}
+show_system()
+{
+	local base=$1 td="$2" kernel=$3 fs=$4 v="$5" tf VERSION SUBVERSION PROJECT DATE backups orphans clean rc
+	echo -n "$v system version will be determined, please be patient ..."
+	if [ $base -ne 0 ]; then
+		bs="$td/yaffs"
+		rt="$bs/$rootfs_squash"
+		mount -t yaffs2 -o ro $mtdblock$fs "$bs"
+		hash=$(md5sum "$rt" | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+		mount -t squashfs -o ro "$rt" "$td/rootfs"
+		tf="$(get_version "$td/rootfs/" "$td")"
+		umount "$td/rootfs"
+		backups=$(count_backups "$bs" $hash)
+		orphans=$(orphaned_backups "$bs" $hash 0)
+		umount "$bs"
+		if [ $? -ne 0 ]; then
+			echo "Error unmounting yaffs2 partition ..." 1>&2
+			echo "Open files behind the mountpoint are:" 1>&2
+			lsof | grep "/var/tmp" 1>&2
+			echo "Mounted devices:" 1>&2
+			mount 1>&2
+			echo "My working directory: $(pwd)" 1>&2
+			echo "Temp file for version settings: $tf" 1>&2
+			echo "Existing files:" 1>&2
+			ls -la "$td" 1>&2
+		fi
+	else
+		bs=$wrapper_mp
+		rt="$bs/$rootfs_squash"
+		tf="$(get_version / "$td")"
+		hash=$(md5sum $rt | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+		backups=$(count_backups $bs $hash)
+		orphans=$(orphaned_backups $bs $hash 0)
+	fi
+	source "$tf"
+	rm "$tf"
+	echo -e -n "\r\x1B[K"
+	echo "$v system version is $VERSION$SUBVERSION ($PROJECT)"
+	echo "$v system date is $DATE"
+	echo "$v system kernel is at MTD$kernel"
+	echo "$v system filesystem is at MTD$fs"
+	echo "$v system core filesystem hash is $hash"
+	echo "$v system has $backups suitable settings backups on its wrapper filesystem"
+	if [ $orphans -gt 0 ]; then
+		echo "$v system has $orphans orphaned settings backups on its wrapper filesystem"
+		a=$(yesno n "Do you want to cleanup these orphans now ?")
+		if [ $? -eq 0 ]; then
+			if [ $a == Y ]; then
+				if [ $base -ne 0 ]; then
+					mount -t yaffs2 $mtdblock$fs "$bs"
+				else
+					mount -o remount,rw "$bs"
+				fi
+				orphans=$(orphaned_backups "$bs" $hash 1)
+				if [ $base -ne 0 ]; then
+					umount "$bs"
+				else
+					mount -o remount,ro "$bs"
+				fi
+			fi
+		fi
+	fi
+	echo "$delim"
+	rc=$(( (orphans*64)+backups ))
+	return $rc
+}
+switch_system()
+{
+	if [ $1 -ne $2 ]; then
+		echo "$fs_select_var $1" >$urenv
+		echo "New system index saved."	
+	fi
+}
+get_backup_filename()
+{
+	local index=$1 mn mp ts
+	ts=$(date +"%Y%m%d%H%M%S")
+	hash=$(md5sum $wrapper_mp/$rootfs_squash | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+	echo "${ts}-${index}-settings-${hash}.tgz"
+}
+get_latestbackup_filename()
+{
+	local td="$1" bfn
+	mkdir "$td/wrapper"
+	mount -t yaffs2 -o ro $mtdblock$(get_mtd $res_mtd_prefix$fs_mtd_name) "$td/wrapper"
+	hash=$(md5sum "$td/wrapper/$rootfs_squash" | sed -n -e 's/^\([0-9a-f]*\).*/\1/p')
+	bfn=$(ls -r "$td/wrapper/"[0-9]*-[01]-settings-${hash}.tgz | sed -n -e '1p')
+	umount "$td/wrapper"
+	rmdir "$td/wrapper"
+	echo ${bfn##*/}
+}
+is_shielded() { grep -q "$flash_dir.*yaffs2" /proc/mounts && return 1 || return 0; }
+tffs_filename()
+{
+	local minor file="$1" names="$2" name
+	for name in $names; do
+		[ ${name##*:} == $file ] && echo ${name%%:*} && return
+	done
+}
+exchange_settings()
+{
+	local fs_mtd="$1" backup="$2" td="$3" verbose=$4 popd file rc line pid procbin restart_runclock=0
+	if is_shielded; then
+		echo -e "\r\x1B[K${color_alert}The settings protection is in use already, please reboot to return to a well-known state.${color_reset}"
+		return 1
+	fi
+	[ "$backup" == "latest" ] && backup=$(get_latestbackup_filename "$td")
+	mkdir -p "$td/restore" "$td/yaffs" "$td/flash" $shield_mp
+	mount -t yaffs2 -o ro $mtdblock$fs_mtd "$td/yaffs"
+	rc=0
+	if [ -f "$td/yaffs/$backup" ]; then
+		gunzip -c "$td/yaffs/$backup" | tar x -C "$td/restore"
+	else
+		echo -e "\r\x1B[K${color_alert}Unable to find settings backup file $backup.${color_reset}"
+		rc=1
+	fi
+	umount "$td/yaffs"
+	if [ $rc -eq 0 ]; then
+		major=$(sed -n -e "s/^\(.*\) .*$tffs_name.*/\1/p" /proc/devices)
+		mount -t tmpfs tmpfs $shield_mp
+		popd="$(pwd)"
+		cd $flash_dir
+		for file in $(ls); do
+			if [ -c $file ]; then
+				mknod $shield_mp/$file c $major $(( 0x$(stat -c %T $file) ))
+			else
+				if [ -L $file ]; then
+					cp -P $flash_dir/$file $shield_mp/
+				else
+					if [ ! -d $file ]; then
+						cp $flash_dir/$file $shield_mp/
+					fi
+				fi
+			fi
+		done
+		cd "$td/restore"
+		for file in $(ls); do
+			if find "$flash_dir" -name "$file" | grep -q "$file"; then
+				eval "minor=\$(( 0x$(stat -c %T $flash_dir/$file) ))"
+			else
+				if [ x${file:0:5} == xtffs. ]; then
+					minor=${file##*.}
+				else
+					minor=$(tffs_filename $file "$tffs_filenames")
+					if [ ${#minor} -eq 0 ]; then
+						[ $verbose -eq 1 ] && echo -e "\r\x1B[KUnknown file $file found at settings backup, this file will not be restored."
+					fi
+				fi
+			fi
+			if [ ${#minor} -gt 0 ]; then
+				if check_excluded $minor "$tffs_ignore_set"; then
+					rm $shield_mp/$file 2>/dev/null
+					[ -r $flash_dir/$file ] && cat $flash_dir/$file >$shield_mp/$file 2>/dev/null
+					rm "$td/cdev" 2>/dev/null
+					mknod "$td/cdev" c $major $minor
+					cat "$td/restore/$file" >"$td/cdev"
+					rm "$td/cdev" 2>/dev/null
+					[ $verbose -eq 1 ] && echo -e "\r\x1B[KFile $file restored."
+				else
+					[ $verbose -eq 1 ] && echo -e "\r\x1B[KRestoring file $file is prohibited, skipped."
+				fi
+			fi
+		done
+		cd "$popd"
+		umount $flash_dir
+		if [ $? -ne 0 ]; then
+			for line in $(lsof | grep $flash_dir); do
+				pid=$(echo $line | sed -n -e 's/^\([0-9]*\)\t.*/\1/p')
+				procbin=$(echo $line | sed -n -e 's/^[0-9]*\t\(.*\) .*/\1/p')
+				file=$(echo $line | sed -n -e 's/^[0-9]*\t.*\t\(.*\)/\1/p') 
+				if [ ${procbin##*/} == $runclock ]; then
+					restart_runclock=1
+					kill $pid
+				fi
+			done
+			umount $flash_dir
+			rc=$?
+		fi
+		[ $rc -eq 0 ] && mount -o move $shield_mp $flash_dir
+		if [ $restart_runclock -eq 1 ]; then
+			run_clock -c /dev/tffs -d
+		fi
+    fi
+	rm -r "$td/restore" 2>/dev/null
+	[ $rc -eq 0 ] && rmdir $shield_mp
+	return $rc
+}
+check_mtds()
+{
+	local rk=$1 rf=$2 ak=$3 af=$4 fsi=$5 k0 f0 k1 f1 i=0 g
+	for g in $mtd_groups; do
+		eval "k$i=${g%%:*}"
+		eval "f$i=${g##*:}"
+		let i+=1
+	done
+	if [ $rk -eq $k0 -a $rf -eq $f0 -a $ak -eq $k1 -a $af -eq $f1 ]; then
+		idx=0
+	else
+		if [ $rk -eq $k1 -a $rf -eq $f1 -a $ak -eq $k0 -a $af -eq $f0 ]; then
+			idx=1
+		else
+			echo "Unexpected/unknown MTD device numbers." 1>&2
+			return 127
+		fi
+	fi
+	echo $idx
+	return 0
+}
+#
+# look here for first line to be executed (beside some variable assignments at the very beginning)
+#
+if [ x$1 == xtest ]; then
+	check_commands
+	rc=$?
+	[ $rc -eq 0 ] && echo "All needed binaries found using search path '$PATH'." || echo -e "${color_alert}Some needed binaries are missing. Please do not try to execute without them, it may harm your system.${color_reset}"
+	hwrev=$(sed -n -e "s/^$hwrev_var_name\t\(.*\)/\1/p" $urenv)
+	if ! check_excluded $hwrev "$hwrevs_supported"; then
+		echo "Hardware revision $hwrev is supported."
+	else
+		echo "${color_alert}Hardware revision $hwrev is not supported.${color_reset}"
+		rc=1
+	fi
+	check_mtds $(get_mtd $krnl_mtd_name) $(get_mtd $fs_mtd_name) $(get_mtd $res_mtd_prefix$krnl_mtd_name) $(get_mtd $res_mtd_prefix$fs_mtd_name) $(sed -n -e "s/^$fs_select_var\t\(.\)/\1/p" $urenv) >/dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		rc=1
+		echo "${color_alert}MTD numbers do not match our expectations.${color_reset}"
+	else
+		echo "MTD numbers match our expectations."
+	fi
+	exit $rc
+fi
+[ -z "$TMP" ] && TMP="/var/tmp"
+td="$TMP/btmngr$(date +%s)"
+mkdir -p "$td/yaffs" "$td/rootfs"
+echo "$myname"
+echo "$delim"
+hwrev=$(sed -n -e "s/^$hwrev_var_name\t\(.*\)/\1/p" $urenv)
+if check_excluded $hwrev "$hwrevs_supported";  then
+	rm -r "$td"
+	echo "Unsupported device (HWRevision $hwrev) found, please check your router model."
+	echo "If you think your device could (and therefore should) be supported, contact the author or modify the script by yourself."
+	exit 127
+fi
+next_index=$(sed -n -e "s/^$fs_select_var\t\(.\)/\1/p" $urenv)
+if [ x$next_index != x0 -a x$next_index != x1 ]; then
+	echo "Unexpected value ($next_index) of '$fs_select_var', aborted." 1>&2
+	exit 127
+fi
+[ $next_index -eq 0 ] && alternative=1 || alternative=0
+running_kernel_mtd=$(get_mtd $krnl_mtd_name)
+running_filesys_mtd=$(get_mtd $fs_mtd_name)
+alt_kernel_mtd=$(get_mtd $res_mtd_prefix$krnl_mtd_name)
+alt_filesys_mtd=$(get_mtd $res_mtd_prefix$fs_mtd_name)
+running_index=$(check_mtds $running_kernel_mtd $running_filesys_mtd $alt_kernel_mtd $alt_filesys_mtd $next_index)
+[ $? -ne 0 ] && exit 127
+[ $running_index -eq 0 ] && alt_index=1 || alt_index=0
+show_system 0 "$td" $running_kernel_mtd $running_filesys_mtd "Running"
+running_backups=$?
+running_orphans=0
+if [ $running_backups -gt 64 ]; then
+	let running_orphans=running_backups%64
+	let runnning_backups-=64	
+fi
+show_system 1 "$td" $alt_kernel_mtd $alt_filesys_mtd "Alternative"
+alt_backups=$?
+alt_orphans=0
+if [ $alt_backups -gt 64 ]; then
+	let alt_orphans=alt_backups%64
+	let alt_backups-=64	
+fi
+next_equals_current $next_index
+switched=$?
+[ $switched -eq 0 ] && echo "The current system will be started at next system reboot again." || echo "The alternative system will be started at next system reboot."
+echo "$delim"
+is_shielded
+shielded=$?
+[ $shielded -eq 0 ] && echo "${color_alert}Some options are not available due to pending restart after last modifications.${color_reset}"
+nextsystem=$next_index
+[ $alt_backups -gt 0 ] && exchange_possible=1 || exchange_possible=0
+something_changed=0
+quit=0
+exit=0
+while [ $exit -eq 0 -a $quit -eq 0 ]; do
+	echo "Please choose an action from below (press character at first column to select) :"
+	echo "$delim"
+	echo "a - Show running system version again"
+	echo "b - Show alternative system version again"
+	echo "c - Show next boot time system again"
+	is_shielded
+	shielded=$?
+	[ $shielded -eq 1 ] && echo "d - Switch next boot time system selection and retain current settings"
+	[ $shielded -eq 1 ] && [ $exchange_possible -eq 1 ] && [ $switched -eq 0 ] && echo "e - Switch next boot time system selection and restore latest settings backup from alternative wrapper filesystem" 
+	[ $shielded -eq 1 ] && echo "f - Backup current settings for the running system to its wrapper filesystem"
+	if [ $something_changed -eq 1 ]; then
+		[ $shielded -eq 1 ] && echo "q - quit, leave next boot time settings unchanged" || echo "q - quit, but any settings changes will be discarded until next restart"
+		echo "w - save changes and exit"
+	else
+		echo "q - quit" 
+	fi
+	read -n 1 -s option
+	inv_sel=1
+	case $option in
+		[qQ])
+			echo "$delim"
+			echo "Exited without saving changes."
+			quit=1
+			inv_sel=0
+			;;
+		[wW])
+			if [ $something_changed -eq 1 ]; then
+				echo "$delim"
+				answr=$(yesno n "Save changes and exit ?")
+				[ $? -ne 0 ] && exit 127
+				if [ $answr == Y ]; then
+					exit=1
+				fi
+				inv_sel=0
+			fi
+			;;
+		[aA])
+			echo "$delim"
+			show_system 0 "$td" $running_kernel_mtd $running_filesys_mtd "Running"
+			inv_sel=0
+			;;
+		[bB])
+			echo "$delim"
+			show_system 1 "$td" $alt_kernel_mtd $alt_filesys_mtd "Alternative"
+			inv_sel=0
+			;;
+		[cC])
+			echo "$delim"
+			[ $switched -eq 0 ] && echo "The current system will be started at next system reboot again." || echo "The alternative system will be started at next system reboot."
+			echo "$delim"
+			inv_sel=0
+			;;
+		[dD])
+			if [ $shielded -eq 1 ]; then 
+				echo "$delim"
+				answr=$(yesno n "Sure ?")
+				[ $? -ne 0 ] && exit 127
+				if [ $answr == Y ]; then
+					[ $nextsystem -eq 0 ] && nextsystem=1 || nextsystem=0
+					[ $nextsystem -eq $running_index ] && switched=0 || switched=1
+					[ $switched -eq 0 ] && echo "The current system will be started at next system reboot again." || echo "The alternative system will be started at next system reboot."
+					echo "$delim"
+					something_changed=1
+				fi			
+				inv_sel=0
+			fi
+			;;
+		[eE])
+			if [ $shielded -eq 1 -a $exchange_possible -eq 1 ]; then 
+				echo "$delim"
+				echo "Any further changes of any settings will be discarded until next reboot, even if you later revise your boot system decision."
+				answr=$(yesno n "Are you really sure ?")
+				[ $? -ne 0 ] && exit 127
+				if [ $answr == Y ]; then
+					[ $nextsystem -eq 0 ] && nextsystem=1 || nextsystem=0
+					[ $nextsystem -eq $running_index ] && switched=0 || switched=1
+					[ $switched -eq 0 ] && echo "The current system will be started at next system reboot again." || echo "The alternative system will be started at next system reboot."
+					if [ $switched -eq 1 ]; then
+						echo -n "Restoring alternative system settings from backup, please be patient ..."
+						exchange_settings $alt_filesys_mtd latest "$td" 1
+						echo -e "\r\x1B[KReal system settings set from alternative system backup, running system settings are now virtualized."
+						[ $? -eq 0 ] && echo "Any changes to system settings until next reboot will be discarded. Please restart the box as soon as possible."
+					fi
+					echo "$delim"
+					something_changed=1
+				fi			
+				inv_sel=0
+			fi
+			;;
+		[fF])
+			echo "$delim"
+			echo -n "Creating backup file of current settings, please be patient ..."
+			backup="$(get_backup_filename $running_index)"
+			backup_settings "$td" "$td/$backup"
+			mount -o remount,rw $wrapper_mp
+			cp "$td/$backup" $wrapper_mp/
+			mount -o remount,ro $wrapper_mp
+			rm "$td/$backup"
+			echo -e "\r\x1B[KBackup saved to wrapper filesystem as $backup"
+			inv_sel=0
+			;;
+		*)
+			inv_sel=1
+			;;
+	esac
+	[ $inv_sel -eq 1 ] && echo "$delim" && echo "Invalid option - try again ..."
+done
+if [ $quit -ne 1 ]; then
+	switch_system $nextsystem $next_index
+fi
+rm -r "$td"
+exit $quit
