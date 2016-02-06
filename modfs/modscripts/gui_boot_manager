@@ -2,10 +2,10 @@
 # SUPPORTS precheck postcheck install language(en,de)
 # NAME enable system selection from GUI
 # DESCRIPTION en
-# add the option to switch between available systems to the GUI's 
+# add the option to switch between available systems to the GUI's
 # 'restart' page/frame
 # DESCRIPTION de
-# Hinzufügen der Auswahl des beim nächsten Start zu ladenden Systems zur 
+# Hinzufügen der Auswahl des beim nächsten Start zu ladenden Systems zur
 # 'Neustart'-Maske des AVM-Webinterfaces
 # EOH
 #
@@ -50,7 +50,7 @@ install_script()
 # Copyright (C) 2014 P.Haemmerlein (http://www.yourfritz.de)                 #
 #                                                                            #
 # This program is free software; you can redistribute it and/or              #
-# modify it under the terms of the GNU General Public License                # 
+# modify it under the terms of the GNU General Public License                #
 # as published by the Free Software Foundation; either version 2             #
 # of the License, or (at your option) any later version.                     #
 #                                                                            #
@@ -259,13 +259,14 @@ case "$action" in
 			if [ $? -ne 0 ]; then
 				alternative_version="unknown"
 				alternative_date="unknown"
+				alternative_fsdate="unknown"
 			else
 				alternative_version=$(get_system_version "$mp/")
 				alternative_date=$(get_system_date "$mp/")
+				alternative_date_image="$(stat -c %Y "$tempdir/altfs/$rootfsimage")"
+				[ $? -eq 0 ] && alternative_fsdate="$(date -d @$alternative_date_image +"%d.%m.%y %H:%M")" || alternative_fsdate="unknown"
+				dismount_alternative_system "$tempdir"
 			fi
-			alternative_date="$(stat -c %Y "$tempdir/altfs/$rootfsimage")"
-			[ $? -eq 0 ] && alternative_fsdate="$(date -d @$alternative_date +"%d.%m.%y %H:%M")" || alternative_fsdate="unknown"
-			dismount_alternative_system "$tempdir"
 			running_version=$(get_system_version /)
 			running_date=$(get_system_date /)
 			running_fsdate="$(date -d @$(stat -c %Y $wrapper/$rootfsimage) +"%d.%m.%y %H:%M")"
