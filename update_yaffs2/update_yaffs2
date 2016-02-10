@@ -1,0 +1,332 @@
+#! /bin/sh
+#=========================================================================
+#
+# which file has to be copied to the yaffs2 partition
+#
+#=========================================================================
+image="${1:-/filesystem_\$CUSTOM.squashfs}"
+#=========================================================================
+#
+# modify active (a) or inactive (i) partition
+#
+#=========================================================================
+modify_system=${2:-a}
+#=========================================================================
+#
+# check for free space before copying the image to the target partition
+# this should be set to 0, if we overwrite an existing file there, which
+# is a little bit larger
+#
+#=========================================================================
+check_space=${3:-1}
+#=========================================================================
+#
+# some defaults
+#
+#=========================================================================
+TMP="/var"
+URLADER_ENV="/proc/sys/urlader/environment"
+SYSTEM_SELECTOR="linux_fs_start"
+FS_PARTITION="filesystem"
+INACTIVE_PREFIX="reserved-"
+MTDBLOCK="/dev/mtdblock"
+MOUNTFS="$TMP/yaffs2"
+INSTALL="sbin/flash_update"
+REBOOT="/bin/busybox reboot"
+WRAPPER="/wrapper"
+ROOTFS="filesystem_core.squashfs"
+CUSTOM="custom"
+TARGETFILE="filesystem_$CUSTOM.squashfs"
+#=========================================================================
+#
+# some helper functions
+#
+#=========================================================================
+# dismount the yaffs2 partition securely
+dismount()
+{
+	[ $mounted -eq 1 ] && umount $MOUNTFS || mount -o remount,ro $MOUNTFS
+}
+# detect SquashFS version used in the target system to distinguish between
+# kernel versions
+detect_version()
+{
+	[ "$(dd if=$MOUNTFS/$ROOTFS of=/proc/self/fd/1 count=2 bs=1 skip=28 2>/dev/null)" == $'\x04' ] && echo 3 || echo 2
+}
+# install extension handling for kernel versions 2.6.32
+install_kernel_2()
+{
+	cat >$MOUNTFS/$INSTALL <<ENDOFSCRIPT
+#! /bin/sh
+#
+# version for kernel 2.6.32 - AVM firmware < 06.50 (/dev not bind mounted)
+#
+# start a detached shell to execute the $CUSTOM script, we've to exit here
+# to let the init process continue
+#
+/usr/bin/nohup /bin/sh -x $WRAPPER/start_$CUSTOM.sh >$WRAPPER/dev/null 2>&1 &
+exit 0
+ENDOFSCRIPT
+	cat >$MOUNTFS/start_$CUSTOM.sh <<ENDOFSTART
+#! /bin/sh
+#
+# let the OS settle a bit
+#
+sleep 5
+#
+# wait until tmpfs is mounted on /var
+#
+while true; do
+        grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
+        sleep 2
+done
+#
+# check for "uninstall" request
+# wait until start has finished in this case, we'll use the running "run_clock"
+# as "decision helper"
+#
+if [ -f $WRAPPER/remove_$CUSTOM.flag ]; then
+        while true; do
+                pidof run_clock >/dev/null 2>&1 && break
+        done
+        cat >/var/remove_$CUSTOM.sh <<EOI
+mount -o remount,rw $WRAPPER
+rm $WRAPPER/remove_$CUSTOM.flag
+rm $WRAPPER/remove_$CUSTOM.sh
+rm $WRAPPER/start_$CUSTOM.sh
+rm $WRAPPER/filesystem_$CUSTOM.squashfs
+echo "exit 0" >$WRAPPER/$INSTALL
+sync
+mount -o remount,ro $WRAPPER
+exit 0
+EOI
+    		nohup sh -x /var/remove_$CUSTOM.sh >/var/tmp/remove_$CUSTOM.out 2>&1 &
+        exit 0
+fi
+#
+# mount our additional SquashFS image to /var/$CUSTOM
+#
+mkdir -p /var/$CUSTOM
+mount -t squashfs $WRAPPER/$TARGETFILE /var/$CUSTOM
+grep -q "^/dev/loop[0-9] /var/$CUSTOM squashfs" /proc/mounts || exit 1
+#
+# wait until lan device was started
+#
+while true; do
+        ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
+        sleep 2
+done
+#
+# start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
+#
+nohup sh -x /var/$CUSTOM/etc/init.d/rc.$CUSTOM >/var/tmp/rc.$CUSTOM.log 2>&1 &
+ENDOFSTART
+	cat >$MOUNTFS/remove_$CUSTOM.sh <<ENDOFREMOVE
+mount -o remount,rw $WRAPPER
+touch $WRAPPER/remove_$CUSTOM.flag
+sync
+echo "The $CUSTOM extension will be removed during next restart."
+exit 0
+ENDOFREMOVE
+	chmod u+x $MOUNTFS/start_$CUSTOM.sh $MOUNTFS/remove_$CUSTOM.sh $MOUNTFS/sbin/flash_update
+}
+# install extension handling for kernel versions 3.10++
+install_kernel_3()
+{
+	cat >$MOUNTFS/$INSTALL <<ENDOFSCRIPT
+#! /bin/sh
+#
+# version for kernel 3.10.73 - AVM firmware 06.50+ (assumption only)
+#
+# create a shell script to be called from a detached shell
+# only /dev is writable here, it's very early after kernel was loaded
+#
+cat >/dev/delayed_start.sh <<'EOT'
+#
+# let the OS settle a bit
+#
+sleep 5
+#
+# wait until tmpfs is mounted on /var
+#
+while true; do
+				grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
+        sleep 2
+done
+#
+# check for "uninstall" request
+# wait until start has finished in this case, we'll use the running "run_clock"
+# as "decision helper"
+#
+if [ -f $WRAPPER/remove_$CUSTOM.flag ]; then
+        while true; do
+                pidof run_clock >/dev/null 2>&1 && break
+        done
+        mount -o remount,rw $WRAPPER
+        rm $WRAPPER/remove_$CUSTOM.flag
+        rm $WRAPPER/remove_$CUSTOM.sh
+        rm $WRAPPER/filesystem_$CUSTOM.squashfs
+        echo "exit 0" >$WRAPPER/sbin/flash_update
+        sync
+        mount -o remount,ro $WRAPPER
+        exit 0                                                                                                                                                                                                                              ]
+fi
+#
+# mount our additional SquashFS image to /var/$custom
+#
+mkdir -p /var/$CUSTOM
+mount -t squashfs $WRAPPER/$TARGETFILE /var/$CUSTOM
+grep -q "^/dev/loop[0-9] /var/$CUSTOM squashfs" /proc/mounts || exit 1
+#
+# wait until lan device was started
+#
+while true; do
+        ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
+        sleep 2
+done
+#
+# start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
+#
+nohup sh -x /var/$CUSTOM/etc/init.d/rc.$CUSTOM >/var/tmp/rc.$CUSTOM.log 2>&1 &
+EOT
+#
+# start a detached shell to execute the created script, we've to exit here
+# to let the init process continue
+#
+nohup sh -x /dev/delayed_start.sh >/dev/delayed_start.out 2>&1 &
+exit 0
+ENDOFSCRIPT
+	cat >$MOUNTFS/remove_$CUSTOM.sh <<ENDOFREMOVE
+mount -o remount,rw $WRAPPER
+touch $WRAPPER/remove_$CUSTOM.flag
+sync
+echo "The $CUSTOM extension will be removed during next restart."
+exit 0
+ENDOFREMOVE
+	chmod u+x $MOUNTFS/remove_$CUSTOM.sh
+}
+#=========================================================================
+#
+# first we have to mount some things
+#
+#=========================================================================
+# the procfs may be mounted multiple times without error, so we
+# can do this without any further checks
+mount -t proc proc /proc 2>/dev/null
+#=========================================================================
+#
+# let's try to log to the "config" partition, if needed ... uncomment the
+# following lines to enable debug output and don't forget to create the
+# base directory "/log"
+#
+#=========================================================================
+#log=$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"config\"\$/\1/p" /proc/mtd)
+#mount -t yaffs2 $MTDBLOCK$log /log
+#exec 2>/log/update_yaffs2.log
+#set -x
+#=========================================================================
+#
+# if tmpfs isn't mounted yet, we're running from memory loaded system
+#
+#=========================================================================
+if ! grep -q "tmpfs $TMP" /proc/mounts; then
+	mount -t tmpfs tmpfs $TMP
+	tar xf /var.tar
+	if ! grep -q "devtmpfs .*/dev" /proc/mounts; then
+		tar cf $TMP/dev.tar /dev
+		mount -t tmpfs tmpfs /dev
+		tar xf $TMP/dev.tar
+		rm $TMP/dev.tar
+	fi
+	mount -t sysfs sysfs /sys
+else
+	REBOOT="exit 1"
+fi
+#=========================================================================
+#
+# we check the image to be written first, if it's missing, there's
+# nothing to do for us
+#
+#=========================================================================
+eval image=$(echo $image)
+filesize=$(stat -c "%s" $image)
+[ ${#filesize} -eq 0 ] && $REBOOT # usually our image is missing
+#=========================================================================
+#
+# now we've to select the right partition, where we should write into
+#
+#=========================================================================
+current=$(sed -n -e "s/^$SYSTEM_SELECTOR\t\([01]\)\$/\1/p" $URLADER_ENV)
+[ ${#current} -eq 0 ] && $REBOOT # missing or invalid selector value
+[ $modify_system == a -o $modify_system == i ] || $REBOOT # invalid value
+[ $modify_system == a ] && prefix="" || prefix="$INACTIVE_PREFIX"
+mtd=$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$prefix$FS_PARTITION\"\$/\1/p" /proc/mtd)
+[ ${#mtd} -eq 0 ] && $REBOOT # filesystem partition not found
+#=========================================================================
+#
+# now let's mount the partition somewhere, from this point on we will
+# unmount the filesystem before we reboot the device
+#
+#=========================================================================
+mounted=0
+if [ $modify_system == a ] && [ "$REBOOT" == "exit 1" ]; then # running system
+	MOUNTFS=$WRAPPER
+	mount -o remount,rw $MOUNTFS || $REBOOT
+else
+	mkdir -p $MOUNTFS
+	mount -t yaffs2 $MTDBLOCK$mtd $MOUNTFS || $REBOOT # do or die
+	mounted=1
+fi
+error_occured=0
+#=========================================================================
+#
+# we could check the available space here, but it will be useless, if
+# we're overwriting an existing file
+#
+#=========================================================================
+if [ $check_space -eq 1 ]; then
+	freeblocks=$(df $MOUNTFS | grep $MOUNTFS | sed -n -e "s_^[^ ]*[ \t]*[0-9]*[ \t]*[0-9]*[ \t]*\([0-9]*\).*_\1_p")
+	if [ ${#freeblocks} -ne 0 ]; then
+		freesize=$(( freeblocks * 1024 ))
+		if [ $freesize -le $filesize ]; then
+			error_occured=1 # image too large
+		fi
+	else
+		error_occured=1 # unexpected output of "df"
+	fi
+fi
+[ $error_occured -ne 0 ] && dismount $MOUNTFS
+[ $error_occured -ne 0 ] && $REBOOT
+#=========================================================================
+#
+# now we can copy the image file to the partition
+#
+#=========================================================================
+cp -a $image $MOUNTFS/$TARGETFILE
+[ $? -ne 0 ] && error_occured=1 # error during copy operation
+[ $error_occured -ne 0 ] && dismount $MOUNTFS
+[ $error_occured -ne 0 ] && $REBOOT
+#=========================================================================
+#
+# now we'll prepare the startup of own extensions, if necessary
+#
+#=========================================================================
+version=$(detect_version)
+if [ $version == 3 ]; then
+	install_kernel_3
+else
+	install_kernel_2
+fi
+#=========================================================================
+#
+# now we'll unmount the yaffs2 partition and reboot the device
+#
+#=========================================================================
+sync
+dismount $MOUNTFS
+$REBOOT
+#=========================================================================
+#
+# end of script
+#
+#=========================================================================
