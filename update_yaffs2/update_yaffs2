@@ -173,7 +173,7 @@ if [ -f $WRAPPER/remove_$CUSTOM.flag ]; then
         exit 0                                                                                                                                                                                                                              ]
 fi
 #
-# mount our additional SquashFS image to /var/$custom
+# mount our additional SquashFS image to /var/$CUSTOM
 #
 mkdir -p /var/$CUSTOM
 mount -t squashfs $WRAPPER/$TARGETFILE /var/$CUSTOM
