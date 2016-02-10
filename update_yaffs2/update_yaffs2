@@ -119,6 +119,7 @@ done
 #
 # start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
 #
+export CUSTOM=$CUSTOM
 nohup sh -x /var/$CUSTOM/etc/init.d/rc.$CUSTOM >/var/tmp/rc.$CUSTOM.log 2>&1 &
 ENDOFSTART
 	cat >$MOUNTFS/remove_$CUSTOM.sh <<ENDOFREMOVE
@@ -187,6 +188,7 @@ done
 #
 # start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
 #
+export CUSTOM=$CUSTOM
 nohup sh -x /var/$CUSTOM/etc/init.d/rc.$CUSTOM >/var/tmp/rc.$CUSTOM.log 2>&1 &
 EOT
 #
