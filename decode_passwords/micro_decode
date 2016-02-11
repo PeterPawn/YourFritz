@@ -1,0 +1,30 @@
+b=/bin
+l=/lib
+f=/var/flash
+t=/var/$$
+m=mount
+r=proc
+mkdir -p $t$f $t$l $t$b $t/$r
+cd $t
+cat $*>i
+sed -ne's/.*\(\$\$\$\$[A-Z1-6]*\).*/\1/p'<i>p
+cat>s<<'Q'
+q=\\\\
+while read x;do
+echo -e "$1$2 {$5=$x;}">$4
+o="$($1$3 -p$5)"
+o="${o//$q/$q$q}"
+o="${o//|/\\|}"
+o="${o//&/\\&}"
+o="${o//\"/$q\"}"
+echo "s|$x|$o|">>c
+done<p
+Q
+$m -o bind $l .$l
+$m -o bind $b .$b
+$m -t $r . ./$r
+chroot . sh s webdav client cfginfo $f/usb.cfg username
+sed -fc<i
+cd ..
+u$m $t/$r $t$b $t$l
+rm -r $t
