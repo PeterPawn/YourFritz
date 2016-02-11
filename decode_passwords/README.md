@@ -1,4 +1,4 @@
-decode_passwords for FRITZ!OS versions > 06.05
+## decode_passwords for FRITZ!OS versions > 06.05
 
 Copyright (C) 2014 P.Haemmerlein (http://www.yourfritz.de)
 
@@ -42,7 +42,7 @@ descriptor 3 to provide the data stream to process instead of stdin.
 
 The input data may be any text. Any data looking like an encrypted item as it is
 used by AVMs reversible encryption (that is a string starting with four dollar signs
-followed only by the characters A to Z and 1 to 6) will be extracted and the script 
+followed only by the characters A to Z and 1 to 6) will be extracted and the script
 will try as hard as possible to decrypt it.
 
 The simplest input contains only one such secret value, but you may let point stdin
@@ -80,6 +80,7 @@ To produce such a lean version, you can call the script with the argument
 messages or any comments and line indentations to stdout. The pure content will be
 put into a short wrapper script like this:
 
+```shell
 cat >/var/decode_passwords <<-"LEANANDMEAN"
 >> script code is placed here <<
 LEANANDMEAN
@@ -87,6 +88,7 @@ chmod 550 /var/decode_passwords
 [ $(md5sum </var/decode_passwords | sed -n -e 's/^\([0-9a-f]*\).*/\1/p') \
 (cont)  == 39f69aa3fb14198462c45fe56f7ed4cc ] || \
 (cont)  echo "Hash difference found, transmission failed." 1>&2
+```
 
 You can customize the above "wrapper" script with some more arguments. The target
 file name at the device may be specified as second parameter, default value is
@@ -164,6 +166,7 @@ Just for fun:
 The (imho) leanest version - with some additional limitations, but using the same
 control flow - *could* be:
 
+```shell
 b=/bin
 l=/lib
 f=/var/flash
@@ -194,10 +197,11 @@ sed -fc<i
 cd ..
 u$m $t/$r $t$b $t$l
 rm -r $t
+```
 
 That version needs only 469 bytes on 30 lines and could do the basic job too. And
 another benefit: You can specify one or more names of files to decode as arguments,
-for example: 'sh micro_decode /var/flash/*.cfg'.
+for example: `sh micro_decode /var/flash/*.cfg`.
 
 It's only a proof of concept and not intended for distribution from other sources.
 Please respect that license limitation.
