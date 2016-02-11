@@ -34,7 +34,7 @@ Purpose:
 Usage:
 ------
 
-  `decode_passwords < *input_data*`
+  `decode_passwords < input_file`
 
 The script is designed as a filter using standard input and standard output. If you
 use it as standard input for a command interpreter via a pipe, you can use file
@@ -130,7 +130,7 @@ earlier - but it is send as "serial number" to AVMs DynDNS service and with
 every TR-069 INFORM request too), you can try to decrypt the secret data from
 that file, if you specify the two values mentioned above as parameters:
 
-`decode_passwords wlan_key mac_address < *input_file*`
+`decode_passwords wlan_key mac_address < input_file`
 
 Currently this has been tested to be interoperable between the following
 FRITZ!Box models:
@@ -167,9 +167,10 @@ has to be reachable (and that includes 'executable') too.
 If you create the lean and mean version, there are some more depedencies:
   md5sum, chmod
 
-Just for fun:
-The (imho) leanest version - with some additional limitations, but using the same
-control flow - *could* be:
+Micro version:
+--------------
+Just for fun ... the (imho) leanest version - with some additional limitations,
+but using the same control flow - *could* be:
 
 ```shell
 b=/bin
@@ -212,6 +213,7 @@ It's only a proof of concept and not intended for distribution from other source
 Please respect that license limitation.
 
 =======================================================================================
+## Discussions/questions
 
 There is a (german) thread regarding this script at
 
