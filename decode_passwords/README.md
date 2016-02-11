@@ -29,12 +29,12 @@ but perhaps the legal protection of "FRITZ!" is expanded to the term "FRITZ!OS" 
 Purpose:
 --------
 - decode encrypted credentials from a configuration file
-- sustitute the former -c switch for {all,usb,wlan}cfgconv utilities
+- sustitute the former -c switch for `{all,usb,wlan}cfgconv` utilities
 
 Usage:
 ------
 
-  decode_passwords < {input_data}
+  `decode_passwords < *input_data*`
 
 The script is designed as a filter using standard input and standard output. If you
 use it as standard input for a command interpreter via a pipe, you can use file
@@ -46,12 +46,12 @@ followed only by the characters A to Z and 1 to 6) will be extracted and the scr
 will try as hard as possible to decrypt it.
 
 The simplest input contains only one such secret value, but you may let point stdin
-of the script to a whole file like /var/flash/ar7.cfg too.
+of the script to a whole file like `/var/flash/ar7.cfg` too.
 
 If it's impossible to decode an encrypted value, it will remain unchanged.
 
 The converted input (substitution between encrypted and decrypted data is done
-using the 'sed' command) will be written to stdout.
+using the `sed` command) will be written to stdout.
 
 To prevent unexpected behaviour (waiting for input because of an omitted redirection)
 the script will refuse to work, if its standard input is attached to a terminal
@@ -59,14 +59,14 @@ device. If it's your intention to use it such way, specify 'tty' as 1st argument
 
 Exit codes:
 -----------
-    0 - input data (if any) processed
-  121 - unable to create a private temporary directory
-  122 - the stdin file points to a terminal device and the 'tty' argument is absent
-  123 - the specified WLAN key for mimicry seems to be unusual
-  124 - the specified MAC address for mimicry seems to be invalid
-  125 - the temporary path looks suspicious
-  126 - missing 'webdavcfginfo' binary
-  127 - invalid arguments specified, usage help will be shown
+*    0 - input data (if any) processed
+*  121 - unable to create a private temporary directory
+*  122 - the stdin file points to a terminal device and the 'tty' argument is absent
+*  123 - the specified WLAN key for mimicry seems to be unusual
+*  124 - the specified MAC address for mimicry seems to be invalid
+*  125 - the temporary path looks suspicious
+*  126 - missing 'webdavcfginfo' binary
+*  127 - invalid arguments specified, usage help will be shown
 
 Lean and mean version:
 ----------------------
@@ -92,12 +92,12 @@ chmod 550 /var/decode_passwords
 
 You can customize the above "wrapper" script with some more arguments. The target
 file name at the device may be specified as second parameter, default value is
-'/var/decode_passwords' which will write the script to volatile storage at tmpfs.
+`/var/decode_passwords` which will write the script to volatile storage at tmpfs.
 If you'd prefer to do without the final hash check, you can specify *any* item as
 third argument. If its length is greater than zero, no MD5 check will take place
 at the wrapper.
 
-And finally you can specify another word (the fourth argument) with 2any content
+And finally you can specify another word (the fourth argument) with any content
 and its pure presence will remove some additional code (look below for 'mimicry'
 explanations) from the lean script version.
 
@@ -130,18 +130,23 @@ earlier - but it is send as "serial number" to AVMs DynDNS service and with
 every TR-069 INFORM request too), you can try to decrypt the secret data from
 that file, if you specify the two values mentioned above as parameters:
 
-decode_passwords wlan_key mac_address < input_file
+`decode_passwords wlan_key mac_address < *input_file*`
 
 Currently this has been tested to be interoperable between the following
 FRITZ!Box models:
-7270v1, 7270v2, 7270v3, 7390, 7490
+* 7270v1
+* 7270v2
+* 7270v3
+* 7390
+* 7412
+* 7490
 
-It does *not work* with a 6360 router, probably the IV for the AES encryption
-will use some additional "device specific" data there.
+It does *not work* with a 6360 router, probably the encryption will use some
+additional "device specific" data there.
 
 The 'mimicry' will *not work* with an exported configuration file. There is a
 realistic possibility to import such a file, if you can fool the configuration
-importer (/usr/www/cgi-bin/firmwarecfg or /usr/bin/tr069fwupdate) with a chroot
+importer (`/usr/www/cgi-bin/firmwarecfg` or `/usr/bin/tr069fwupdate`) with a chroot
 environment, but that's another story ...
 
 To check the ability of your device to mimicry another one, I've encoded a known
@@ -156,7 +161,7 @@ The whole script needs only a busybox with the following commands supported:
   cat, sed, grep, mount/umount, cp, mkdir, date, echo, chroot, expr,
   test (called as [)
 
-It's a matter of course that the 'webdavcfginfo' binary from the original firmware
+It's a matter of course that the `webdavcfginfo` binary from the original firmware
 has to be reachable (and that includes 'executable') too.
 
 If you create the lean and mean version, there are some more depedencies:
