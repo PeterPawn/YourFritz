@@ -1,0 +1,56 @@
+#! /bin/sh
+#=========================================================================
+#
+# which file is the rootfs image to be copied to the yaffs2 partition?
+#
+#=========================================================================
+image="${1:-filesystem_core.squashfs}"
+#=========================================================================
+#
+# some defaults
+#
+#=========================================================================
+TMP="/var"
+URLADER_ENV="/proc/sys/urlader/environment"
+SYSTEM_SELECTOR="linux_fs_start"
+FS_PARTITION="filesystem"
+INACTIVE_PREFIX="reserved-"
+MTDBLOCK="/dev/mtdblock"
+MOUNTFS="$TMP/yaffs2"
+ROOTFS="filesystem_core.squashfs"
+#=========================================================================
+#
+# now we've to select the right partition, where we should write into
+#
+#=========================================================================
+current=$(sed -n -e "s/^$SYSTEM_SELECTOR\t\([01]\)\$/\1/p" $URLADER_ENV)
+[ ${#current} -eq 0 ] && $REBOOT # missing or invalid selector value
+mtd=$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$INACTIVE_PREFIX$FS_PARTITION\"\$/\1/p" /proc/mtd)
+[ ${#mtd} -eq 0 ] && $REBOOT # filesystem partition not found
+#=========================================================================
+#
+# now let's mount the partition somewhere
+#
+#=========================================================================
+mkdir -p $MOUNTFS
+mount -t yaffs2 $MTDBLOCK$mtd $MOUNTFS || exit 1 # do or die
+#=========================================================================
+#
+# now we can copy the image file to the partition
+#
+#=========================================================================
+cp -a $image $MOUNTFS/$ROOTFS
+rc=$?
+sync
+umount $MOUNTFS
+if [ $rc -ne 0 ]; then
+	echo "Error $rc copying image file '$image' to yaffs2 partition on '$MTDBLOCK$mtd'."
+	exit 1
+else
+	echo "Image file '$image' was copied successfully to yaffs2 partition on '$MTDBLOCK$mtd'."
+fi
+#=========================================================================
+#
+# end of script
+#
+#=========================================================================
