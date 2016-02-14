@@ -109,14 +109,14 @@ yf_reverse_hex()
 yf_dec2hex()
 {
 	local val="$1" len="$2" chk mask="%x"
-	check="${val//[0-9]/}"
+	chk="${val//[0-9]/}"
 	[ ${#val} -eq 0 ] && return 1
 	[ ${#chk} -gt 0 ] && return 1
 	if [ -z $len ]; then
 		chk=$(printf "$mask" $val)
 		len=$(( ( ${#chk} + 1 ) / 2 ))
 	else	
-		check="${len//[0-9]/}"
+		chk="${len//[0-9]/}"
 		[ ${#chk} -gt 0 ] && return 1
 	fi
 	len=$(( len << 1 ))
@@ -140,7 +140,9 @@ yf_dec2hex()
 #######################################################################################
 yf_hex2bin()
 {
-	local val="$1" out
+	local val="$1" out chk
+	chk="${val//[0-9a-fA-F]/}"
+	[ ${#chk} -gt 0 ] && return 1
 	[ $(( ${#val} % 2 )) -ne 0 ] && return 1
 	while [ ${#val} -gt 0 ]; do
 		out="${out}\x${val:0:2}"
@@ -271,15 +273,19 @@ yf_pack()
 		case $type in
 			8)
 				hex="$(yf_dec2hex $val 1)"
+				[ $? -ne 0 ] && return 1
 				;;
 			16)
 				hex="$(yf_dec2hex $val 2)"
+				[ $? -ne 0 ] && return 1
 				;;
 			32)
 				hex="$(yf_dec2hex $val 4)"
+				[ $? -ne 0 ] && return 1
 				;;
 			IP|IP4)
 				hex="$(yf_ipv4addr $val)"
+				[ $? -ne 0 ] && return 1
 				[ -z $endian ] && endian=B
 				;;
 			STR)
@@ -287,6 +293,7 @@ yf_pack()
 				unset endian
 				;;
 			*)
+				return 1
 				;;
 		esac
 		if [ ! -z $endian ]; then
