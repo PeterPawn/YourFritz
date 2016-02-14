@@ -1,0 +1,164 @@
+#
+# endianess - detect the endianess of the system we're running on
+#
+# - this will "abuse" the routing table via /proc/net/route to find a network
+#   mask which doesn't contain all ones or all zeros and the value of the most
+#   left bit will be used to determine the endianess
+# - if the "Mask" column cannot be found, "B" (big endian) is assumed, because
+#   the main purpose of this script is the usage on a FRITZ!Box device and all
+#   newer devices use big endian scheme to store data
+#
+yf_endianess()
+{
+	local col endian="B" mask i=0
+	col=$(sed -n -e "1s/\t/\n/pg" /proc/net/route | sed -e "/^[ \t]*\$/d" | grep -n "Mask" | sed -n -e "s/\([0-9]*\):Mask/\1/p")
+	if [ ${#col} -gt 0 ]; then
+		while [ $i -lt $col ]; do
+			mask="$mask\([^ \t]*\)[ \t]*"
+			i=$(( i + 1 ))
+		done
+		mask=$(sed -e "1d" /proc/net/route | sed -n -e "s|$mask.*|\\$col|p" | sed -e "/^FFFFFFFF\$/d" -e "/^00000000\$/d" | sed -n -e "1p")
+		if [ ${#mask} -gt 0 ]; then
+			mask=${mask:0:1}
+			mask=${mask//[89A-F]/}
+			[ ${#mask} -gt 0 ] && endian="B" || endian="L"
+		fi
+	fi
+	echo $endian
+}
+#
+# reverse_hex - reverse a hexadecimal string byte-wise
+#
+yf_reverse_hex()
+{
+	local in="$1" out
+	while [ ${#in} -gt 0 ]; do
+		out="${in:0:2}$out"
+		in="${in:2}"
+	done
+	echo "$out"
+}
+#
+# dec2hex - convert decimal value to hexadecimal string of the specified length
+#           (two characters per byte)
+#
+yf_dec2hex()
+{
+	local val="$1" len="$2" chk mask="%x"
+	check="${val//[0-9]/}"
+	[ ${#val} -eq 0 ] && return 1
+	[ ${#chk} -gt 0 ] && return 1
+	if [ -z $len ]; then
+		chk=$(printf "$mask" $val)
+		len=$(( ( ${#chk} + 1 ) / 2 ))
+	else	
+		check="${len//[0-9]/}"
+		[ ${#chk} -gt 0 ] && return 1
+	fi
+	len=$(( len << 1 ))
+	mask="%0${len}x"
+	printf "$mask" $val
+}
+#
+# hex2bin - convert hexadecimal string to binary data
+#
+yf_hex2bin()
+{
+	local val="$1" out
+	[ $(( ${#val} % 2 )) -ne 0 ] && return 1
+	while [ ${#val} -gt 0 ]; do
+		out="${out}\x${val:0:2}"
+		val="${val:2}"
+	done
+	printf "$out"
+}
+#
+# str2hex - convert a string to its hexadecimal representation
+#
+yf_str2hex()
+{
+	local i=0
+	while [ ${#1} -gt $i ]; do
+		printf "%02x" \'${1:$i:1}
+		i=$(( i + 1 ))
+	done	
+}
+#
+# ipv4addr - convert an IPv4 address from dotted-decimal format to hexadecimal
+#            string in "network order" (big endian)
+#
+yf_ipv4addr()
+{
+	local in="$1" addr=0 orgifs="$IFS" shifts=4 error=0
+	IFS=. 
+	set -- $in
+	IFS="$orgifs"
+	while [ ${#1} -gt 0 ]; do
+		tupel=$1
+		shift
+		chk=${tupel//[0-9]*/}
+		if [ ${#chk} -gt 0 ]; then
+			error=1
+			break
+		fi
+		if [ ${#1} -gt 0 ]; then
+			addr=$(( ( addr << 8 ) + tupel ))
+			shifts=$(( shifts - 1 ))
+		else
+			addr=$(( ( addr << ( shifts * 8 ) ) + tupel ))
+		fi
+	done
+	if [ $addr -lt $(( 0x01000000 )) -o $addr -gt $(( 0xFFFFFFFF )) ]; then
+		addr=0
+		error=1
+	fi
+	yf_dec2hex $addr
+	return $error
+}
+#
+# create a packed structure from basic data types
+#
+yf_pack()
+{
+	local out="" val type hex endian host_endian=$(yf_endianess)
+	while [ ${#1} -gt 0 ]; do
+		type="$1"
+		val="$2"
+		shift 2
+		endian=${type:0:1}
+		if [ -z ${endian/[LlBb]/} ]; then
+			type="${type:1}"
+		else
+			unset endian
+		fi
+		case $type in
+			8)
+				hex="$(yf_dec2hex $val 1)"
+				;;
+			16)
+				hex="$(yf_dec2hex $val 2)"
+				;;
+			32)
+				hex="$(yf_dec2hex $val 4)"
+				;;
+			IP|IP4)
+				hex="$(yf_ipv4addr $val)"
+				[ -z $endian ] && endian=B
+				;;
+			STR)
+				hex="$(yf_str2hex "$val")"
+				unset endian
+				;;
+			*)
+				;;
+		esac
+		if [ ! -z $endian ]; then
+			if [ $endian != $host_endian ]; then
+				hex="$(yf_reverse_hex "$hex")"				
+			fi
+		fi
+		out="$out$hex"
+	done
+	yf_hex2bin "$out"
+}
+
