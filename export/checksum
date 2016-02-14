@@ -17,10 +17,10 @@ while read file; do
 	set -- $file
 	ft=$1
 	fn=$4
-	if [ "$ft" == "c" ]; then
+	if [ "$ft" == "c" ]; then # FILE
 		echo -n -e "$fn\0" >>$fldr/rawdata
 		sed -e 's/\\\\/\\/g' -e '$d' <$fldr/parts/$fn >>$fldr/rawdata
-	else
+	else # (CRYPTED)?BINFILE
 		echo -n -e "$fn\0" >>$fldr/rawdata
 		cat $fldr/parts/$fn >>$fldr/rawdata
 	fi

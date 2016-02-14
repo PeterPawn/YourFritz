@@ -1,6 +1,9 @@
 #! /bin/sh
 #
-# hexdump a file like: hexdump -e '40/1 "%02X" "\n"'
+# hexdump a file like: hexdump -e '40/1 "%02X" "\n"' only with shell commands
+# replace AVM's "testvalue" below with an own implementation, if this script 
+# is used outside a FRITZ!Box device
+#
 tv=/bin/testvalue
 test -x $tv || exit 1
 td=/var/tmp/hd$(date +%s)

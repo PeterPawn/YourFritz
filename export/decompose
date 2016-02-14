@@ -28,6 +28,16 @@ while read line; do
 			fs=$lineno
 			ft=c
 			;;
+		(CRYPTEDBINFILE:*)
+			if [ "$hdr" -eq 1 ]; then
+				let last=lineno-1
+				sed -n -e "1,$last p" <$td/input >>$td/header
+				hdr=0
+			fi
+			fn=$(echo "$content" | sed -n -e 's/CRYPTEDBINFILE:\(.*\)/\1/p')
+			fs=$lineno
+			ft=B
+			;;
 		(BINFILE:*)
 			if [ "$hdr" -eq 1 ]; then
 				let last=lineno-1
