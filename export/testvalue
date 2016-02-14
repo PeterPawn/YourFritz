@@ -1,0 +1,52 @@
+#! /bin/sh
+#
+# replace AVM's "testvalue" binary (which reads 1-, 2- or 4-byte values from a
+# given file and writes the decimal result to stdout) with a version based on
+# the "dd" command only
+#
+# AVM's syntax is:
+#
+# testvalue <filename> <type> <offset> [<value>]
+# type: 1,2,4
+#
+# and we'll implement the same to be exchangeable
+#
+# one "pitfall" is the fact, that the original "testvalue" binary uses the
+# endianess of its host ...
+#
+_getvalue()
+{
+	local file="$1" type="$2" offset="$3" oifs="$IFS" input i=0
+	IFS=
+	input=$(dd if="$1" bs=1 skip="$offset" count="$type" 2>/dev/null)
+	while [ ${#input} -gt $i ]; do
+		printf "%02x" \'${input:$i:1}
+		let i+=1
+	done
+	IFS="$oifs"
+}
+[ -z "$1" ] && exit 1
+file="$1"
+[ ! -f "$file" ] && exit 1
+[ -z "$2" ] && exit 1
+chk="${2/[124]/}"
+[ ${#chk} -ne 0 ] && exit 1
+type="$2"
+[ -z "$3" ] && exit 1
+chk="${3//[0-9]*/}"
+[ ${#chk} -ne 0 ] && exit 1
+offset="$3"
+[ ! -z "$4" ] && chk="${4//[0-9]*/}" || unset chk
+[ ${#chk} -ne 0 ] && exit 1
+comp="$4"
+val=$(_getvalue "$file" "$type" "$offset")
+[ ${#val} -ne $(( $type << 1 )) ] && exit 1 # short read
+res=0
+# uncomment the next line for LE machines
+# val=$(while [ ${#val} -gt 0 ]; do o="${val:0:2}$o"; val="${val:2}"; done; printf "$o")
+while [ ${#val} -gt 0 ]; do
+	res=$(( ( res << 8 ) + 0x${val:0:2} ))
+	val="${val:2}"	
+done
+[ ${#comp} -eq 0 ] && echo $res && exit
+[ $res -eq $comp ] && exit 0 || exit 1

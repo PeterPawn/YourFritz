@@ -10,7 +10,8 @@ while read file; do
 		echo "**** CFGFILE:$fn" >>$fldr/output
 		cat $fldr/parts/$fn >>$fldr/output
 	else
-		echo "**** BINFILE:$fn" >>$fldr/output
+		[ "$ft" == "b" ] && str="BINFILE" || str="CRYPTEDBINFILE"
+		echo "**** $str:$fn" >>$fldr/output
 		size=$(stat -c %s $fldr/parts/$fn)
 		if [ $size -eq 0 ]; then
 			echo >>$fldr/output
