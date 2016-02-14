@@ -24,9 +24,9 @@ ROOTFS="filesystem_core.squashfs"
 #
 #=========================================================================
 current=$(sed -n -e "s/^$SYSTEM_SELECTOR\t\([01]\)\$/\1/p" $URLADER_ENV)
-[ ${#current} -eq 0 ] && $REBOOT # missing or invalid selector value
+[ ${#current} -eq 0 ] && exit 1 # missing or invalid selector value
 mtd=$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$INACTIVE_PREFIX$FS_PARTITION\"\$/\1/p" /proc/mtd)
-[ ${#mtd} -eq 0 ] && $REBOOT # filesystem partition not found
+[ ${#mtd} -eq 0 ] && exit 1 # filesystem partition not found
 #=========================================================================
 #
 # now let's mount the partition somewhere
