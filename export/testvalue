@@ -33,10 +33,10 @@ chk="${2/[124]/}"
 [ ${#chk} -ne 0 ] && exit 1
 type="$2"
 [ -z "$3" ] && exit 1
-chk="${3//[0-9]*/}"
+chk="${3//[0-9]/}"
 [ ${#chk} -ne 0 ] && exit 1
 offset="$3"
-[ ! -z "$4" ] && chk="${4//[0-9]*/}" || unset chk
+[ ! -z "$4" ] && chk="${4//[0-9]/}" || unset chk
 [ ${#chk} -ne 0 ] && exit 1
 comp="$4"
 val=$(_getvalue "$file" "$type" "$offset")
