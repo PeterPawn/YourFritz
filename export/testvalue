@@ -12,18 +12,42 @@
 # and we'll implement the same to be exchangeable
 #
 # one "pitfall" is the fact, that the original "testvalue" binary uses the
-# endianess of its host ...
+# endianess of its host ... uncomment the "_swap_endianess" call on LE systems,
+# an automatic test is surely possible, but it's time-consuming during each
+# call and you should better use a changed script file for the right system
+# instead of a detection herein
 #
+base64_table="ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 _getvalue()
 {
-	local file="$1" type="$2" offset="$3" oifs="$IFS" input i=0
-	IFS=
-	input=$(dd if="$1" bs=1 skip="$offset" count="$type" 2>/dev/null)
+	local file="$1" type="$2" offset="$3" input i=0 f=0 v=0 c l=0
+	input=$(dd if="$1" bs=1 skip="$offset" count="$type" 2>/dev/null | base64)
+	[ ${#input} -eq 0 ] && return 1
 	while [ ${#input} -gt $i ]; do
-		printf "%02x" \'${input:$i:1}
+		[ ${input:$i:1} != = ] \
+		&& v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" ${input:$i:1}) - 1 )) ))\
+		|| let f+=1
 		let i+=1
 	done
-	IFS="$oifs"
+	v=$(( v >> ( f * 2 ) ))
+	[ $(( ( i - f ) * 6 / 8 )) -ne $type ] && return 1 # short read
+	printf "%u" $v
+}
+_swap_endianess()
+{
+	local val="$1" type="$2" temp res
+	temp=$(printf "%0$(( type * 2 ))x" $val)
+	while [ ${#temp} -gt 0 ]; do
+		res=${temp:0:2}$res
+		temp=${temp:2}
+	done
+	temp=$res
+	res=0
+	while [ ${#temp} -gt 0 ]; do
+		res=$(( ( res << 8 ) + 0x${temp:0:2} ))
+		temp=${temp:2}
+	done
+	printf "%lu" $res
 }
 [ -z "$1" ] && exit 1
 file="$1"
@@ -40,13 +64,8 @@ offset="$3"
 [ ${#chk} -ne 0 ] && exit 1
 comp="$4"
 val=$(_getvalue "$file" "$type" "$offset")
-[ ${#val} -ne $(( $type << 1 )) ] && exit 1 # short read
-res=0
-# uncomment the next line for LE machines
-# val=$(while [ ${#val} -gt 0 ]; do o="${val:0:2}$o"; val="${val:2}"; done; printf "$o")
-while [ ${#val} -gt 0 ]; do
-	res=$(( ( res << 8 ) + 0x${val:0:2} ))
-	val="${val:2}"	
-done
-[ ${#comp} -eq 0 ] && echo $res && exit
-[ $res -eq $comp ] && exit 0 || exit 1
+[ $? -ne 0 ] && exit 1
+# uncomment next line on LE machines
+#[ $type -gt 1 ] && val=$(_swap_endianess $val $type)
+[ ${#comp} -eq 0 ] && echo $val && exit
+[ $val -eq $comp ] && exit 0 || exit 1
