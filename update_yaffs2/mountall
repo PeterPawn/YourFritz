@@ -1,0 +1,86 @@
+#! /bin/sh
+#########################################################################################
+#
+# mount FRITZ!OS partitions, where they can be inspected/compared/whatever
+#
+#########################################################################################
+#
+# the fstab to be mounted
+#
+### fstab ###
+# $WRAPPER					$BASE/active/yaffs2	yaffs2		ro,bind		1	1
+# $MTDBLOCK\\\$${reservedprefix/-/_}$fsname	$BASE/inactive/yaffs2	yaffs2		ro		1	1
+# $BASE/active/yaffs2/$ROOTFS			$BASE/active/rootfs	squashfs	ro		1	1	
+# $BASE/inactive/yaffs2/$ROOTFS			$BASE/inactive/rootfs	squashfs	ro		1	1
+### end of fstab ###
+#
+# basic constants
+#
+BASE=/var/media/ftp
+ROOTFS=filesystem_core.squashfs
+WRAPPER=/wrapper
+MTDBLOCK=/dev/mtdblock
+MTD=/proc/mtd
+fsname=filesystem
+kernelname=kernel
+reservedprefix="reserved-"
+#
+# our fstab copy to be processed
+#
+fstab=/var/tmp/fstab_$(date +%s)_$$
+trap 'rm $fstab 2>/dev/null' EXIT HUP
+#
+# compute partition numbers
+#
+eval $(sed -n -e "s|^mtd\([0-9]\+\):.*\"\(\($fsname\|$kernelname\|$reservedprefix$fsname\|$reservedprefix$kernelname\)\)\"\$|\2=\1|p" $MTD | sed -e "s/-/_/")
+#
+# prepare fstab
+#
+get_fstab()
+{
+	local found=0
+	cat $0 | \
+	while read line; do
+		[ x"$line" == x"### end of fstab ###" ] && break
+		[ x"$line" == x"### fstab ###" ] && found=1 && continue
+		[ $found -eq 1 ] && echo "$(eval echo $(eval echo "${line:2}"))"
+	done
+}
+#
+# reverse the fstab file for dismounting in the right order
+#
+reverse()
+{
+	sed -n -e '1!G;h;$p'
+}
+#
+# execute a command for each directory in our fstab
+#
+fstab_cmd()
+{
+	local dev dir line opt
+	while read dev dir opt; do
+		eval "$(echo "$1")"
+	done 
+}
+#
+# get fstab
+#
+get_fstab >$fstab
+#
+# what's the task here?
+#
+if [ -z $1 ]; then
+	fstab_cmd "mkdir -p \$dir" <$fstab
+	mount -a -T $fstab
+else
+	case "$1" in
+		-u)
+			reverse <$fstab | fstab_cmd "[ -d \$dir ] && { umount \$dir; rmdir \$dir; }"
+			;;
+		*)
+			echo "Unknown parameter '$1'."
+			exit 1
+			;;	
+	esac
+fi
