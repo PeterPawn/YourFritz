@@ -54,12 +54,12 @@ reverse()
 	sed -n -e '1!G;h;$p'
 }
 #
-# execute a command for each directory in our fstab
+# execute a command for each entry in our fstab
 #
 fstab_cmd()
 {
 	local dev dir line opt
-	while read dev dir opt; do
+	while read dev dir opt dump order; do
 		eval "$(echo "$1")"
 	done 
 }
