@@ -21,11 +21,11 @@
 _getvalue()
 {
 	local file="$1" type="$2" offset="$3" input i=0 f=0 v=0 c l=0
-	input=$(dd if="$1" bs=1 skip="$offset" count="$type" 2>/dev/null | base64)
+	input=$(dd if="$1" bs=1 skip="$offset" count="$type" 2>/dev/null | base64 | sed -e 's/+/_/g')
 	[ ${#input} -eq 0 ] && return 1
 	while [ ${#input} -gt $i ]; do
 		[ ${input:$i:1} != = ] \
-		&& v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" ${input:$i:1}) - 1 )) ))\
+		&& v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" "${input:$i:1}") - 1 )) ))\
 		|| let f+=1
 		let i+=1
 	done
