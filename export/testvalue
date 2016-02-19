@@ -2,7 +2,8 @@
 #
 # replace AVM's "testvalue" binary (which reads 1-, 2- or 4-byte values from a
 # given file and writes the decimal result to stdout) with a version based on
-# the "dd" command only
+# the "dd" and "base64" command only, this command is present in newer firmware
+# versions to dump the TFFS content for "extended support data" output
 #
 # AVM's syntax is:
 #
