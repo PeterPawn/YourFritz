@@ -1,0 +1,622 @@
+#!/bin/bash 
+#
+# exit code meanings 
+#
+# bit 0   (1) => error encountered, read the associated error message
+# bit 1   (2) => login failed
+# bit 2   (4) => network communication error
+# bit 3   (8) => missing required parameter or option
+# bit 4  (16) => configuration file error
+# bit 5  (32) => invalid call to script, read the error message for explanation, usage help was shown
+# bit 6  (64) => internal error during processing
+# bit 7 (128) =>
+
+# we'll check the presence of needed commands only, not their versions
+check_executables()
+{
+	lines=""
+	cmds=""
+	while read line; do
+		if [ "${line:1:1}" != "#" ]; then
+			name=${line%%=*}
+			eval $line
+			cmds="$cmds $name"
+			builtin echo $line
+		fi
+	done
+	for cmd in $cmds; do
+		eval executable=\$$cmd
+		if [ ! -x $executable ]; then
+			builtin echo "Fatal error: file '$executable' is missing or not executable." 1>&2
+			return 255
+		fi
+	done
+	return 0
+}
+
+# our needed external commands (even if some could be available as internal bash commands - remove the absolute path for such commands)
+source <(check_executables <<'###END_AUTO_CHECK###'
+###BEGIN_AUTO_CHECK###
+GREP="/usr/bin/grep"
+SED="/usr/bin/sed"
+TAIL="/usr/bin/tail"
+MKTEMP="/usr/bin/mktemp"
+SORT="/usr/bin/sort"
+CUT="/usr/bin/cut"
+CAT="/usr/bin/cat"
+RM="/usr/bin/rm"
+GETOPT="/usr/bin/getopt"
+###END_AUTO_CHECK###
+)
+
+pj_usage()
+{
+	if [ "$BASH_SUBSHELL" -eq 0 ]; then
+		[ -n "$*" ] && builtin echo -n -e "$*" 1>&2
+		$CAT 1>&2 <<EOT
+(C) 2012 PeH Consulting - Peter Hämmerlein
+
+Parse JSON output from queries to AVM Fritz!OS web server
+
+Usage:
+
+parseJSON [ option [...] ] JSONFILE
+
+The following options are available:
+-h, --help
+    + display that help
+-d, --debug
+    + display some debug messages
+-q, --quiet
+    + do not display error messages
+-s, --scalar
+    + ignore JSON arrays
+-o, --one-value NAME
+    + return only the single scalar value for entry NAME, implies -s option
+-c, --count NAME
+    + count only the number of entries of array NAME
+-a, --array NAME
+    + parse only the array with the specified NAME
+-i, --index N
+    + parse only the Nth single entry of an array and handle it like a scalar list
+-D, --dictionary NAME
+    + create a dictionary (associative array) with the specified NAME instead of a simple list of
+      key/value assignment, implies -s
+EOT
+		return 32
+	else
+		builtin echo "invalid call to $0, check your code please" 1>&2
+		return 32
+	fi
+}
+
+# pj_split_json jsonfile workdir
+pj_split_json()
+{
+	local jsf tf line quot arname
+	local -a jsonarray
+	local -i count i start end from to
+	[ -z "$1" ] && return 255 # missing file name
+	jsf="$1"
+	shift
+	[ -z "$1" ] && return 255 # missing working directory
+	tf="$1"
+	shift
+	mapfile -t < <($SED -e '/^\s*"[^"]*"\s*:\s*\[$/=' -e '/^\s*\],\?\s*$/=' -n $jsf) 
+	count=0
+	for i in ${MAPFILE[*]}; do
+		if [ -z "${jsonarray[$count]}" ]; then
+			jsonarray[$count]="$i"
+		else
+			jsonarray[$count]="${jsonarray[$count]} $i"
+			(( count += 1 ))
+		fi
+	done
+	[ -n "${jsonarray[$count]}" ] && return 2 # odd number of lines from sed
+	from=1
+	for (( count=0; count<${#jsonarray[*]}; count++ )); do
+		start="${jsonarray[$count]%% *}"
+		end="${jsonarray[$count]##* }"
+		line=$($SED -e "$start p" -n $jsf)
+		quot=$'\x22'
+		[[ "$line" =~ ^[[:space:]]+$quot([^$quot]*)$quot.*$ ]]
+		[ "$?" -ne 0 ] && continue # unable to detect JSON array name
+		arname="${BASH_REMATCH[1]}"
+		(( to = start - 1 ))
+		$SED -e "$from,$to w $tf/scalar_append.json" -e "$start,$end w $tf/array.$arname.json" -n $jsf
+		$CAT $tf/scalar_append.json >> $tf/scalar.json
+		(( from = end + 1 ))
+	done
+	$SED -e "$from,$ w $tf/scalar_append.json" -n $jsf
+	$CAT $tf/scalar_append.json >> $tf/scalar.json
+	$RM -f $tf/scalar_append.json
+}
+
+# pj_parse_scalar jsonfile
+pj_parse_scalar()
+{
+	local jfn names
+	[ -z "$1" ] && return 255 # missing json file name
+	jfn="$1"
+	shift
+	names=$($SED -e "s/^\s*\"\(\w*\)\"\s\?:\s*.*$/\1/p" -n $jfn)
+	nl=$'\n'
+	names="${names//$nl/ }"
+	echo $names
+}
+
+# pj_parse_array_count arrayfile
+pj_parse_array_count()
+{
+	local afn
+	local -a jsonarray
+	local -i count i	
+	[ -z "$1" ] && return 255 # missing array file name
+	afn="$1"
+	shift
+	mapfile -t < <($SED -e '/^\s*{$/=' -e '/^\s*},\?$/=' -n $afn)
+	count=0
+	for i in ${MAPFILE[*]}; do
+		if [ -z "${jsonarray[$count]}" ]; then
+			jsonarray[$count]="$i"
+		else
+			jsonarray[$count]="${jsonarray[$count]} $i"
+			(( count += 1 ))
+		fi
+	done
+	[ -n "${jsonarray[$count]}" ] && return 2 # odd number of lines from sed
+	echo $count
+	return 0
+}
+
+# pj_parse_array arrayfile
+pj_parse_array()
+{
+	local afn quot arrayname 
+	local -i count i entries from to
+	local -a jsonarray
+	[ -z "$1" ] && return 255 # missing array file name
+	afn="$1"
+	shift
+	mapfile -t < <($SED -e '/^\s*{$/=' -e '/^\s*},\?$/=' -n $afn)
+	count=0
+	for i in ${MAPFILE[*]}; do
+		if [ -z "${jsonarray[$count]}" ]; then
+			jsonarray[$count]="$i"
+		else
+			jsonarray[$count]="${jsonarray[$count]} $i"
+			(( count += 1 ))
+		fi
+	done
+	[ -n "${jsonarray[$count]}" ] && return 2 # odd number of lines from sed
+	entries=$count
+	arrayname=$($SED -e 's/^\s*\"\(\w*\)\"\s*:\s*\[$/\1/p' -n $afn)
+	quot=$'\x22'
+	echo "declare -i ${arrayname}_count=$entries"
+	for (( count=0; count < $entries; count++ )); do
+		echo -n "declare -A ${arrayname}_${count}=( "
+		set -- ${jsonarray[$count]}
+		(( from=$1 + 1, to=$2 - 1 ))
+		while read line; do
+			if [[ "$line" =~ ^([^=]*)=$quot(.*)$quot$ ]]; then
+				name="${BASH_REMATCH[1]}"
+				value="${BASH_REMATCH[2]}"
+				value="$(pj_bash_encode "$value")"
+				echo -n "['$name']=$value "
+			fi
+		done < <($SED -e "$from,$to s/^\s*\"\(\w*\)\"\s*:\s*\"\(.*\)\",\?\$/\1=\"\2\"/p" -n $afn | $SORT)
+		echo ")"
+	done
+}
+
+# pj_parse_array_single arrayfile index
+pj_parse_array_single()
+{
+	local afn ind range dict name names valueline quot value
+	local -a jsonarray
+	local -i count i start end
+	[ -z "$1" ] && return 255 && echo ":" # missing array file name
+	afn="$1"
+	shift
+	[ -z "$1" ] && return 255 && echo ":" # missing index value
+	ind="$1"
+	shift
+	mapfile -t < <($SED -e '/^\s*{$/=' -e '/^\s*},\?$/=' -n $afn)
+	count=0
+	for i in ${MAPFILE[*]}; do
+		if [ -z "${jsonarray[$count]}" ]; then
+			jsonarray[$count]="$i"
+		else
+			jsonarray[$count]="${jsonarray[$count]} $i"
+			(( count += 1 ))
+		fi
+	done
+	[ -n "${jsonarray[$count]}" ] && return 2 # odd number of lines from sed
+	[ $ind -ge $count ] && return 1 # index out of bounds
+	tf=$($MKTEMP)
+	range="${jsonarray[$ind]}"
+	start="${range%% *}"
+	end="${range##* }"
+	(( start++, end-- ))
+	$SED -e "$start,$end w $tf" -n $afn
+	names=$(pj_parse_scalar $tf)
+	names=$(pj_sort_names "$names")
+	declare -A result
+	for name in $names; do 
+		valueline=$($SED -e "/^\s*\"$name\"\s\?:/ p" -n $tf)
+		if [ -n "$valueline" ]; then
+			quot=$'\x22'
+			[[ "$valueline" =~ ^[[:space:]]*$quot$name$quot[[:space:]]?:[[:space:]]*$quot(.*)$quot,?$ ]]
+			value="${BASH_REMATCH[1]}"
+			result[$name]="$value"
+		fi
+	done
+	dict="declare -A result=("
+	for name in $(pj_sort_names "${!result[@]}"); do
+		value="${result[$name]}"
+		value="$(pj_bash_encode "$value")"
+		dict="$dict ['$name']=$value"
+	done
+	dict="$dict )"
+	echo "$dict"
+	rm -f $tf >/dev/null
+	return 0
+}
+
+# pj_sort_names
+pj_sort_names()
+{
+	local tf=$(mktemp) name names
+	for name in $@; do
+		names="$names$name\n" 
+	done
+	echo -e -n "$names" | $SORT >$tf
+	names=""
+	while read line; do
+		names="$names $line"
+	done <$tf
+	rm -f $tf &>/dev/null
+	echo $names
+}
+
+# pj_bash_encode string
+pj_bash_encode()
+{
+	local string
+	[ -z "$1" ] && return 255 # string missing
+	string="$1"
+	string="${string//\$/\x24}"
+	string="${string//\"/\x22}"
+	string="${string//\`/\x60}"
+	[ "$string" == "$1" ] && echo "\"$1\"" || echo "\$'$string'"
+}
+
+# pj_truefalse
+pj_truefalse()
+{
+	[ "$1" -eq 0 ] && echo -n "true" || echo -n "false"
+}
+
+rc=0
+myself="${0##*/}"
+
+tf=$($MKTEMP)
+options=$($GETOPT -o hdso:qD:c:a:i: --long help,debug,scalar,one-value:,quiet,dictionary:,count:,array:,index: -n ${myself} -s bash -- "$@" 2>$tf)
+rc=$?
+
+if [ $rc -ne 0 ]; then
+	emsg="$($CAT $tf)"
+	pj_usage "$emsg\n\n"
+	rc=$?
+fi
+$RM -f $tf &>/dev/null
+
+[ "$rc" -ne 0 ] && exit $rc
+
+eval set -- "$options"
+
+debug=1
+scalar=1
+onevalue=1
+dictionary=1
+arraycount=1
+array=1
+arraysingle=1
+quiet=1
+dictname=""
+arrayname=""
+arrayindex=""
+
+while true; do
+	case "$1" in
+		("-o"|"--one-value")
+			scalar=0
+			onevalue=0
+			name="$2"
+			shift 2
+			;;
+		("-s"|"--scalar")
+			scalar=0
+			shift
+			;;
+		("-D"|"--dictionary")
+			dictionary=0
+			dictname="$2"
+			scalar=0
+			shift 2
+			;;
+		("-c"|"--count")
+			arraycount=0
+			arrayname="$2"
+			shift 2
+			;;
+		("-a"|"--array")
+			array=0
+			arrayname="$2"
+			shift 2
+			;;
+		("-i"|"--index")
+			arraysingle=0
+			arrayindex="$2"
+			shift 2
+			;;
+		("-q"|"--quiet")
+			quiet=0
+			shift
+			;;
+		("-d"|"--debug")
+			debug=0
+			shift
+			;;
+		("-h"|"--help")
+			pj_usage 
+			exit $?
+			;;
+		("--")
+			shift
+			break
+			;;
+		("*")
+			builtin echo -n -e "Internal error processing command line !\n\n"
+			exit 64
+			;;
+	esac
+done
+
+if [ -z "$1" ]; then
+	[ "$quiet" -eq 1 ] && echo "Missing JSONFILE parameter !" 1>&2
+	exit 8
+fi
+jsonfile="$1"
+shift
+
+if [ -z "$name" ]; then
+	names="$*"
+else
+	names="$name"
+fi
+
+if [ "$debug" -eq 0 ]; then
+	echo "Debug display: command line parameters and options" 1>&2
+	echo "JSON-file=$jsonfile" 1>&2
+	echo "onevalue=$(pj_truefalse $onevalue)" 1>&2
+	[ "$onevalue" -eq 0 ] && echo "onevalue-name=$name" 1>&2
+	echo "scalar=$(pj_truefalse $scalar)" 1>&2
+	echo "dictionary=$(pj_truefalse $dictionary)" 1>&2
+	[ "$dictionary" -eq 0 ] && echo "dictionary-name=$dictname" 1>&2
+	echo "count=$(pj_truefalse $arraycount)" 1>&2
+	[ "$arraycount" -eq 0 ] && echo "array-name=$arrayname" 1>&2
+	echo "array=$(pj_truefalse $array)" 1>&2
+	[ "$array" -eq 0 ] && echo "array-name=$arrayname" 1>&2
+	echo "index=$(pj_truefalse $arraysingle)" 1>&2
+	[ "$arraysingle" -eq 0 ] && echo "array-index=$arrayindex" 1>&2
+	echo "quiet=$(pj_truefalse $quiet)" 1>&2
+	[ "$onevalue" -eq 1 ] && echo "name(s)=$names" 1>&2
+	echo "Debug display: end of parameters and options" 1>&2
+	echo "============================================" 1>&2
+fi
+
+if [ ! -r $jsonfile ]; then
+	[ "$quiet" -eq 1 ] && echo "File '$jsonfile' not found or access is denied !" 1>&2
+	exit 4 # JSON file not found or not accessible
+fi
+
+if [ "$dictionary" -eq 0 ] && [ -z "$dictname" ]; then
+	[ "$quiet" -eq 1 ] && echo "Missing dictionary name after -D option !" 1>&2
+	exit 8
+fi
+
+if [ "$arraycount" -eq 0 ] && [ -z "$arrayname" ]; then
+	[ "$quiet" -eq 1 ] && echo "Missing array name after -c option !" 1>&2
+	exit 8
+fi
+
+if [ "$array" -eq 0 ] && [ -z "$arrayname" ]; then
+	[ "$quiet" -eq 1 ] && echo "Missing array name after -a option !" 1>&2
+	exit 8
+fi
+
+if [ "$arraysingle" -eq 0 ] && [ -z "$arrayindex" ]; then
+	[ "$quiet" -eq 1 ] && echo "Missing array index after -i option !" 1>&2
+	exit 8
+fi
+
+if [ "$onevalue" -eq 0 ] && [ -n "$*" ]; then
+	[ "$quiet" -eq 1 ] && echo "Ambigious value name(s) '$*' while using -o option !" 1>&2
+	exit 8
+fi
+
+if [ "$array" -eq 0 ]; then
+	if [ "$scalar" -eq 0 ] || [ "$onevalue" -eq 0 ] || [ "$arraycount" -eq 0 ]; then
+		[ "$quiet" -eq 1 ] && echo "Options -s, -o and -c are incompatible with -a option !" 1>&2
+		exit 8
+	fi
+fi
+
+if [ "$arraycount" -eq 0 ]; then
+	if [ "$scalar" -eq 0 ] || [ "$onevalue" -eq 0 ] || [ "$array" -eq 0 ] || [ "$dictionary" -eq 0 ]; then
+		[ "$quiet" -eq 1 ] && echo "Options -s, -o, -D and -a are incompatible with -c option !" 1>&2
+		exit 8
+	fi
+fi
+
+if [ "$arraysingle" -eq 0 ]; then
+	if [ "$array" -eq 1 ]; then
+		[ "$quiet" -eq 1 ] && echo "Option -i is only valid in combination with -a option !" 1>&2
+		exit 8
+	fi
+	if ! [[ "$arrayindex" =~ ^[[:digit:]]+$ ]]; then
+		[ "$quiet" -eq 1 ] && echo "Array index value after -i option needs to be a positive number !" 1>&2
+		exit 8
+	fi
+fi
+
+tf=$($MKTEMP)
+$CAT $jsonfile >$tf
+td=$($MKTEMP -d)
+
+pj_split_json $tf $td
+
+if [ -z "$names" ] && [ "$array" -eq 1 ] && [ "$arraysingle" -eq 1 ] && [ "$arraycount" -eq 1 ]; then
+	names=$(pj_parse_scalar $td/scalar.json)
+	if [ "$scalar" -eq 1 ]; then
+		for arname in $td/array.*.json; do
+			if [ -r $arname ]; then
+				if [[ "$arname" =~ ^$td/array\.(.*)\.json$ ]]; then
+					names="$names ${BASH_REMATCH[1]}"
+				fi
+			fi
+		done
+	fi
+fi
+
+declare -A result
+
+quot=$'\x22'
+squot=$'\x27'
+if [ -n "$names" ]; then
+	for name in $names; do 
+		irc=0
+		valexists=1
+		if [ "$scalar" -eq 1 ]; then
+			for arname in $td/array.*.json; do
+				if [[ "$arname" =~ ^$td/array\.$name\.json$ ]]; then
+					if [ "$scalar" -eq 0 ]; then
+						[ "$quiet" -eq 1 ] && echo "'$name' found, but it's an array !" 1>&2
+						irc=2 # arrays can't be returned as scalar value
+					else
+						value="$($0 -a $name $jsonfile)"
+						name="${name}_JSON_ARRAY"
+					fi
+					valexists=0
+					break
+				fi
+			done
+		fi
+		if [ "$valexists" -eq 1 ]; then
+			valueline=$($SED -e "/^\s*\"$name\":/ p" -n $td/scalar.json)
+			if [ -z "$valueline" ]; then
+				[ "$quiet" -eq 1 ] && echo "Value with name '$name' not found !" 1>&2
+				irc=1 # scalar value not found
+			else
+				irc=0 # scalar value found, will be written to stdout
+				quot=$'\x22'
+				[[ "$valueline" =~ ^[[:space:]]*$quot$name$quot:[[:space:]]*$quot(.*)$quot,?$ ]]
+				value="${BASH_REMATCH[1]}"
+				value="$(pj_bash_encode "$value")"
+				valexists=0
+			fi
+		fi
+		if [ "$valexists" -eq 0 ]; then
+			if [ "$onevalue" -eq 1 ]; then
+				result[$name]="$value"
+			else
+				eval value="$value" 
+				echo $value
+				break
+			fi
+		fi
+		[ "$irc" -gt "$rc" ] && rc=$irc
+	done
+else
+	if [ "$arraycount" -eq 0 ] || [ "$array" -eq 0 ]; then
+		if [ -r $td/array.$arrayname.json ]; then
+			if [ "$arraysingle" -eq 0 ]; then
+				tf2=$($MKTEMP)
+				pj_parse_array_single $td/array.$arrayname.json $arrayindex >$tf2
+				rc=$?
+				source $tf2
+				rm -f $tf2 &>/dev/null
+				if [ "$rc" -ne 0 ]; then
+					[ "$quiet" -eq 1 ] && echo "Array index '$arrayindex' is out of bounds !" 1>&2
+					rc=1 # array index out of bounds
+					array=0 # suppress output
+				else
+					rc=0 # entry found
+					array=1 # handle it as scalar list
+				fi
+			elif [ "$arraycount" -eq 0 ]; then
+				res=$(pj_parse_array_count $td/array.$arrayname.json)
+				echo "$res"
+				rc=0
+				array=0 # suppress additional output
+			else
+				res=$(pj_parse_array $td/array.$arrayname.json)
+				echo "$res"
+				rc=0
+				array=0 # suppress additional output
+			fi
+		else
+			[ "$quiet" -eq 1 ] && echo "Array with name '$arrayname' not found !" 1>&2
+			rc=1
+		fi
+	fi
+fi
+
+if [ "$dictionary" -eq 1 ]; then
+	if [ "$array" -eq 1 ]; then
+		names=$(pj_sort_names ${!result[@]})
+		echo -n "" >$tf
+		for name in $names;do
+			arvalue=1
+			if [ "${#name}" -ge 12 ]; then
+				if [ "${name:0,-11}" == "_JSON_ARRAY" ]; then
+					arvalue=0
+				fi
+			fi
+			if [ "$arvalue" -eq 1 ]; then
+				echo -n "$name=" >>$tf
+				value="${result[$name]}"
+				[ "$arraysingle" -eq 0 ] && value="$(pj_bash_encode "$value")"
+				echo "$value" >>$tf
+			else
+				value="${result[$name]}"
+				echo "$value" >>$tf
+			fi
+		done
+		$CAT $tf
+	fi
+else
+	if [ "$array" -eq 1 ]; then
+		dict="declare -A $dictname=("
+		names=$(pj_sort_names ${!result[@]})
+		for name in $names; do
+			arvalue=1
+			if [ "${#name}" -ge 12 ]; then
+				if [ "${name:0,-11}" == "_JSON_ARRAY" ]; then
+					arvalue=0
+				fi
+			fi
+			if [ "$arvalue" -eq 1 ]; then
+				value="${result[$name]}"
+				dict="$dict ['$name']=$value"
+			fi
+		done
+		dict="$dict )"
+		echo "$dict"
+	fi
+fi
+
+$RM -rf $td $tf &>/dev/null
+
+exit $rc

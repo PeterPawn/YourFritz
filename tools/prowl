@@ -1,0 +1,1097 @@
+#! /bin/sh
+#
+# send push notifications using Prowl service
+#
+# default settings
+DEFAULT_CONFIG_FILE=~/.prowl # do not quote it to use tilde expansion
+DEFAULT_PROWL_URL="https://api.prowlapp.com/publicapi/"
+DEFAULT_SEND_URL="${DEFAULT_PROWL_URL}add"
+DEFAULT_PROWL_ACCESS="wget,openssl"
+# we need some commands, that could not be available at embedded systems
+MKTEMP=$(which mktemp) || MKTEMP="/usr/bin/mktemp"
+GETOPT=$(which getopt) || GETOPT="/usr/bin/getopt"
+XMLLINT=$(which xmllint) || XMLLINT="/usr/bin/xmllint"
+
+if [ ! -x $GETOPT ]; then
+	echo -n -e "Required component - getopt - not found.\n\n" 1>&2
+	exit 255
+fi
+if [ ! -x $MKLTEMP ]; then
+	echo -n -e "Required component - mktemp - not found.\n\n" 1>&2
+	exit 255
+fi
+
+# display usage info
+usage()
+{
+	[ -n "$*" ] && echo -n -e "$*" 1>&2
+	cat 1>&2 <<EOT
+(C) 2013 PeH Consulting - Peter Hämmerlein
+
+Send push notifications using Prowl service
+
+Usage:
+
+prowl [ options ] [ subject ]
+
+The "notification content" is composed of the following parts:
+    - an application identifier (up to 256 characters), which is required 
+    - an event name, the "subject" of the notification (up to 1024 characters),
+      the subject has to be specified for every notification
+    - an optional description (up to 10.000 characters)
+    - an optional URL (up to 512 characters), which can be launched at the 
+      target device, if the users acknowledges
+    - an optional priority, the following values are recognized:
+      + 'Low' or number '-2'
+      + 'Moderate' or number '-1'
+      + 'Normal' or number '0' (the default value)
+      + 'High' or number '1'
+      + 'Emergency' or number '2'
+      Notifications with higher priority may bypass the silence related settings
+      at the target device, depending on user's choice.
+
+To address the correct target device or user, you need a "key". That key can
+be generated using your account at http://www.prowlapp.com. If you use XML or
+tagged file input, you may specify more than one receiver.
+
+There are different ways to provide the needed informations to that command:
+    1. All information is contained within a XML-structured file (option -X or
+       -x). If you need a XSD file, call that command with the -D option.
+    2. The information is read from a file with "tagged" lines (option -F or
+       -f). Each line has to use the format 'key: value'. If 'value' spans more
+       than a single line, each continuation line starts with one or more
+       whitespace characters. Every whitespace prefixing any other text on a
+       continuation line will be ignored. The following tags are used:
+       application: - defines the application identifier
+       subject:     - defines the subject
+       description: - specifies any additional text information
+       priority:    - message priority, see above for valid values
+       url:         - optional URL with additional informations
+       key:         - the key(s) for the target(s), one key per line
+       Tag names are recognized in lower, upper or mixed case.
+    3. The needed informations may be specified at the call of that command via
+       options and parameters. There is no option to specify the 'description'
+       text at the command line. It's not used in that case or it will be read
+       from standard input, if you specify the -t option. Please double-check
+       the proper quoting of option values, especially if they contain white-
+       spaces. With that input method, you can use a single receiver only.
+
+The command supports two different methods to submit a message to Prowl. If the
+command 'wget' is found within the search path, it will be tried first. But
+there are some implementations of 'wget' (the busybox applet for example), 
+which do not support secure transport (HTTPS). If such an implementation is
+found (every failure calling wget is used as indication), the 'openssl' command
+will be tried, if it is found. You may change the order of attempts or even use
+only one method with the -m option.
+
+The command honors the settings within an user-specific configuration file,
+which is looked up as ~/.prowl by default. An alternate file name may be 
+specified by the -c option. If -c is used, the given file has to exist.
+The following settings are read from the configuration file, if they are not
+specified otherwise:
+    - the target key (KEY=value), only a single entry is possible here
+    - the URL of the Prowl API service, https://api.prowlapp.com/publicapi/add
+      is the default (PROWLAPI=value)
+    - the order of submission methods, default is 'wget,openssl' (ORDER=value)
+    - the default application identifier (APP=value)
+       
+The following options are recognized:
+-h, --help
+    + display that help
+-c, --config-file=FILE
+    + specifies an alternate file name for the default configuration file 
+      ~/.prowl
+    + configuration file(s) will be ignored, if they are accessible by other 
+      users
+-x, --xml-file=FILE
+    + use the XML formatted FILE as parameter source
+-X, --xml-format
+    + read XML formatted parameters from standard input
+-D, --xsd
+    + print the XSD file for XML-structured input to standard output
+-f, --file=FILE
+    + use the tag-formatted FILE as parameter source
+-F, --tagged
+    + read the tag-formatted parameters from standard input
+-k, --key=KEY
+    + use KEY as target address
+-s, --subject=SUBJECT
+    + defines SUBJECT as the event name, the subject may also be specified as
+      parameter, if no file-based 
+-a, --application=APP
+    + use APP as application identifier, it will be displayed as header line at
+      the target device
+-p, --priority=PRIORITY
+    + use PRIORITY (for valid values see above) for the message
+-u, --url=URL
+    + add URL to the message, it will be launched at the target, if the user
+      acknowledges
+-t, --text
+    + read 'description' from standard input, use that option, if all other
+      needed informations are provided at the command line
+-o, --output
+    + show XML output from Prowl, mutually exclusive with -q option
+-m, --method=METHOD[,METHOD]
+    + use that option to change the order of submission methods (or forbid 
+      alternates)
+    + Only the methods 'wget' and 'openssl' are recognized.
+-q, --quiet
+    + suppress all messages to standard output
+-v, --verbose
+    + print some logging messages to standard output
+-d, --debug
+    + print even more informations to error output
+
+That script is intended to work with different shells. It has been tested with 
+bash4 and busybox-1.22 (ash). So it should be usable on embedded devices also, 
+if the needed additional components are available.
+EOT
+}
+# debug output
+debugmsg()
+{
+	if [ $debug -eq 0 ]; then
+		echo -n -e "$*" 1>&2
+	fi
+	return 0
+}
+# verbose output
+verbose()
+{
+	if [ $verbose -eq 0 ]; then
+		echo -n -e "$*"
+	fi
+	return 0
+}
+# error message output
+errormsg()
+{
+	echo -n -e "$*" 1>&2
+}
+# output message
+outmsg()
+{
+	if [ $quiet -eq 1 ]; then
+		echo -n -e "$*"
+	fi
+}
+# output schema file for XML input
+output_xsd()
+{
+	echo "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+	echo "<xsd:schema xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">"
+	echo "    <xsd:simpleType name=\"PriorityType\">"
+	echo "        <xsd:restriction base=\"xsd:string\">"
+	echo "            <xsd:enumeration value=\"-2\" />"
+	echo "            <xsd:enumeration value=\"Low\" />"
+	echo "            <xsd:enumeration value=\"-1\" />"
+	echo "            <xsd:enumeration value=\"Moderate\" />"
+	echo "            <xsd:enumeration value=\"0\" />"
+	echo "            <xsd:enumeration value=\"Normal\" />"
+	echo "            <xsd:enumeration value=\"1\" />"
+	echo "            <xsd:enumeration value=\"High\" />"
+	echo "            <xsd:enumeration value=\"2\" />"
+	echo "            <xsd:enumeration value=\"Emergency\" />"
+	echo "        </xsd:restriction>"
+	echo "    </xsd:simpleType>"
+	echo "    <xsd:simpleType name=\"KeyType\">"
+	echo "            <xsd:restriction base=\"xsd:string\">"
+	echo "                <xsd:pattern value=\"[a-f0-9]{40}\" />"
+	echo "            </xsd:restriction>"
+	echo "    </xsd:simpleType>"
+	echo "    <xsd:complexType name=\"ContentType\">"
+	echo "        <xsd:all>"
+	echo "            <xsd:element name=\"Application\" maxOccurs=\"1\" minOccurs=\"0\">"
+	echo "                <xsd:simpleType>"
+	echo "                    <xsd:restriction base=\"xsd:token\">"
+	echo "                        <xsd:maxLength value=\"256\" />"
+	echo "                    </xsd:restriction>"
+	echo "                </xsd:simpleType>"
+	echo "            </xsd:element>"
+	echo "            <xsd:element name=\"Subject\" maxOccurs=\"1\" minOccurs=\"1\">"
+	echo "                <xsd:simpleType>"
+	echo "                    <xsd:restriction base=\"xsd:token\">"
+	echo "                        <xsd:maxLength value=\"1024\" />"
+	echo "                    </xsd:restriction>"
+	echo "                </xsd:simpleType>"
+	echo "            </xsd:element>"
+	echo "            <xsd:element name=\"Description\" maxOccurs=\"1\" minOccurs=\"0\">"
+	echo "                <xsd:simpleType>"
+	echo "                    <xsd:restriction base=\"xsd:string\">"
+	echo "                        <xsd:maxLength value=\"10000\" />"
+	echo "                    </xsd:restriction>"
+	echo "                </xsd:simpleType>"
+	echo "            </xsd:element>"
+	echo "            <xsd:element name=\"Priority\" type=\"PriorityType\" maxOccurs=\"1\" minOccurs=\"0\" />"
+	echo "            <xsd:element name=\"Url\" maxOccurs=\"1\" minOccurs=\"0\">"
+	echo "                <xsd:simpleType>"
+	echo "                    <xsd:restriction base=\"xsd:anyURI\">"
+	echo "                        <xsd:maxLength value=\"512\" />"
+	echo "                    </xsd:restriction>"
+	echo "                </xsd:simpleType>"
+	echo "            </xsd:element>"
+	echo "        </xsd:all>"
+	echo "    </xsd:complexType>"
+	echo "    <xsd:complexType name=\"KeyChoiceType\">"
+	echo "        <xsd:choice>"
+	echo "            <xsd:element name=\"Single\" type=\"KeyType\" minOccurs=\"1\" maxOccurs=\"1\" />"
+	echo "            <xsd:sequence>"
+	echo "                <xsd:element name=\"Key\" type=\"KeyType\" minOccurs=\"1\" maxOccurs=\"unbounded\" />"
+	echo "            </xsd:sequence>"
+	echo "        </xsd:choice>"
+	echo "     </xsd:complexType>"
+	echo "    <xsd:complexType name=\"MessageType\">"
+	echo "        <xsd:all>"
+	echo "            <xsd:element name=\"Content\" type=\"ContentType\" maxOccurs=\"1\" minOccurs=\"1\" />"
+	echo "            <xsd:element name=\"SendTo\" type=\"KeyChoiceType\" minOccurs=\"1\" maxOccurs=\"1\" />"
+	echo "        </xsd:all>"
+	echo "    </xsd:complexType>"
+	echo "    <xsd:element name=\"Message\" type=\"MessageType\" />"
+	echo "</xsd:schema>"
+	return 0
+}
+# check duplicate tags
+is_duplicate()
+{
+	local tag=$1 t
+	shift
+	for t in $*; do
+		[ "$t" == "$tag" ] && return 1
+	done
+	return 0
+}
+# check method names
+check_methods()
+{
+	local m methods="$*" output
+	methods="${methods//,/ }"
+	for m in $methods; do
+		case "$m" in
+			([Ww][Gg][Ee][Tt])
+				output="$output wget"
+				;;
+			([Oo][Pp][Ee][Nn][Ss][Ss][Ll])
+				output="$output openssl"
+				;;
+			(*)
+				errormsg "Unknown submission method '$m' found.\n\n"
+				return 2
+		esac
+	done
+	echo -n "$output"
+	return 0
+}
+# check (possibly multiple) keys
+check_keys()
+{
+	local rc k c=0
+	for k in $*; do
+		let c=c+1
+		check_key $k
+		rc=$?
+		[ $rc -ne 0 ] && break
+	done
+	if [ $c -eq 0 ]; then
+		errormsg "Missing receiver key.\n\n"
+		return 2
+	fi
+	return $rc
+}
+# check key         
+check_key()
+{
+	local txt
+	txt=$(echo -n "$1" | sed -e 's/^[0-9a-f]\{40\}$//g')
+	if [ ${#txt} -gt 0 ]; then
+		errormsg "The specified target key '$1' contains invalid characters.\n\n"
+		return 2
+	fi
+	return 0
+}
+# check priority value and convert it to the corresponding number
+check_priority()
+{
+	local p="$1" out_p=0
+	if [ -n "$1" ]; then
+		let out_p=$p
+		if [ $? -eq 0 ]; then
+			if [ $out_p -lt -2 -o $out_p -gt 2 ]; then
+				errormsg "The specified numeric priority value '$p' is out of range.\n\n"
+				return 2
+			fi
+		else
+			case "$p" in
+				([Ll][Oo][Ww])
+					let out_p=-2
+					;;
+				([Mm][Oo][Dd][Ee][Rr][Aa][Tt][Ee])
+					let out_p=-1
+					;;
+				([Nn][Oo][Rr][Mm][Aa][Ll])
+					let out_p=0
+					;;
+				([Hh][Ii][Gg][Hh])
+					let out_p=1
+					;;
+				([Ee][Mm][Ee][Rr][Gg][Ee][Nn][Cc][Yy])
+					let out_p=2
+					;;
+				(*)
+					errormsg "The specified textual priority value '$p' is invalid.\n\n"
+					return 2
+					;;
+			esac
+		fi
+	fi
+	echo "$out_p"
+	return 0
+}
+# get priority text
+priority_to_text()
+{
+	[ -z $1 ] && return 1
+	case $1 in
+		(-2)
+			echo "Low"
+			;;
+		(-1)
+			echo "Moderate"
+			;;
+		(0)
+			echo "Normal"
+			;;
+		(1)
+			echo "High"
+			;;
+		(2)
+			echo "Emergency"
+			;;
+		(*)
+			echo "Invalid"
+			;;
+	esac
+	return 0
+}
+# read config file
+read_config_file()
+{
+	local if="$1" lc=0 line parsed tag VALUE TAG output tags dbghead=1
+	while read line; do
+		let lc=lc+1
+		parsed=$(echo -n "$line" | sed -e 's/^\([^[:space:]]*\)[[:space:]]*=[[:space:]]*\(.*\)/TAG=\1 VALUE=\"\2\"/g')
+		if [ x"$line" == x"$parsed" ]; then
+			errormsg "Configuration file format error at line $lc, unable to parse that line.\n\n"
+			return 2
+		else
+			unset tag TAG VALUE
+			eval "$parsed"
+			case "$TAG" in
+				([Kk][Ee][Yy])
+					tag="key"
+					;;
+				([Aa][Pp][Pp])
+					tag="app"
+					;;
+				([Oo][Rr][Dd][Ee][Rr])
+					if [ -z "$method" ]; then
+						tag="method"
+					fi
+					;;
+				([Pp][Rr][Oo][Ww][Ll][Aa][Pp][Ii])
+					tag="prowlurl"
+					;;
+				(*)
+					errormsg "Configuration file format error at line $lc, unknown setting '$TAG'.\n\n"
+					return 2
+					;;
+			esac
+		fi
+		if [ -n "$tag" ]; then
+			if is_duplicate "$tag" "$tags"; then
+				tags="$tags $tag"
+			else
+				errormsg "Configuration file format error at line $lc, duplicate setting '$TAG'.\n\n"
+				return 2
+			fi
+			output="$output $tag=\"$VALUE\" "
+			if [ $dbghead -eq 1 ]; then
+				debugmsg "Read from configuration file:\n"
+				dbghead=0
+			fi
+			debugmsg "$tag=\"$VALUE\"\n"
+		fi
+	done < "$if"
+	if [ $dbghead -eq 0 ]; then
+		debugmsg "End of configuration file reached.\n"
+	fi
+	echo -n "$output"
+	return 0
+}
+# read tagged input file
+read_tagged_file()
+{
+	local if="$1" file=" file" cont=1 line parsed lc=0 tag val preserve=1 nl=$'\n' oifs="$IFS" dbghead=1 dl=0
+	if [ x"$if" == x'-' ]; then
+		file=""
+		if="/dev/fd/0"
+	fi
+	IFS=
+	while read line; do
+		let lc=lc+1
+		parsed="$(echo "$line" | sed -e 's/^[[:space:]]\+.*$/CONTINUED/' -e 's/^[[:space:]]*$/CONTINUED/')"
+		if [ x"$parsed" == x"CONTINUED" ]; then
+			if [ $cont -eq 0 ]; then
+				if [ $preserve -eq 0 ]; then
+					val="${val}$nl"
+				else
+					val="$val "
+				fi
+				val="${val}$(echo -n $line | sed -e 's/^[[:space:]]\+//' -e 's/[[:space:]]*$//')"
+				debugmsg "+ continuation at next line added to '$tag' ...\n"
+				[ "$tag" == "description" ] && let dl=dl+1
+			else
+				IFS="$oifs"
+				if [ $lc -eq 1 ]; then
+					errormsg "Input${file} format error at line $lc, you can not start with a continuation line.\n\n"
+				else
+					errormsg "Input${file} format error at line $lc, no continuation line(s) allowed for tag '${tag}'.\n\n"
+				fi
+				return 2
+			fi
+		else
+			parsed=$(echo -n "$line" | sed -e 's/^\([^[:space:]]*\):[[:space:]]\+.*$/TAG=\1/')
+			if [ x"${parsed:0:4}" == x"TAG=" ]; then
+				if [ $dbghead -eq 1 ]; then
+					debugmsg "Read from tagged input${file}:\n"
+					dbghead=0
+				fi
+				preserve=1
+				eval "$parsed"
+				parsed=$(echo -n "$line" | sed -e 's/^[^[:space:]]*:[[:space:]]\+\(.*\)$/\1/' | sed -e 's/[[:space:]]*$//' | sed -e 's/^.*$/VALUE=\"&\"/')
+				eval "$parsed"
+				case "$TAG" in
+					([Kk][Ee][Yy])
+						tag="key"
+						val="$VALUE"
+						cont=0
+						debugmsg "$tag=\"$val\"\n"
+						;;
+					([Ss][Uu][Bb][Jj][Ee][Cc][Tt])
+						tag="subject"
+						val="$VALUE"
+						cont=0
+						debugmsg "$tag=\"$val\"\n"
+						;;
+					([Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn])
+						tag="application"
+						val="$VALUE"
+						cont=0
+						debugmsg "$tag=\"$val\"\n"
+						;;
+					([Dd][Ee][Ss][Cc][Rr][Ii][Pp][Tt][Ii][Oo][Nn])
+						tag="description"
+						val="$VALUE"
+						preserve=0
+						cont=0
+						debugmsg "$tag=\"$val\"\n"
+						dl=1
+						;;
+					([Pp][Rr][Ii][Oo][Rr][Ii][Tt][Yy])
+						tag="priority"
+						val="$VALUE"
+						cont=1
+						debugmsg "$tag=\"$val\"\n"
+						;;
+					([Uu][Rr][Ll])
+						tag="url"
+						val="$VALUE"
+						cont=0
+						debugmsg "$tag=\"$val\"\n"
+						;;
+					(*)
+						IFS="$oifs"
+						errormsg "Unknown tag '$TAG' at line $lc of input${file}.\n\n"
+						return 2
+						;;
+				esac
+			else
+				IFS="$oifs"
+				errormsg "Input${file} format error at line $lc, tag delimiter missing and line starts at column 1.\n\n"
+				return 2
+			fi
+		fi
+		eval "$tag=\"$val\""
+	done < "$if" 
+	IFS="$oifs"
+	if [ $dbghead -eq 0 ]; then
+		if [ $dl -gt 1 ]; then
+			debugmsg "Description (long message text) contains $dl lines at all.\n"
+		fi
+		debugmsg "End of tagged input${file} reached.\n"
+	fi
+	return 0
+}
+# get value from XML file
+get_xml_value()
+{
+	local if="$1" xpath="$2"
+	$XMLLINT --xpath "$xpath" "$if" 2>/dev/null
+	return $?
+}
+# read XML input file
+read_xml_file()
+{
+	local if="$1" of ef xsd="$2" file=" file" dl=0 txt
+	if [ x"$if" == x'-' ]; then
+		file=""
+	fi
+	if [ ! -x "$XMLLINT" ]; then
+		errormsg "Required component - xmllint - not found.\n\n"
+		return 255
+	fi
+	of="$($MKTEMP)"
+	ef="$($MKTEMP)"
+	debugmsg "Start XML input${file} processing :\n"
+	debugmsg "Validate XML input against schema definition ...\n"
+	$XMLLINT --schema "$xsd" --noout "$if" 2> $ef
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		debugmsg "$(cat $ef)\n"
+		rm $ef
+		errormsg "Error $rc processing XML input${file}.\n\n"
+		return 2
+	else
+		debugmsg "Schema validation passed ...\n"
+	fi
+	txt="$(get_xml_value "$if" "/Message/Content/Application/text()")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			application="$txt"
+		fi
+	fi
+	txt="$(get_xml_value "$if" "/Message/Content/Subject/text()")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			subject="$txt"
+		fi
+	fi
+	txt="$(get_xml_value "$if" "/Message/Content/Description/text()")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			description="$txt"
+			if [ -x "$(which wc)" ]; then
+				dl=$(echo "$description" | wc -l)
+			else
+				txt="$(echo "$description" | sed -e 's/[^\n]*//g' | sed -e ':x;N;$!bx;s/\n/X/g')"
+				let dl=${#txt}+1
+			fi
+		fi
+	fi
+	txt="$(get_xml_value "$if" "/Message/Content/Url/text()")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			url="$txt"
+		fi
+	fi
+	txt="$(get_xml_value "$if" "/Message/Content/Priority/text()")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			priority="$txt"
+		fi
+	fi
+	txt="$(get_xml_value "$if" "/Message/SendTo/Single/text()")"
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		if [ ${#txt} -gt 0 ]; then
+			key="$txt"
+		else
+			kc=$(get_xml_value "$if" "count(/Message/SendTo/Key)")
+			if [ $kc -gt 0 ]; then
+				key=""
+				let i=1
+				while [ $i -le $kc ]; do
+					txt="$(get_xml_value "$if" "/Message/SendTo/Key[$i]/text()")"
+					key="$key $txt"
+					let i=i+1
+				done
+			fi
+		fi
+		rc=0
+	fi
+	if [ $dl -gt 1 ]; then
+		debugmsg "Description (long message text) contains $dl lines at all.\n"
+	fi
+	debugmsg "XML input${file} processed.\n"
+	rm $ef
+	return $rc
+}
+# check character encoding
+is_unicode()
+{
+	local c
+	printf -v c '%d' "'$1"
+	(( c < 128 )) && return 1 || return 0
+}
+# encode HTTP post data
+encode()
+{
+	local src="$*" out c e class
+	while [ ${#src} -gt 0 ]; do
+		c=${src:0:1}
+		src="${src:1}"
+		if ! is_unicode $c; then
+			case $c in
+				([A-Za-z0-9-_.~])
+					out="$out$c"
+					;;
+				(' ')
+					out="$out+"
+					;;
+				(*)
+					printf -v e '%%%02x' "'$c"
+					out="$out$e"
+					;;
+			esac
+		else
+			printf -v e '%%%04x' "'$c"
+			out="$out$e"
+		fi
+	done
+	echo "$out"
+	return 0
+}
+# prepare HTTP post request data
+prepare_post_data()
+{
+	local out keys
+	for k in $key; do
+		keys="$keys${keys:+%2e}$k"
+	done
+	out="apikey=$keys"
+	out="$out&application=$(encode "$app")&event=$(encode "$subject")&priority=$priority"
+	if [ -n "$url" ]; then
+		out="$out&url=$(encode "$url")"
+	fi
+	if [ -n "$description" ]; then
+		out="$out&description=$(encode "$description")"
+	fi
+	echo "$out"
+	return 0
+}
+# find a command 
+path_find()
+{
+	local cmd="$1" oifs="$IFS"
+	IFS=:
+	for dir in $PATH; do
+		if [ -f "$dir/$cmd" ]; then
+			if [ -r "$dir/$cmd" ]; then
+				if [ -x "$dir/$cmd" ]; then
+					echo "$(realpath $dir/$cmd)"
+					return 0
+				fi
+			fi
+		fi
+	done
+	return 1
+}
+# submit request with wget
+submit_wget()
+{
+	local url="$1" data="$2"
+	local WGET
+	WGET="$(which wget 2>/dev/null)"
+	rc=$?
+	if [ $rc -ne 0 ]; then # wget found
+		if [ $rc -eq 127 ]; then # which not found
+			WGET="$(path_find wget)"
+			rc=$?
+			[ $rc -ne 0 ] && return 128 # wget not found at path
+		else # wget not found
+			return 128
+		fi
+	fi
+	if [ $rc -eq 0 ]; then # check wget's HTTPS capabilities
+		$WGET --version 2>&1 >/dev/null
+		if [ $? -eq 0 ]; then # should be GNU's wget utility, which is HTTPS capable
+			tf="$($MKTEMP)"
+			pf="$($MKTEMP)"
+			echo "$data" >"$pf"
+			$WGET --quiet --output-document="$tf" --post-file="$pf" $url
+			rc=$?
+			if [ $rc -eq 0 ]; then
+				cat "$tf"
+			fi
+			rm "$pf" "$tf"
+		else
+			return 128
+		fi
+	fi
+	return $rc
+}
+# parse XML answer from ProwlApp.com
+parse_answer()
+{
+	local tf="$($MKTEMP)" txt out
+	echo -n "$*" >"$tf"
+	if [ ! -x "$XMLLINT" ]; then
+		errormsg "Required component - xmllint - not found.\n\n"
+		rm "$tf"
+		return 255
+	fi
+	txt="$(get_xml_value "$tf" "string(/prowl/success/@code)")"
+	if [ $? -eq 0 ]; then
+		out="$out resultcode=\"$txt\""
+	fi	
+	txt="$(get_xml_value "$tf" "string(/prowl/success/@remaining)")"
+	if [ $? -eq 0 ]; then
+		out="$out remaining=\"$txt\""
+	fi	
+	txt="$(get_xml_value "$tf" "string(/prowl/success/@resetdate)")"
+	if [ $? -eq 0 ]; then
+		out="$out resetdate=\"$txt\""
+	fi
+	echo "$out"
+	rm "$tf"
+	return 0
+}
+
+myself="${0##*/}"
+if [ -z "$1" ]; then
+	usage
+	exit 4
+fi
+tf="$($MKTEMP)"
+options="$($GETOPT -o hqvdc:x:XDf:Fk:s:a:p:u:tm:o --long help,quiet,verbose,debug,config-file,xml-file,xml-format,xsd,file,tagged,key,subject,application,priority,url,text,method,output -n ${myself} -s bash -- "$@" 2>$tf)"
+rc=$?
+if [ $rc -ne 0 ]; then
+    emsg="$(cat $tf)"
+    usage "$emsg\n\n"
+    rc=$?
+fi
+rm -f "$tf" &>/dev/null
+
+[ $rc -ne 0 ] && exit $rc
+
+declare key app subject description priority url method prowlurl 
+declare quiet=1 verbose=1 debug=1 help=1 cfg=1 xsd=1 text=1 showanswer=1
+declare config="$DEFAULT_CONFIG_FILE" input mode 
+
+eval set -- "$options"
+
+while true; do
+	case "$1" in
+		("-q"|"--quiet")
+			quiet=0
+			debugmsg "Found option '$1' - suppress regular output to stdout ...\n"
+			shift
+			;;
+		("-d"|"--debug")
+			debug=0
+			debugmsg "Found option '$1' - output debug messages to stderr ...\n"
+			shift
+			;;
+		("-v"|"--verbose")
+			verbose=0
+			debugmsg "Found option '$1' - output additional messsages to stdout ...\n"
+			shift
+			;;
+		("-h"|"--help")
+			help=0
+			usage 
+			exit 2
+			;;
+		("-c"|"--config-file")
+			config="$2"
+			debugmsg "Found option '$1' - set '$config' as configuration file ...\n"
+			shift 2
+			cfg=0
+			;;
+		("-x"|"--xml-file")
+			input+="xmlfile "
+			xmlfile="$2"
+			debugmsg "Found option '$1' - read input values from XML file '$xmlfile' ...\n"
+			shift 2
+			;;
+		("-X"|"--xml-format")
+			input+="xml "
+			xmlfile='-'
+			debugmsg "Found option '$1' - read XML input from stdin ...\n"
+			shift
+			;;
+		("-D"|"--xsd")
+			xsd=0
+			shift
+			;;
+		("-f"|"--file")
+			input+="taggedfile "
+			taggedfile="$2"
+			debugmsg "Found option '$1' - read tagged input from file '$taggedfile' ...\n"
+			shift 2
+			;;
+		("-F"|"--tagged")
+			input+="tagged "
+			taggedfile='-'
+			debugmsg "Found option '$1' - read tagged input from stdin ...\n"
+			shift
+			;;
+		("-k"|"--key")
+			key="$2"
+			debugmsg "Found option '$1' - use '$key' as Prowl address ...\n"
+			shift 2
+			;;
+		("-s"|"--subject")
+			subject="$2"
+			debugmsg "Found option '$1' - use '$subject' as message subject ...\n"
+			shift 2
+			;;
+		("-a"|"--application")
+			app="$2"
+			debugmsg "Found option '$1' - use '$app' as application identifier ...\n"
+			shift 2
+			;;
+		("-p"|"--priority")
+			priority="$2"
+			debugmsg "Found option '$1' - use '$priority' as message priority ...\n"
+			shift 2
+			;;
+		("-u"|"--url")
+			url="$2"
+			debugmsg "Found option '$1' - use '$url' as additional URL within the message ...\n"
+			shift 2
+			;;
+		("-t"|"--text")
+			text=0
+			debugmsg "Found option '$1' - read description text from stdin ...\n"
+			shift
+			;;
+		("-o"|"--output")
+			showanswer=0
+			debugmsg "Found option '$1' - show XML answer from Prowl ...\n"
+			shift
+			;;
+		("-m"|"--method")
+			method="$2"
+			debugmsg "Found option '$1' - use '$method' for message submission ...\n"
+			shift 2
+			;;
+		("--")
+			shift
+			debugmsg "End of options found ...\n"
+			break
+			;;
+		(*)
+			errormsg "Internal error processing command line !\n\n"
+			exit 64
+			;;
+	esac
+done
+params="$*"
+
+if [ $quiet -eq 0 -a $verbose -eq 0 ]; then
+	errormsg "The -q and -v options are mutually exclusive.\n\n"
+	exit 4
+fi
+if [ $quiet -eq 0 -a $showanswer -eq 0 ]; then
+	errormsg "The -q and -o options are mutually exclusive.\n\n"
+	exit 4
+fi
+
+source=""
+for x in $input; do
+	if [ -n "$source" ]; then
+		errormsg "You've specified different input methods for notification content, but you can't mix sources.\n\n"
+		exit 4
+	fi
+	source="$x"
+done
+[ -z "$source" ] && source="cmdline"
+debugmsg "Input source set to '$source' ...\n"
+
+if [ -n "$params" ]; then
+	if [ -z "$subject" ]; then
+		if [ "$source" == "cmdline" ]; then
+			subject="$params"
+			debugmsg "Subject set to '$subject' ...\n"
+		else
+			errormsg "Specifying the message subject using command line parameters is only supported, if neither XML nor tagged file is used.\n\n"
+			exit 4
+		fi
+	else
+		errormsg "There are additional parameters at the command line, but the notification subject is already set with the -s option.\n\n"
+		exit 4
+	fi
+fi
+
+if [ $xsd -eq 0 ]; then
+	if [ $quiet -eq 0 -o $verbose -eq 0 -o $debug -eq 0 -o $showanswer -eq 0 -o $cfg -eq 0 -o -n "$input" -o -n "$key" -o -n "$subject" -o -n "$app" -o -n "$priority" -o -n "$url" -o $text -eq 0 -o -n "$method" ]; then
+		errormsg "The -D option can not be used with any other option.\n\n"
+		exit 4
+	else
+		output_xsd
+		exit $?
+	fi
+fi
+
+if [ "$source" != "cmdline" ]; then
+	if [ -n "$key" -o -n "$subject" -o -n "$app" -o -n "$priority" -o -n "$url" -o $text -eq 0 ]; then
+		errormsg "The -k, -s, -a, -p, -u and -t options are invalid with XML or tagged file input mode.\n\n"
+		exit 4
+	fi
+fi
+
+if ! [ -f "$config" -a -r "$config" ]; then
+	if [ $cfg -eq 0 ]; then
+		errormsg "The specified configuration file '$config' does not exist or is not readable.\n\n"
+		exit 2
+	fi
+	debugmsg "Default configuration file does not exist or is not readable, skip configuration from file ...\n"
+else
+	mode=$(stat -c %a $config)
+	if [ "${mode:1}" == "00" ]; then
+		debugmsg "Reading configuration file '$config' ...\n"
+		conf=$(read_config_file "$config")
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		eval "$conf"
+	else
+		errormsg "The configuration file '$config' is accessible by other users.\n\n"
+		exit 2
+	fi
+fi
+
+case "$source" in
+	("xml"|"xmlfile")
+		xsd="$($MKTEMP)"
+		output_xsd > "$xsd"
+		if [ "$source" == "xml" ]; then
+			xmlfile="$($MKTEMP)"
+			cat >"$xmlfile"
+		fi
+		read_xml_file "$xmlfile" "$xsd"
+		rc=$?
+		if [ "$source" == "xml" ]; then
+			rm "$xmlfile"
+		fi
+		rm "$xsd"
+		[ $rc -ne 0 ] && exit $rc
+		check_keys "$key"
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		priority=$(check_priority "$priority")
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		;;
+	("tagged"|"taggedfile")
+		read_tagged_file $taggedfile
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		check_keys "$key"
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		priority=$(check_priority "$priority")
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		;;
+	("cmdline")
+		check_keys "$key"
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		priority=$(check_priority "$priority")
+		rc=$?
+		[ $rc -ne 0 ] && exit $rc
+		;;
+	(*)
+		errormsg "Internal error: unexpected input method.\n\n"
+		exit 64
+		;;
+esac
+
+if [ -z "$method" ]; then
+	method="$DEFAULT_PROWL_ACCESS"
+	debugmsg "Using default method definition: $method\n"
+fi
+if [ -z "$prowlurl" ]; then
+	prowlurl="$DEFAULT_SEND_URL"
+	debugmsg "Using default Prowl service URL: $prowlurl\n"
+fi
+
+method=$(check_methods "$method")
+rc=$?
+[ $rc -ne 0 ] && exit $rc
+
+if [ -z "$app" -o -z "$subject" ]; then
+	errormsg "Missing application identifier and/or message subject.\n\n"
+	exit 4
+fi
+
+if [ $text -eq 0 ]; then
+	description=""
+	debugmsg "Reading description from stdin ...\n"
+	description="$(cat)"
+fi
+
+verbose "Application : $app\n"
+verbose "Subject     : $subject\n"
+if [ ${#description} -gt 0 ]; then
+	if [ ${#description} -gt 70 ]; then
+		txt="$(echo -n "$description" | sed -e ':x;N;$!bx;s/\n/ /g' | sed -e 's/ \+/ /g' -e 's/^\(.\{30\}\).*\(.\{30\}\)$/\1 ... \2/')"
+		verbose "Description : ${txt}\n"
+	else
+		verbose "Description : ${description}\n"
+	fi
+fi
+verbose "Priority    : $priority - $(priority_to_text $priority)\n"
+if [ ${#url} -gt 0 ]; then
+   	verbose "URL         : ${url}\n"
+fi
+hdr="Send to     : " 
+for k in $key; do
+	verbose "${hdr}$k\n"
+    hdr="            : " 
+done
+
+postdata="$(prepare_post_data)"
+rc=$?
+[ $rc -ne 0 ] && exit $rc
+
+for m in $method; do
+	case "$m" in
+		('wget')
+			out="$(submit_wget "$prowlurl" "$postdata")"
+			rc=$?
+			;;
+		('openssl')
+			out="$(submit_openssl "$prowlurl" "$postdata")"
+			rc=$?
+			;;
+		(*)
+			rc=16
+			;;
+	esac
+	if [ $rc -ne 128 ]; then
+		break
+	fi
+done
+
+if [ $rc -eq 0 ]; then
+	txt="$(parse_answer "$out")"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		eval "$txt"
+		verbose "Result      : $resultcode\n"
+		verbose "Remaining   : $remaining\n"
+		verbose "Reset count : $(date --date=@$resetdate --iso-8601=seconds)\n\n"
+	fi
+	if [ $showanswer -eq 0 ]; then
+		outmsg "$out\n"
+	else
+		outmsg "Message sent, result=$resultcode\n"
+	fi
+fi
+exit $rc
