@@ -17,7 +17,6 @@
 # call and you should better use a changed script file for the right system
 # instead of a detection herein
 #
-base64_table="ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 _getvalue()
 {
 	local file="$1" type="$2" offset="$3" input i=0 f=0 v=0 c l=0
