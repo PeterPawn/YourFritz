@@ -1,7 +1,8 @@
 #! /bin/sh
 #########################################################################################
 #
-# mount FRITZ!OS partitions, where they can be inspected/compared/whatever
+# mount FRITZ!OS partitions, where they can be inspected/compared/whatever, needs a
+# newer Busybox binary with the "use foreign fstab" option (-T)
 #
 #########################################################################################
 #
