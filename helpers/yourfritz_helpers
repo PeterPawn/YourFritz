@@ -58,7 +58,7 @@ yf_endianess()
 		if [ ${#mask} -gt 0 ]; then
 			mask=${mask:0:1}
 			mask=${mask//[89A-F]/}
-			[ ${#mask} -gt 0 ] && endian="B" || endian="L"
+			[ ${#mask} -gt 0 ] && endian="L" || endian="B"
 		fi
 	fi
 	echo $endian
@@ -265,6 +265,50 @@ yf_ipv4addr()
 }
 #######################################################################################
 #
+# uppercase - convert string to uppercase letters
+#
+# parameters:
+#   none
+#
+# stdin:
+#   input data to be translated ... only ASCII characters are handled correctly
+#
+# stdout:
+#   input data with each occurence of 'a' to 'z' translated to 'A' to 'Z'
+#
+# return code:
+#   0 - stdout value is valid
+#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors
+#
+#######################################################################################
+yf_uppercase()
+{
+	tr "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+}
+#######################################################################################
+#
+# lowercase - convert string to lowercase letters
+#
+# parameters:
+#   none
+#
+# stdin:
+#   input data to be translated ... only ASCII characters are handled correctly
+#
+# stdout:
+#   input data with each occurence of 'A' to 'Z' translated to 'a' to 'z'
+#
+# return code:
+#   0 - stdout value is valid
+#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors
+#
+#######################################################################################
+yf_uppercase()
+{
+	tr "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+}
+#######################################################################################
+#
 # pack - create a packed complex data structure from basic data types
 #
 # parameters:
@@ -301,13 +345,13 @@ yf_ipv4addr()
 #######################################################################################
 yf_pack()
 {
-	local out="" val type hex endian host_endian=$(yf_endianess)
+	local out="" val type hex endian 
 	while [ ${#1} -gt 0 ]; do
 		type="$1"
 		val="$2"
 		shift 2
-		endian=${type:0:1}
-		if [ -z ${endian/[LlBb]/} ]; then
+		endian=$(echo ${type:0:1} | yf_uppercase)
+		if [ -z ${endian/[LB]/} ]; then
 			type="${type:1}"
 		else
 			unset endian
@@ -339,8 +383,12 @@ yf_pack()
 				;;
 		esac
 		if [ ! -z $endian ]; then
-			if [ $endian != $host_endian ]; then
+			if [ $endian == L ]; then
 				hex="$(yf_reverse_hex "$hex")"				
+			fi
+		else
+			if [ $(yf_endianess) == L ]; then
+				hex="$(yf_reverse_hex "$hex")"
 			fi
 		fi
 		out="$out$hex"
