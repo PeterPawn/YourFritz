@@ -125,6 +125,33 @@ yf_dec2hex()
 }
 #######################################################################################
 #
+# hex2dec - convert hexadecimal string to decimal value
+#
+# parameters:
+#   $1 - input value representing a hexadecimal string
+#
+# stdout:
+#   input value converted to decimal value
+#
+# return code:
+#   0 - stdout content is valid
+#   1 - error occured (e.g. input format is invalid)
+#
+#######################################################################################
+yf_hex2dec()
+{
+	local val="$1" out=0 chk
+	chk="${val//[0-9a-fA-F]/}"
+	[ ${#chk} -gt 0 ] && return 1
+	[ $(( ${#val} % 2 )) -ne 0 ] && return 1
+	while [ ${#val} -gt 0 ]; do
+		eval out=$(( ( out << 8 ) + 0x${val:0:2} ))
+		val="${val:2}"
+	done
+	printf "%lu" "$out"
+}
+#######################################################################################
+#
 # hex2bin - convert hexadecimal string to binary data
 #
 # parameters:
@@ -394,5 +421,31 @@ yf_pack()
 		out="$out$hex"
 	done
 	yf_hex2bin "$out"
+}
+#######################################################################################
+#
+# print_ip - print an IPv4 address in dotted-decimal format 
+#
+# parameters:
+#   $1 - string representing the IPv4 address in hexadecimal format (big endian)
+#
+# stdout:
+#   the decimal representation of the specified address as 4 decimal numbers separated
+#   by dots
+#
+# return code:
+#   0 - stdout value is valid
+#   1 - error occured, the specified parameter isn't a valid hexadecimal string
+#
+#######################################################################################
+yf_print_ip()
+{
+	local ip="$1" i1 i2 i3 i4
+	[ ${#ip} -ne 8 ] && return 1
+	while [ ${#ip} -gt 0 ]; do
+		printf "%u" $(yf_hex2dec "${ip:0:2}")
+		ip="${ip:2}"
+		[ ${#ip} -gt 0 ] && printf "."
+	done
 }
 
