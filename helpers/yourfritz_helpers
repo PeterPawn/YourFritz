@@ -555,7 +555,7 @@ yf_print_ip()
 }
 #######################################################################################
 #
-# network_interfaces - get the name(s) of all network interfaces from /proc/net/dev 
+# network_interfaces - get the name(s) of all network interfaces from sysfs 
 #
 # parameters:
 #   none
@@ -564,18 +564,20 @@ yf_print_ip()
 #   the names of network interfaces ('lo' will be filtered out)
 #
 # return code:
-#   alwasy 0 - the list will be empty in case of an error (e.g. /proc inaccessible)
+#   alwasy 0 - the list will be empty in case of an error
 #
 #######################################################################################
 yf_network_interfaces()
 {
-	sed -n -e "s|^[ ]*\([^:]*\):.*|\1|p" /proc/net/dev | grep -v "lo" | sed -e ':x;$!N;s/\n/ /;tx'
+	local sysfs=/sys
+	find $sysfs/devices/virtual/net/ -maxdepth 1 -type d -print \
+		| sed -e "s|^$sysfs/devices/virtual/net/||" -e '/^$/d' -e '/^lo$/d' \
+		| sed -e ':x;$!N;s/\n/ /;tx'
 	return 0
 }
 #######################################################################################
 #
-# wireless_interfaces - get the name(s) of all wireless interfaces from 
-#                       /proc/net/wireless
+# wireless_interfaces - get the name(s) of all wireless interfaces from sysfs 
 #
 # parameters:
 #   none
@@ -584,29 +586,71 @@ yf_network_interfaces()
 #   the names of wireless interfaces
 #
 # return code:
-#   alwasy 0 - the list will be empty in case of an error (e.g. /proc inaccessible)
+#   alwasy 0 - the list will be empty in case of an error 
 #
 #######################################################################################
 yf_wireless_interfaces()
 {
-	sed -n -e "s|^[ ]*\([^:]*\):.*|\1|p" /proc/net/wireless
+	local sysfs=/sys
+	find $sysfs/devices/virtual/net/*/wireless -maxdepth 1 -type d -print \
+		| sed -e "s|^$sysfs/devices/virtual/net/\([^/]*\)/wireless\$|\1|" -e '/^$/d' \
+		| sed -e ':x;$!N;s/\n/ /;tx'
 	return 0
 }
 #######################################################################################
 #
-# is_wireless - check, if the specified interface name is for a wireless one
+# bridge_interfaces - get the name(s) of all network bridges from sysfs 
+#
+# parameters:
+#   none
+#
+# stdout:
+#   the names of bridge interfaces
+#
+# return code:
+#   alwasy 0 - the list will be empty in case of an error
+#
+#######################################################################################
+yf_bridge_interfaces()
+{
+	local sysfs=/sys
+	find $sysfs/devices/virtual/net/*/bridge -maxdepth 1 -type d -print \
+		| sed -e "s|^$sysfs/devices/virtual/net/\([^/]*\)/bridge\$|\1|" -e '/^$/d' \
+		| sed -e ':x;$!N;s/\n/ /;tx'
+	return 0
+}
+#######################################################################################
+#
+# is_wireless_interface - check, if the specified interface name is for a wireless one
 #
 # parameters:
 #   $1 - interface to be checked
 #
 # return code:
-#   0 - the interface is listed in /proc/net/wireless
-#   1 - the interface isn't listed in /proc/net/wireless
+#   0 - the interface is a wireless device
+#   1 - the interface isn't a wireless device
 #
 #######################################################################################
 yf_is_wireless_interface()
 {
-	local if="$(sed -n -e "s|^[ ]*\($1\):.*|\1|p" /proc/net/wireless)"
-	[ ${#if} -eq 0 ] && return 1 || return 0
+	local sysfs=/sys intf="$1"
+	[ -d $sysfs/devices/virtual/net/$intf/wireless ] && return 0 || return 1
+}
+#######################################################################################
+#
+# is_bridge_interface - check, if the specified interface name is for a bridge devive
+#
+# parameters:
+#   $1 - interface to be checked
+#
+# return code:
+#   0 - the interface is a brigde device
+#   1 - the interface isn't a bridge device
+#
+#######################################################################################
+yf_is_bridge_interface()
+{
+	local sysfs=/sys intf="$1"
+	[ -d $sysfs/devices/virtual/net/$intf/bridge ] && return 0 || return 1
 }
 
