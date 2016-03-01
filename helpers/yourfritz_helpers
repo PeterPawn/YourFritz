@@ -62,6 +62,43 @@ yf_endianess()
 		fi
 	fi
 	echo $endian
+	return 0
+}
+#######################################################################################
+#
+# is_decimal - check, if input string contains only decimal digits
+#
+# parameters:
+#   $1 - input string
+#
+# return code:
+#   0 - only digits found
+#   1 - non-digit characters present
+#
+#######################################################################################
+yf_is_decimal()
+{
+	local in="${1//[0-9]/}"
+	[ ${#in} -gt 0 ] && return 1
+	return 0
+}
+#######################################################################################
+#
+# is_hexadecimal - check, if input string contains only hexadecimal digits
+#
+# parameters:
+#   $1 - input string
+#
+# return code:
+#   0 - only valid digits found
+#   1 - non-digit characters present
+#
+#######################################################################################
+yf_is_hexadecimal()
+{
+	local in="${1//[0-9a-fA-F]/}"
+	[ ${#in} -gt 0 ] && return 1
+	return 0
 }
 #######################################################################################
 #
@@ -85,6 +122,7 @@ yf_reverse_hex()
 		in="${in:2}"
 	done
 	echo "$out"
+	return 0
 }
 #######################################################################################
 #
@@ -122,6 +160,7 @@ yf_dec2hex()
 	len=$(( len << 1 ))
 	mask="%0${len}x"
 	printf "$mask" $val
+	return 0
 }
 #######################################################################################
 #
@@ -149,6 +188,7 @@ yf_hex2dec()
 		val="${val:2}"
 	done
 	printf "%lu" "$out"
+	return 0
 }
 #######################################################################################
 #
@@ -176,6 +216,7 @@ yf_hex2bin()
 		val="${val:2}"
 	done
 	printf "$out"
+	return 0
 }
 #######################################################################################
 #
@@ -198,6 +239,7 @@ yf_str2hex()
 		printf "%02x" \'${1:$i:1}
 		i=$(( i + 1 ))
 	done	
+	return 0
 }
 #######################################################################################
 #
@@ -240,6 +282,7 @@ yf_bin2hex()
 		fi
 		let i+=1
 	done
+	return 0
 }
 #######################################################################################
 #
@@ -311,6 +354,7 @@ yf_ipv4addr()
 yf_uppercase()
 {
 	tr "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+	return $?
 }
 #######################################################################################
 #
@@ -333,6 +377,7 @@ yf_uppercase()
 yf_uppercase()
 {
 	tr "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	return $?
 }
 #######################################################################################
 #
@@ -421,6 +466,7 @@ yf_pack()
 		out="$out$hex"
 	done
 	yf_hex2bin "$out"
+	return 0
 }
 #######################################################################################
 #
@@ -447,5 +493,62 @@ yf_print_ip()
 		ip="${ip:2}"
 		[ ${#ip} -gt 0 ] && printf "."
 	done
+	return 0
+}
+#######################################################################################
+#
+# network_interfaces - get the name(s) of all network interfaces from /proc/net/dev 
+#
+# parameters:
+#   none
+#
+# stdout:
+#   the names of network interfaces ('lo' will be filtered out)
+#
+# return code:
+#   alwasy 0 - the list will be empty in case of an error (e.g. /proc inaccessible)
+#
+#######################################################################################
+yf_network_interfaces()
+{
+	sed -n -e "s|^[ ]*\([^:]*\):.*|\1|p" /proc/net/dev | grep -v "lo" | sed -e ':x;$!N;s/\n/ /;tx'
+	return 0
+}
+#######################################################################################
+#
+# wireless_interfaces - get the name(s) of all wireless interfaces from 
+#                       /proc/net/wireless
+#
+# parameters:
+#   none
+#
+# stdout:
+#   the names of wireless interfaces
+#
+# return code:
+#   alwasy 0 - the list will be empty in case of an error (e.g. /proc inaccessible)
+#
+#######################################################################################
+yf_wireless_interfaces()
+{
+	sed -n -e "s|^[ ]*\([^:]*\):.*|\1|p" /proc/net/wireless
+	return 0
+}
+#######################################################################################
+#
+# is_wireless - check, if the specified interface name is for a wireless one
+#
+# parameters:
+#   $1 - interface to be checked
+#
+# return code:
+#   0 - the interface is listed in /proc/net/wireless
+#   1 - the interface isn't listed in /proc/net/wireless
+#
+#######################################################################################
+yf_is_wireless_interface()
+{
+	local if="$(sed -n -e "s|^[ ]*\($1\):.*|\1|p" /proc/net/wireless)"
+	[ ${#if} -eq 0 ] && return 1 || return 0
 }
 
