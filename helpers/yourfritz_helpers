@@ -374,6 +374,10 @@ yf_ipv4addr()
 			break
 		fi
 		if [ ${#1} -gt 0 ]; then
+			if [ $tupel -gt 255 ]; then
+				error=1
+				break
+			fi
 			addr=$(( ( addr << 8 ) + tupel ))
 			shifts=$(( shifts - 1 ))
 		else
