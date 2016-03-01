@@ -126,6 +126,60 @@ yf_reverse_hex()
 }
 #######################################################################################
 #
+# word_of - return the n-th entry from a list of words
+#
+# parameters:
+#   $1 - number of word to retrieve
+#   $2 - word list 
+#
+# stdout:
+#   the n-th word
+#
+# return code:
+#   0 - value found
+#   1 - invalid parameter ($1 isn't a decimal number or 0)
+#   2 - word list is too short to find the n-th entry
+#
+#######################################################################################
+yf_word_of()
+{
+	local n=$1 i=0 word
+	yf_is_decimal $n
+	[ $? -ne 0 ] && return 1
+	[ $n -lt 1 ] && return 1
+	for word in $2; do
+		i=$(( i + 1 ))
+		[ $i -eq $n ] && echo "$word" && return 0
+	done
+	return 2
+}
+#######################################################################################
+#
+# index_of - return the index of the specified word in the specified list
+#
+# parameters:
+#   $1 - word to find
+#   $2 - word list 
+#
+# stdout:
+#   the index of the word in the list
+#
+# return code:
+#   0 - value found
+#   1 - word not found in list
+#
+#######################################################################################
+yf_index_of()
+{
+	local needle="$1" haystack="$2" word i=0
+	for word in $haystack; do
+		i=$(( i + 1 ))
+		[ $word == $needle ] && echo $i && return 0
+	done
+	return 1
+}
+#######################################################################################
+#
 # dec2hex - convert decimal value to hexadecimal string of the specified length
 #           (two characters per byte)
 #
