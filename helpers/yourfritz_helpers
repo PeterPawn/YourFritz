@@ -126,6 +126,26 @@ yf_reverse_hex()
 }
 #######################################################################################
 #
+# count_of - return the count of words in the specified list
+#
+# parameters:
+#   $1 - word list 
+#
+# stdout:
+#   the number of (IFS-based) separate entries in $1 
+#
+# return code:
+#   always zero
+#
+#######################################################################################
+yf_count_of()
+{
+	set -- $*
+	echo $#
+	return 0
+}
+#######################################################################################
+#
 # word_of - return the n-th entry from a list of words
 #
 # parameters:
