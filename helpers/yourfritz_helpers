@@ -724,4 +724,109 @@ yf_get_bridge()
 		| sed -e "s|.*/\(.*\)\$|\1|"
 	return 0
 }
+#######################################################################################
+#
+# get_bridge_members - retrieve the bridge member names for the specified interface
+#
+# parameters:
+#   $1 - interface to be checked
+#
+# stdout:
+#   a (possibly empty) list of interface names assembled in the bridge
+#
+# return code:
+#   0 - the interface is a bridge, stdout is valid
+#   1 - the interface isn't a bridge
+#
+#######################################################################################
+yf_get_bridge_members()
+{
+	local intf="$1" sysfs
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/devices/virtual/net/$intf/brif ] || return 1
+	find $sysfs/devices/virtual/net/$intf/brif -maxdepth 1 -type l -print \
+		| sed -e "s|^$sysfs/devices/virtual/net/$intf/brif/\(.*\)\$|\1|" \
+		| sed -e ':x;$!N;s/\n/ /;tx'
+	return 0
+}
+#######################################################################################
+#
+# get_ip_addresses - retrieve the IPv4 addresses for the specified interface
+#
+# parameters:
+#   $1 - interface to be used
+#
+# stdout:
+#   a list of IPv4 addresses available at the interface                
+#
+# return code:
+#   0 - stdout is valid and contains at least one entry
+#   1 - the interface name is invalid or the interface has no IPv4 address assigned
+#
+#######################################################################################
+yf_get_ip_addresses()
+{
+	local intf="$1" addrs
+	addrs="$(ip -o -f inet addr show dev $intf | sed -n -e "s|^[0-9]*: $intf.*inet \([0-9./]*\).*|\1|p")"
+	[ ${#addrs} -eq 0 ] && return 1
+	echo $addrs
+	return 0
+}
+#######################################################################################
+#
+# get_default_gateway_address - retrieve the IPv4 addresses for the specified interface
+#
+# parameters:
+#   none
+#
+# stdout:
+#   gateway address for default route (0.0.0.0/0.0.0.0), only one should be present
+#
+# return code:
+#   0 - stdout is valid
+#   1 - no default gateway found at /proc/net/route
+#
+# remarks:
+#   Any policy based routing is silently ignored - usually it's not used on a FRITZ!Box
+#   device.
+#
+#######################################################################################
+yf_get_default_gateway_address()
+{
+	local addr
+	addr="$(sed -n -e "s|[^\t]*\t*0\{8\}\t*\([^\t]*\)\t*.*0\{8\}\t*.*\$|\1|p" /proc/net/route)"
+	[ ${#addr} -eq 0 ] && return 1
+	if [ $(yf_endianess) == L ]; then
+		addr="$(yf_reverse_hex "$addr")"
+	fi
+	yf_print_ip "$addr"
+	return $?
+}
+#######################################################################################
+#
+# get_default_gateway_interface - retrieve the interface name for the default route
+#
+# parameters:
+#   none
+#
+# stdout:
+#   interface name for the device with the default route (0.0.0.0/0.0.0.0)
+#
+# return code:
+#   0 - stdout is valid
+#   1 - no default gateway found at /proc/net/route
+#
+# remarks:
+#   Any policy based routing is silently ignored - usually it's not used on a FRITZ!Box
+#   device.
+#
+#######################################################################################
+yf_get_default_gateway_interface()
+{
+	local intf
+	intf="$(sed -n -e "s|\([^\t]*\)\t*0\{8\}\t*[^\t]*\t*.*0\{8\}\t*.*\$|\1|p" /proc/net/route)"
+	[ ${#intf} -eq 0 ] && return 1
+	echo "$intf"
+	return 0
+}
 
