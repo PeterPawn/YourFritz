@@ -1,0 +1,418 @@
+#! /bin/sh
+###########################################################################
+# USAGE-BEGIN
+#
+# find AVM's bootloader 'EVA' somewhere in your network environment
+#
+# You have to specify some parameters while calling this script, they 
+# consist of a keyword, an equal sign and the value after the equal sign. 
+#
+# The following parameters are recognized:
+#
+# FROM      - use the specified IP address as source for packets sent
+# TO        - use the specified IP address for the target device
+# INTERFACE - use the specified network interface to connect to the device
+# WAIT      - number of discovery packets to be sent (with 1 second
+#             delay in-between)
+# BLIP      - show a blip for each discovery packet sent to network on
+#             stderr
+# HOLD      - hold the target device in bootloader, connect to the FTP
+#             server and quit this session immediately, but the device
+#             will continue waiting for further FTP connections
+# SOCAT     - use the specified path to the 'socat' utility, if this is
+#             not specified, the default binary with name 'socat' is used
+#
+# The result will be written to stdout in a format suitable to be used
+# with an 'eval' command to setup some shell variables.
+#
+# EVA_FOUND - set to '1', if an EVA bootloader was found and the other 
+#             values are valid too
+# EVA_IP    - the IP address of the target device
+# 
+# Modern EVA versions are able to set-up an arbitrary address, if they're 
+# contacted with a broadcast packet on UDP port 5035. The exact format of
+# such UDP packets is unknown (as far as I know), but it looks like the
+# requested address may be specified within such a packet at offset 8 in
+# big endian format (as any normal IPv4 address). 
+# If the host used to connect to the router has multiple network interfaces
+# (the request to use an Ethernet cable is derived from the usual procedure
+# to connect to the bootloader), you must specify a hint to find the 
+# interface to be used. This can be the interface name (see above) and/or
+# the local IP address to be used. If you specify only a target IP address,
+# it has to be possible to determine a matching local interface with a 
+# suitable address or the discovery is denied.
+# It's even possible to change to local address of EVA after the first
+# contact as long as the bootloader is still active. Once the boot process
+# was interrupted, you can change the IP address as often as you want.
+#
+# The router device has to be restarted to activate the EVA loader ... have
+# a look at the descriptions/manuals, how to create a valid setup for
+# a "recovery session".
+#
+# USAGE-END
+###########################################################################
+#
+# set defaults before we parse our parameters
+#
+###########################################################################
+#
+# the path to our "socat" utility
+#
+socat="socat"
+socat_set=0
+#
+# the interface to be used
+#
+default_interface=eth0
+bind_to_interface=0
+#
+# the local IP address to be used 
+#
+default_local_ip=""
+bind_to_address="unused"
+#
+# the requested address of the router, may be used to set a non-standard
+# address for EVA
+#
+default_eva_ip="192.168.178.1"
+change_eva_ip=0
+#
+# max. number of discovery packets to be sent (with 1 second delay between)
+#
+default_wait=120
+wait_set=0
+#
+# show a "blip" for each discovery packet sent
+#
+default_blip=0
+blip_set=0
+#
+# do not interrupt the boot process by default
+#
+default_hold=0
+hold_set=0
+#
+# debug output - not accessible via a parameter yet
+#
+debug=1
+###########################################################################
+#
+# constants 
+#
+###########################################################################
+#
+# port to be used for discovery broadcast
+#
+discovery_port=5035
+#
+# pause between two discovery packets - the bootloader will only listen for
+# 5 seconds after power-on
+#
+discovery_interval=1
+###########################################################################
+#
+# internal functions
+#
+###########################################################################
+#
+# include yourfritz_helpers
+#
+source yourfritz_helpers
+#
+# debug output
+#
+debug()
+{
+	if [ $debug -eq 1 ]; then
+		echo "$*" 1>&2
+	fi
+}
+#
+# check IPv4 address
+#
+validate_ipv4_address()
+{
+	local ip="$1" hex
+	hex="$(yf_ipv4addr "$ip")"
+	[ $? -ne 0 ] && return 1
+	yf_print_ip "$hex"
+	return 0
+}
+#
+# validator for 0 or 1 as replacement for "false" and "true"
+#
+validate_zero_or_one()
+{
+	if [ x$1 == x0 -o x$1 == x1 ]; then
+		echo "$1"
+		return 0
+	fi
+	return 1
+}
+#
+# validator for decimal values
+#
+validate_decimal()
+{
+	if yf_is_decimal "$1"; then
+		echo "$1"
+		return 0
+	fi
+	return 1
+}
+#
+# validator for network interface names
+#
+validate_interface()
+{
+	local intf="$1" intfs="$(yf_network_interfaces)" n
+	n=$(yf_index_of "$intf" "$intfs")
+	[ $? -ne 0 ] && return 1 || return 0
+}
+#
+# check specified parameters
+#
+check_parameter()
+{
+	local name="$1" value="$2" detector="$3" expected="$4" validator="$5" unchanged=1 comp
+	comp="$(eval printf \$$detector)"
+	yf_is_decimal $expected
+	if [ $? -eq 1 ]; then
+		[ x$comp != x$expected ] && unchanged=0
+	else
+		[ $comp -ne $expected ] && unchanged=0
+	fi
+	if [ $unchanged -ne 1 ]; then
+		echo "The parameter '$name' can't be specified more than once." 1>&2
+		return 1
+	fi
+	if [ ${#validator} -gt 0 ] && [ x"${validator}" != x"-" ]; then
+		eval $validator "$value"
+		if [ $? -ne 0 ]; then
+			echo "The value '$value' specified for '$name' is invalid." 1>&2
+			return 1
+		fi
+	else
+		printf "$value"
+	fi
+	return 0
+}
+#
+# compute EVA address from the given subnet and check if it's unused yet
+#
+compute_eva_address()
+{
+	local subnet="$1" first_ip last_ip my_ip start end
+	first_ip="$(yf_get_first_host_in_subnet "$subnet")"
+	[ $? -ne 0 ] && return 1
+	last_ip="$(yf_get_last_host_in_subnet "$subnet")"
+	[ $? -ne 0 ] && return 1
+	my_ip="$(yf_print_ip "$(yf_ipv4addr "${subnet%%/*}")")"
+	start=$(yf_hex2dec "$first_ip")
+	end=$(yf_hex2dec "$last_ip")
+	while [ $start -le $end ]; do
+		if ! ping -c 1 -I "$my_ip" -W 1 "$(yf_print_ip $(yf_dec2hex "$start"))" 2>/dev/null 1>&2; then
+			# no answer received for our icmp echo-request, possibly usable
+			echo "$(yf_print_ip $(yf_dec2hex "$start"))"
+			return 0
+		fi
+		start=$(( start + 1 ))
+	done
+	return 1	
+}
+###########################################################################
+#
+# process command line parameters
+#
+###########################################################################
+while [ ${#1} -gt 0 ]; do
+	name="${1%%=*}"
+	value="${1#*=}"
+	shift
+	case "$name" in
+		INTERFACE)
+			default_interface="$(check_parameter "$name" "$value" bind_to_interface 0 validate_interface)"
+			[ $? -ne 0 ] && exit 1 || bind_to_interface=1
+			;;
+		FROM)
+			default_local_ip="$(check_parameter "$name" "$value" bind_to_address "unused" validate_ipv4_address)"
+			[ $? -ne 0 ] && exit 1 || bind_to_address="set"
+			;;
+		TO)
+			default_eva_ip="$(check_parameter "$name" "$value" change_eva_ip 0 validate_ipv4_address)"
+			[ $? -ne 0 ] && exit 1 || change_eva_ip=1
+			;;
+		SOCAT)
+			socat="$(check_parameter "$name" "$value" socat_set 0 -)"
+			[ $? -ne 0 ] && exit 1 || socat_set=1
+			;;
+		BLIP)
+			default_blip="$(check_parameter "$name" "$value" blip_set 0 validate_zero_or_one)"
+			[ $? -ne 0 ] && exit 1 || blip_set=1
+			;;
+		HOLD)
+			default_hold="$(check_parameter "$name" "$value" hold_set 0 validate_zero_or_one)"
+			[ $? -ne 0 ] && exit 1 || hold_set=1
+			;;
+		WAIT)
+			default_wait="$(check_parameter "$name" "$value" wait_set 0 validate_decimal)"
+			[ $? -ne 0 ] && exit 1 || wait_set=1
+			;;
+		*)
+			echo "Unknown parameter $name calling $0." 1>&2
+			exit 1
+			;;
+	esac
+done
+###########################################################################
+#
+# check, if a suitable "socat" utility is available 
+#
+###########################################################################
+if [ $socat_set -ne 1 ]; then
+	socat="$(which socat)"
+	if [ $? -eq 127 ]; then
+		orgifs="$IFS"
+		IFS=:
+		set -- $PATH
+		IFS="$orgifs"
+		socat="socat"
+		while [ ${#1} -gt 0 ]; do
+			if [ -x $1/$socat ]; then
+				socat="$1/$socat"
+				break
+			fi
+		done
+	fi
+fi
+if [ ! -x "$socat" ]; then
+	echo "\"$socat\" utility couldn't be found or isn't executable." 1>&2
+	exit 1
+fi
+############################################################################
+#
+# prepare our temporary directory and the trap to remove it at exit 
+#
+###########################################################################
+tmpdir=$(mktemp)
+if [ $? -ne 0 ]; then
+	tmpdir=$TMP
+	[ ${#tmpdir} -eq 0 ] && tmpdir="/tmp"
+	tmpdir="$tmpdir/tmp_$(date +%s)_$$"
+	rm -r $tmpdir
+else
+	rm -r $tmpdir
+fi
+mkdir -p $tmpdir
+trap "rm -r $tmpdir" EXIT HUP
+###########################################################################
+#
+# now it's time to let some useful operations take place
+#
+###########################################################################
+#
+# first we try to find an usable interface and a local IP address
+#
+if [ $bind_to_interface -eq 0 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
+	# no parameter was set, try to use the interface to our default gateway
+	default_interface="$(yf_get_default_gateway_interface)"
+	if [ $? -ne 0 ]; then
+		# no default gateway, check number of interfaces
+		debug "No default gateway found"
+		intfs="$(yf_network_interfaces)"
+		if [ $(yf_count_of "$intfs") -gt 1 ]; then
+			echo "More than one network interface found and none of them has a default route." 1>&2
+			echo "Use the INTERFACE parameter to select a single one." 1>&2
+			exit 1
+		fi
+		addrs="$(yf_get_ip_addresses "$intf")"
+		if [ $(yf_count_of "$addrs") -gt 0 ]; then
+			# interface has an IPv4 address, we will use this one to
+			# send our packets
+			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
+			default_local_ip="${local_ip_with_mask%%/*}"
+			default_interface="$intf"
+			bind_to_address="detected"		
+			debug "Set interface to '$intf'"
+			debug "Set local IP address to '$local_ip_with_mask'"
+		fi
+		if [ x$bind_to_address != xdetected ]; then
+			echo "No suitable interface with an IPv4 address found." 1>&2
+			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
+			exit 1
+		fi
+	else
+		debug "Using interface to default gateway"
+		addrs="$(yf_get_ip_addresses "$default_interface")"
+		if [ $(yf_count_of "$addrs") -gt 0 ]; then
+			# interface has an IPv4 address, we will use this one to
+			# send our packets
+			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
+			default_local_ip="${local_ip_with_mask%%/*}"
+			bind_to_address="detected"		
+			debug "Set interface to '$default_interface'"
+			debug "Set local IP address to '$local_ip_with_mask'"
+		else
+			echo "Something's wrong ... the interface to the default gateway has no IPv4 address." 1>&2
+			echo "This is expected as long as we're running on a FRITZ!Box device, because there" 1>&2
+			echo "the default gateway is behind 'dev dsl' and the address translation is made" 1>&2
+			echo "in a different manner by the FRITZ!OS IP stack. The 'dsl' device gets no IPv4" 1>&2
+			echo "address assigned in this case."
+			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
+			exit 1
+		fi
+	fi
+	default_eva_ip="$(compute_eva_address "$local_ip_with_mask")"
+	[ $? -ne 0 ] && exit 1
+	debug "Set EVA IP address to '$default_eva_ip'"
+elif [ $bind_to_interface -eq 1 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
+	# only an interface name was given, use the first address from this interface
+	addrs="$(yf_get_ip_addresses $default_interface)"
+fi
+#
+# prepare the packet to be sent as broadcast
+#
+discover_packet_file="$tmpdir/discover.packet"
+yf_pack 16 0 8 18 8 1 L32 1 BIP4 $default_eva_ip 32 0 >$discover_packet_file
+#
+# setup a listener on discovery port
+#
+main=$$
+$socat UDP4-LISTEN:$discovery_port,bind=$default_local_ip FILE:$tmpdir/response,creat &
+listener=$!
+$socat PIPE:$tmpdir/broadcast,ignoreeof UDP4-DATAGRAM:255.255.255.255:$discovery_port,broadcast,bind=$default_local_ip &
+broadcaster=$!
+loopcount=0
+[ $default_blip -eq 1 ] && printf "Sending broadcast packets: " 1>&2
+killed=0
+trap "killed=1" INT 
+while [ $killed -eq 0 -a $loopcount -lt $default_wait ]; do
+	sleep 1
+	[ ! -d /proc/$listener ] && killed=1 && break
+	cat $discover_packet_file >$tmpdir/broadcast
+	[ $default_blip -eq 1 ] && printf "." 1>&2
+	loopcount=$(( loopcount + 1 ))
+done
+[ $default_blip -eq 1 ] && printf "\r\x1B[K" 1>&2
+[ -d /proc/$listener ] && kill $listener 2>/dev/null 1>&2
+[ -d /proc/$broadcaster ] && kill $broadcaster 2>/dev/null 1>&2
+wait $listener
+wait $broadcaster
+response=$(cat $tmpdir/response 2>/dev/null | yf_bin2hex)
+if [ ${#response} -gt 0 -a x${response:8:8} == x02000000 ]; then 
+	# we assume, that the LE value of 2 above represents an answer and
+	# if it's found, we assume the next 4 bytes are the IPv4 address
+	# in LE format
+	ip=$(yf_print_ip ${response:22:2}${response:20:2}${response:18:2}${response:16:2})
+	echo "EVA_FOUND=1"
+	echo "EVA_IP=$ip"
+	if [ $default_hold -eq 1 ]; then
+	 	echo "QUIT" | socat TCP4:$ip:21 STDOUT 2>/dev/null 1>&2
+		echo "boot sequence interrupted" 1>&2
+	fi
+	rc=0
+else
+	echo "EVA_FOUND=0"
+	rc=1
+fi
+exit $rc
