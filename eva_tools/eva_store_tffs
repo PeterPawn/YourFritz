@@ -1,0 +1,265 @@
+#! /bin/sh
+#
+# file to transfer to the router
+#
+mtdname="$1"
+filename="$2"
+#
+# some constants to be changed, if needed
+#
+box_ip=192.168.178.1
+box_port=21
+box_user=adam2
+box_pass=adam2
+passive_ftp="P@SW"
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+writefifo=$tmpdir/write
+readfifo=$tmpdir/read
+storefifo=$tmpdir/store
+outstream=7
+instream=8
+upstream=9
+logstream=3
+logfile=$0.log
+#
+# helper functions
+#
+read_ftp_response()
+{
+	local line="   -" rc=0 instream="$1" log="$2"
+	while read -u $instream -r line; do
+		[ ! -z "$log" ] && echo "$line" >&$log
+		[ "${line:3:1}" != "-" ] && break
+	done
+	rc=$?
+	echo "$line"
+	return $rc
+}
+write_ftp_command()
+{
+	local outstream="$2" cmd="$1" log="$3"
+	[ ! -z "$log" ] && echo "$cmd" >&$log
+	echo "$cmd" >&$outstream
+}
+login_to_box()
+{
+	local instream="$1" outstream="$2" log="$3" lines=0
+	write_ftp_command "USER $box_user" $outstream $log
+	while [ $lines -lt 10 ]; do
+		line="$(read_ftp_response $instream $log)"
+		ec=${line:0:3}
+		if [ x$ec == x331 ]; then
+			write_ftp_command "PASS $box_pass" $outstream $log
+		else
+			if [ x$ec == x230 ]; then
+				return 0
+			fi
+		fi
+		lines=$(( lines++ ))
+	done
+}
+upload_image()
+{
+	local instream="$1" outstream="$2" log="$3" mtd="$4" file="$5"
+	eval "exec $upstream<>$storefifo"
+	if [ $? -ne 0 ]; then
+		return 1
+	fi
+	write_ftp_command "TYPE I" $outstream $log
+	line="$(read_ftp_response $instream $log)"
+	ec=${line:0:3}
+	if [ x$ec != x200 ]; then
+		eval "exec $upstream>&-"
+		rm $storefifo
+		return 1
+	fi
+	write_ftp_command "MEDIA FLSH" $outstream $log
+	line="$(read_ftp_response $instream $log)"
+	ec=${line:0:3}
+	if [ x$ec != x200 ]; then
+		eval "exec $upstream>&-"
+		rm $storefifo
+		return 1
+	fi
+	write_ftp_command "$passive_ftp" $outstream $log
+	line="$(read_ftp_response $instream $log)"
+	ec=${line:0:3}
+	if [ x$ec == x227 ]; then
+		data_conn=$(echo $line | sed -n -e 's/.*(\([0-9]*\),\([0-9]*\),\([0-9]*\),\([0-9]*\),\([0-9]*\),\([0-9]*\)).*/data_ip=\1.\2.\3.\4 data_port=\$(( \5 * 256 + \6 ))/p')
+		if [ ${#data_conn} -eq 0 ]; then
+			eval "exec $upstream>&-"
+			return 1
+		fi
+		eval "$data_conn"
+		nc -w 3 $data_ip $data_port <&$upstream 2>/dev/null 1>&2 &
+		data_connection=$!
+		sleep 1
+		write_ftp_command "STOR $mtd" $outstream $logstream
+		line="$(read_ftp_response $instream $log)"
+		ec=${line:0:3}
+		if [ x$ec == x150 ]; then
+			cat $file >$storefifo
+			line="$(read_ftp_response $instream $log)"
+			ec=${line:0:3}
+			if [ x$ec == x226 ]; then
+				if [ -d /proc/$data_connection ]; then
+					kill $data_connection 2>/dev/null &
+					wait $data_connection 2>/dev/null
+				fi
+				data_connection=""
+				eval "exec $upstream>&-"
+				rm $storefifo
+				return 0
+			fi
+			eval "exec $upstream>&-"
+			rm $storefifo
+			return 1
+		else
+			eval "exec $upstream>&-"
+			rm $storefifo
+			return 1
+		fi
+	else
+		eval "exec $upstream>&-"
+		rm $storefifo
+		return 1
+	fi
+}
+#
+# check file size
+#
+if [ x$filename == x ]; then
+	echo "Missing file name."
+	exit 1
+fi
+filesize=$(stat -c %s $filename)
+if [ $? -ne 0 ]; then
+	echo "Missing file '$filename'"
+	exit 1
+fi
+#
+# check, if "mkfifo" and "nc" are present and usable
+#
+mkfifo 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'mkfifo' command."
+	exit 1
+fi
+nc 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'nc' command."
+	exit 1
+fi
+#
+# build redirections for FTP with "nc"
+#
+mkdir -p $tmpdir
+mkfifo $writefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating write fifo $writefifo."
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $readfifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating read fifo $readfifo."
+	rm $writefifo
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $storefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating upload fifo $storefifo."
+	rm $writefifo
+	rm $readfifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $outstream<>$writefifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting write fifo to output stream."
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $instream<>$readfifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting read fifo to input stream."
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $logstream<>$logfile"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting log stream to log file."
+	eval "exec $instream>&-"
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+#
+# now open a connection to the box
+#
+nc $box_ip $box_port <&$outstream >&$instream 2>/dev/null &
+control_connection=$!
+data_connection=""
+line="$(read_ftp_response $instream $logstream)"
+ec=${line:0:3}
+if [ x$ec == x220 ]; then
+	login_to_box $instream $outstream $logstream
+	if [ $? -eq 0 ]; then
+		write_ftp_command "SYST" $outstream $logstream
+		line="$(read_ftp_response $instream $logstream)"
+		ec=${line:0:3}
+		if [ x$ec == x215 ]; then
+			syst=$(echo "$line" | sed -n -e "s/.*\(AVM EVA\).*/\1/p")
+			if [ ${#syst} -ne 0 ]; then
+				echo "Found AVM bootloader: ${line:4}"
+				upload_image $instream $outstream $logstream $mtdname $filename
+				if [ $? -eq 0 ]; then
+					echo "Image uploaded to device."
+				fi
+			else
+				echo "Unexpected system found: ${line:4}"
+			fi
+		fi
+	else
+		echo "Login failed."
+	fi
+else
+	echo "Error connecting to FRITZ!Box boot loader."
+fi
+if [ ${#data_connection} -ne 0 ]; then
+	if [ -d /proc/$data_connection ]; then
+		kill $data_connection 2>/dev/null &
+		wait $data_connection 2>/dev/null
+	fi
+fi
+if [ ${#control_connection} -ne 0 ]; then
+	if [ -d /proc/$control_connection ]; then
+		kill $control_connection 2>/dev/null &
+		wait $control_connection 2>/dev/null
+	fi
+fi
+eval "exec $logstream>&-"
+eval "exec $instream>&-"
+eval "exec $outstream>&-"
+rm $writefifo
+rm $readfifo
+rm -r $tmpdir
+exit 1
