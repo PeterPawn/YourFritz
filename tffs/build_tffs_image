@@ -30,7 +30,7 @@ source yourfritz_helpers
 # segment header with the earliest value, will be incremented with each new
 # version written to TFFS
 #
-yf_pack 16 1 16 4 8 255 8 255 8 255 8 254
+yf_pack B16 1 B16 4 8 255 8 255 8 255 8 254
 #
 # add name table
 #
