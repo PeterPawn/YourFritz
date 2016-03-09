@@ -319,6 +319,32 @@ yf_str2hex()
 }
 #######################################################################################
 #
+# from_right - left trim the specified string to the specified length
+#
+# parameters:
+#   $1 - input string
+#   $2 - remaining characters in string after cutting from left
+#
+# stdout:
+#   output string                                                                
+#
+# return code:
+#   0 - no error 
+#   1 - invalid parameter (missing or non-numeric length)
+#
+#######################################################################################
+yf_from_right()
+{
+	local in="$1" len="$2" start
+	yf_is_decimal $len || return 1
+	[ $len -gt 0 ] || return 1
+	start=$(( ${#in} - $len ))
+	[ $start -lt 0 ] && return 1
+	echo "${in:$start}"
+	return 0
+}
+#######################################################################################
+#
 # bin2hex - convert binary data its hexadecimal representation (via base64 utility)
 #
 # parameters:
