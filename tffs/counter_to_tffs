@@ -1,0 +1,99 @@
+#! /bin/sh
+##################################################################################
+#
+# prepare a (partial) TFFS image from a counter dump file (from EVA FTP session)
+#
+##################################################################################
+#
+# TFFS entries are built of:
+#
+# offset length meaning
+#    0      2   node ID - 256-511 reserved for environment values, extended with
+#               bb0-bb32 (0x200-0x21f) beyond this limit, < 256 used for zlib
+#               compressed config settings (accessible via TFFS driver) and some
+#               counters exist with IDs in the range of 0x400-0x407
+#    2      2   length of data following this header (in native endianess of the
+#               target device), including the terminating NUL for the string
+#    4      n	data for this entry
+#
+# Each entry is aligned on the next 4-byte boundary, if the length isn't integral.
+#
+##################################################################################
+#
+# The counter file (usually read from EVA with "RETR count") is expected on
+# stdin and the binary output data is written to stdout.
+#
+##################################################################################
+#
+# some constants
+#
+##################################################################################
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+cntfile=$tmpdir/counter
+##################################################################################
+#
+# helper functions
+#
+##################################################################################
+source bin/yourfritz_helpers
+##################################################################################
+#
+# cleanup at exit
+#
+##################################################################################
+trap "rm -r $tmpdir 2>/dev/null" EXIT HUP
+##################################################################################
+#
+# create temporary directory and store stdin (it contains our counter file)
+#
+##################################################################################
+mkdir -p $tmpdir
+sed -e "s|^\([^ ]*\)[ ]*\(.*\)\r\+$|name=\"\1\" value=\"\2\"|" >$cntfile
+##################################################################################
+#
+# process environment file
+#
+##################################################################################
+out=""
+counters="run_years run_hours run_days run_mounths reboot_major reboot_minor"
+# yes, the wrong spelling of "months" is spread across all (or at least most)
+# models, as far as I could discover 
+ids="0405 0402 0403 0404 0400 0401"
+lens="4 4 4 4 8 4"
+for counter in $counters; do
+	eval $counter=-1
+done
+while read line; do
+	eval $line
+	if ! yf_is_decimal $value; then
+		# some devices (e.g. 6490) return strange values ... 
+		value=0
+	fi
+	index=$(yf_index_of "$name" "$counters")
+	if [ $? -ne 0 ]; then
+		echo "unknown name '$name' found in counter file" 1>&2
+	else
+		eval $name=$(( -1 << $value ))
+	fi
+done <$cntfile
+index=0
+for counter in $counters; do
+	index=$(( index + 1 ))
+	id=$(yf_word_of $index "$ids")
+	len=$(yf_word_of $index "$lens")
+	eval value=\$$counter
+	val="$(printf "%0x" $value)"
+	val="$(yf_from_right "$val" $(( len * 2 )))"
+	val="$(yf_reverse_hex "$val")"
+	entry="$id$(yf_dec2hex $len 2)$val"
+	out="$out$entry"
+done
+yf_hex2bin "$out"
+##################################################################################
+#
+# regular end of script reached
+#
+##################################################################################
+rm -r $tmpdir
+exit 0

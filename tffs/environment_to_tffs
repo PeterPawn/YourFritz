@@ -1,0 +1,96 @@
+#! /bin/sh
+##################################################################################
+#
+# prepare a (partial) TFFS image from an environment file
+#
+##################################################################################
+#
+# TFFS entries are built of:
+#
+# offset length meaning
+#    0      2   node ID - 256-511 reserved for environment values, extended with
+#               bb0-bb32 (0x200-0x21f) beyond this limit, < 256 used for zlib
+#               compressed config settings (accessible via TFFS driver) and some
+#               counters exist with IDs in the range of 0x400-0x407
+#    2      2   length of data following this header (in native endianess of the
+#               target device), including the terminating NUL for the string
+#    4      n	data for this entry
+#
+# Each entry is aligned on the next 4-byte boundary, if the length isn't integral.
+#
+##################################################################################
+#
+# The name table is expected as file "kernel.map", if it's located somewhere else
+# or has a different name, it has to be specified as first and only parameter.
+#
+# The environment file (usually read from EVA with "RETR env") is expected on
+# stdin and the binary output data is written to stdout.
+#
+##################################################################################
+#
+# some constants
+#
+##################################################################################
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+envfile=$tmpdir/environment
+##################################################################################
+#
+# helper functions
+#
+##################################################################################
+source bin/yourfritz_helpers
+##################################################################################
+#
+# check, if our name table is present
+#
+##################################################################################
+[ -z $1 ] && nametable=kernel.map || nametable="$1"
+if ! [ -r $nametable_src ]; then
+	echo "name table mappings missing" 1>&2
+	exit 1	
+fi
+##################################################################################
+#
+# cleanup at exit
+#
+##################################################################################
+trap "rm -r $tmpdir 2>/dev/null" EXIT HUP
+##################################################################################
+#
+# create temporary directory and store stdin (it contains our environment file)
+#
+##################################################################################
+mkdir -p $tmpdir
+sed -e "s|^\([^ \t]*\)[ \t]*\(.*\)\r\+$|name=\"\1\" value=\"\2\"|" >$envfile
+##################################################################################
+#
+# process environment file
+#
+##################################################################################
+out=""
+while read line; do
+	eval $line
+	index=$(sed -n -e "s|^\([0-9]*\)[ \t]*$name\$|\1|p" $nametable)
+	if [ ${#index} -gt 0 ]; then
+		value="$(echo -n "$value" | yf_bin2hex)00"
+		nodeid="$(yf_dec2hex "$index" 2)"
+		len=$(( ${#value} / 2 ))
+		length="$(yf_dec2hex $len 2)"
+		out="$out$nodeid$length$value"
+		if [ $(( len % 4 )) -ne 0 ]; then
+			fill="$(yf_dec2hex 0 $(( 4 - ( len % 4 ) )))"
+			out="$out$fill"
+		fi
+	else
+		echo "name table entry for '$name' not found, value ignored" 1>&2
+	fi
+done <$envfile
+yf_hex2bin "$out"
+##################################################################################
+#
+# regular end of script reached
+#
+##################################################################################
+rm -r $tmpdir
+exit 0

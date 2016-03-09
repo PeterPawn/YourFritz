@@ -1,0 +1,89 @@
+#! /bin/sh
+##################################################################################
+#
+# dissect a TFFS dump into environment, counter, name table (if present) and 
+# one single file per "file node" - the deflated content remains unchanged
+#
+##################################################################################
+#
+# TFFS entries are built of:
+#
+# offset length meaning
+#    0      2   node ID - 256-511 reserved for environment values, extended with
+#               bb0-bb32 (0x200-0x21f) beyond this limit, < 256 used for zlib
+#               compressed config settings (accessible via TFFS driver) and some
+#               counters exist with IDs in the range of 0x400-0x407
+#    2      2   length of data following this header (in native endianess of the
+#               target device), including the terminating NUL for the string
+#    4      n	data for this entry
+#
+# Each entry is aligned on the next 4-byte boundary, if the length isn't integral.
+#
+##################################################################################
+#
+# The TFFS dump file (created with "cat" or built from a dumped partition within 
+# the new "extended" Support data) is expected on stdin and is dissected into 
+# files under a temporary location. The name of this temporary directory is
+# presented on stdout and the caller is responsible for the later deletion.
+#
+##################################################################################
+#
+# some constants
+#
+##################################################################################
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+tffsdump=$tmpdir/tffsdump
+##################################################################################
+#
+# helper functions
+#
+##################################################################################
+source bin/yourfritz_helpers
+##################################################################################
+#
+# create temporary directory and store stdin (it contains our TFFS dump file)
+#
+##################################################################################
+mkdir -p $tmpdir
+cat - >$tffsdump
+##################################################################################
+#
+# process environment file
+#
+##################################################################################
+offset=0
+while true; do
+	header="$(dd if=$tffsdump bs=4 skip=$(( offset / 4 )) count=1 2>/dev/null | yf_bin2hex)"
+	if [ ${#header} -eq 0 ]; then
+		echo "unexpected error reading TFFS dump" 1>&2
+		exit 1
+	fi
+	if [ ${header:0:4} == ffff ]; then
+		# end of used area reached
+		break
+	fi
+	id="${header:0:4}"
+	length="${header:4:4}"
+	len=$(yf_hex2dec $length)
+	if [ "$id" != "0000" ]; then
+		start=$(( offset + 4 ))
+		if [ -f $tmpdir/$id.bin ]; then
+			echo "unexpected duplicate entry found for id 0x$id" 1>&2
+		else
+			dd if=$tffsdump of=$tmpdir/$id.bin bs=1 skip=$start count=$len 2>/dev/null
+			dec_id=$(yf_hex2dec $id)
+			if [ $dec_id -lt 256 -a $dec_id -gt 1 ]; then
+				printf "\x1f\x8b\x08\x00\x00\x00\x00\x00" | cat - $tmpdir/$id.bin | gzip -dc 2>/dev/null >$tmpdir/$id.inflated
+			fi
+		fi
+	fi
+	offset=$(( offset + 4 + $(( ( len + 3 ) & ~3 )) ))
+done 
+echo $tmpdir
+##################################################################################
+#
+# regular end of script reached
+#
+##################################################################################
+exit 0
