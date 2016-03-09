@@ -41,13 +41,9 @@ nametable_version=510
 out=""
 while read id name; do
 	hex_id="$(yf_dec2hex $id 4)"
-	echo "hex_id=$hex_id" 1>&2
 	len=$(( ( ${#name} + 1 + 3 ) & ~3 ))
-	echo "len=$len" 1>&2
 	hex_name="$(printf "%s" "$name" | yf_bin2hex)"
-	echo "name=$hex_name" 1>&2
 	fill=$(( len - ${#name} ))
-	echo "fill=$fill" 1>&2
 	entry="$hex_id$hex_name"
 	while [ $fill -gt 0 ]; do
 		entry="${entry}00"
