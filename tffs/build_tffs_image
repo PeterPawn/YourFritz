@@ -1,0 +1,68 @@
+#! /bin/sh
+##################################################################################
+#
+# prepare a full TFFS image containing the name table, the environment settings
+# and the counters
+#
+# Parameters:
+#
+# $1 - path to name table file
+# $2 - path to environment file
+# $3 - path to counters file
+# $n - additional file(s) to be included; the TFFS node ID is determined by the
+#      name of the file (that means, it has to be the 4-character hexadecimal ID
+#      to be used, e.g. 0029 for "provider_addtive.tar") and the content has to be
+#      the (zlib) deflated text (or binary data); the name may carry any suffix 
+#      as "extension" - "0029.bin" is a valid one.
+#
+##################################################################################
+#
+# helper functions
+#
+##################################################################################
+source yourfritz_helpers
+##################################################################################
+#
+# create the image now
+#
+##################################################################################
+#
+# segment header with the earliest value, will be incremented with each new
+# version written to TFFS
+#
+yf_pack 16 1 16 4 8 255 8 255 8 255 8 254
+#
+# add name table
+#
+nametable_to_tffs <"$1"
+#
+# add environment
+#
+environment_to_tffs "$1" <"$2"
+#
+# add counters
+#
+counter_to_tffs <"$3"
+#
+# add optional files
+#
+shift 3
+for name in $*; do
+	id="${name##*/}"
+	id="${id%%.*}"
+	content="$(cat "$name" | yf_bin2hex)"
+	len=$(( ${#content} / 2 ))
+	out="$id$(yf_dec2hex $len 2)$content"
+	fill=$(( ( ( len + 3 ) & ~3 ) - len ))
+	while [ $fill -gt 0 ]; do
+		out="${out}00"
+		fill=$(( fill - 1 ))
+	done
+	yf_hex2bin "$out"
+done
+##################################################################################
+#
+# regular end of script reached
+#
+##################################################################################
+exit 0
