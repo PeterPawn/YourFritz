@@ -39,7 +39,7 @@ envfile=$tmpdir/environment
 # helper functions
 #
 ##################################################################################
-source bin/yourfritz_helpers
+source yourfritz_helpers
 ##################################################################################
 #
 # check, if our name table is present

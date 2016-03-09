@@ -39,7 +39,7 @@ tffsdump=$tmpdir/tffsdump
 # helper functions
 #
 ##################################################################################
-source bin/yourfritz_helpers
+source yourfritz_helpers
 ##################################################################################
 #
 # create temporary directory and store stdin (it contains our TFFS dump file)
