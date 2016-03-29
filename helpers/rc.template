@@ -1,0 +1,122 @@
+#! /bin/sh
+#####################################################################################
+#                                                                                   #
+# initialization script template - try to keep it independent from fixed path and   #
+# file names to make it reusable from different image sources and with different    #
+# image filesystem types                                                            #
+#                                                                                   #
+#####################################################################################
+my_script="$0"
+if [ ${#PKG_NAME} -gt 0 ]; then # environment variable set, no need to grab it
+	my_package="$PKG_NAME"
+else # grab the package name from our mountpoint ... it's the part before "/etc/"
+	my_package="${my_script%/etc/*}"
+	my_package="${my_package##*/}"
+fi	
+my_name="${my_script##*/}"
+my_environ="${my_script%%/$my_package/*}/${my_package}.${my_name}.environ"
+my_check="$(sed -n -e "s|^PKG_\([^_]*\)_SCRIPT=\"$my_script\"\$|\1|p" $my_environ)"
+if [ x$my_check != x$my_package ]; then
+	echo "Unable to find environment file." 1>&2
+	exit 1
+fi
+#####################################################################################
+#                                                                                   #
+# our service definitions                                                           #
+#                                                                                   #
+#####################################################################################
+my_service="<place your service name here>"
+my_display="<your service display name, if you need to show error messages, etc.>"
+my_executable="<the executable name as absolute path, will be prefixed with mountpoint>"
+my_pidfile="/var/run/${my_service}.pid"
+my_executable_params="<param1>"
+my_executable_params="$my_executable_params <param2>"
+my_executable_params="$my_executable_params <\$CFG_VAR - remember the escaped $>" 
+#####################################################################################
+#                                                                                   #
+# our configuration variables, feel free to set them from other sources             #
+#                                                                                   #
+#####################################################################################
+CFG_VAR="<value>"
+#####################################################################################
+#                                                                                   #
+# internal subfunctions                                                             #
+#                                                                                   #
+#####################################################################################
+#                                                                                   #
+# securely read the settings from our environment file - read each single expected  #
+# item instead to source the file without any knowledge, what it contains           #
+#                                                                                   #
+#####################################################################################
+secure_load_environment_file()
+{
+	local envfile="$1" package="$2" var val
+	local vars="SCRIPT IMAGE MOUNTEDIMAGE MOUNTPOINT MOUNTMODE IMAGE_FSTYPE IMAGE_IS_VOLATILE"
+	for var in $vars; do
+		val=$(sed -n -e "s|^PKG_${package}_${var}=\"\(.*\)\"\$|\1|p" $envfile)
+		echo "PKG_${var}=\"${val}\""
+	done
+}
+#####################################################################################
+#                                                                                   #
+# start our service(s)                                                              #
+#                                                                                   #
+#####################################################################################
+start_service()
+{
+	export LD_LIBRARY_PATH="${PKG_MOUNTPOINT}/lib:$LD_LIBRARY_PATH"
+	eval $PKG_MOUNTPOINT$my_executable $my_executable_params
+}
+#####################################################################################
+#                                                                                   #
+# stop our service(s)                                                               #
+#                                                                                   #
+#####################################################################################
+stop_service()
+{
+	local pid=$(cat $my_pidfile 2>/dev/null)
+	if [ ${#pid} -gt 0 ]; then
+		if [ -d /proc/$pid ]; then
+			kill $pid
+			wait $pid
+		fi
+	fi
+	rm $my_pidfile 2>/dev/null
+}
+#####################################################################################
+#                                                                                   #
+# end of internal subfunctions                                                      #
+#                                                                                   #
+#####################################################################################
+#                                                                                   #
+# load our environment file                                                         #
+#                                                                                   #
+#####################################################################################
+tf=/tmp/$$_$(date +%s).source
+secure_load_environment_file "$my_environ" "$my_package" >$tf
+source $tf
+rm $tf 2>/dev/null
+#####################################################################################
+#                                                                                   #
+# check our parameters                                                              #
+#                                                                                   #
+#####################################################################################
+op="$1"
+shift
+case "$op" in
+	start)
+		start_service $*
+		;;
+	stop)
+		stop_service $*
+		;;
+	restart)
+		stop_service $*
+		start_service $*
+		;;
+	*)
+		echo "Unknown parameter '$1' specified." 1>&2
+		exit 1
+		;;
+esac
+exit 0
