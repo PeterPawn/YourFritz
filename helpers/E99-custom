@@ -1,0 +1,534 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# E99-custom                                                                    #
+#                                                                               #
+# embed custom services and/or commands into the FRITZ!OS system                #
+#                                                                               #
+# All additional files (binaries, libraries, shell scripts) have to be provided #
+# within one or more filesystem images under a list of pre-defined directories. #
+#                                                                               #
+# This path may be set to /wrapper on devices with NAND flash as yaffs2 parti-  #
+# tion or to /var/media/ftp. The /var/media/ftp location is usually present on  #
+# the same models, but the 7390 is an exception here ... it doesn't contain a   #
+# wrapper partition, but the whole available NAND flash is mounted under the    #
+# path mentioned above.                                                         #
+#                                                                               #
+# You can also add other directories to this search path, even if they are not  #
+# mounted in each case (e.g. if they're on an USB storage volume). To be con-   #
+# sidered as a source of extension images, a directory has to be accessible at  #
+# execution time of this script. Any late availability (due to a very late USB  #
+# subsystem initialization or if the device is plugged-in after the system has  #
+# been started) will not lead to a new execution of this script and you've to   #
+# handle such events yourself, if you want to start any extension images from   #
+# such volumes later.                                                           #
+#                                                                               #
+# This script looks for a kernel_args keyword "custom" and if its value is set  #
+# to "off", no further action is taken. This value can be changed using a FTP   #
+# session to the bootloader within the first 5 seconds after each reboot (not   #
+# only after the device's power had an off/on cycle), if you think, this script #
+# or any other started from here is responsible for a malfunction.              #
+#                                                                               #
+# This setting can also be used to select one or more extensions to be ignored  #
+# or to be treated specially otherwise.                                         #
+# Syntax:                                                                       #
+#                                                                               #
+# custom        = key_value_set, { ( ",", key_value_set ) };                    #
+# key_value_set = key, "(", value, ")";                                         #
+# value         = package_list | search_path;                                   #
+# package_list  = package, { ( ":", package ) };                                #
+# search_path   = directory, { ( ":", directory ) };                            #
+# package       = <string>; (terminal, but limited by existing subdirectories)  #
+# filename      = package, { ( "_" | option ) };                                #
+# option        = "tmpfs" | [ "rw | "ro" ];                                     #
+# key           = "path" | "ignore" | "debug";                                  #
+#                                                                               #
+# The form "custom=off" is an exception to the EBNF above.                      #
+# You can change the locations to be searched looking for images with the       #
+# "path" key from above, but be aware that it replaces the whole setting and    #
+# you have to specify each directory from the default value (see below) again,  #
+# if you want to include additional directories this way.                       #
+#                                                                               #
+# The filesystem below these directories (only the current level, not an in-    #
+# depth lookup) is searched for files with an extension of ".custom" and the    #
+# filename in front of this extension is treated as "package" name. If it       #
+# contains an underscore character in this filename, the package name is trun-  #
+# cated there and the part behind the underscore is used to decide, how to      #
+# handle this image file while mounting it.                                     #
+#                                                                               #
+# If the underscore is followed by the string "tmpfs", the image will be copied #
+# to the tmpfs (below /var) prior to mounting it. This makes it possible to     #
+# replace the "image source" below the wrapper directory, while the package is  #
+# up and running, but it wastes space in memory. You should use this mode only  #
+# during development of a new extension package or with very tiny image files.  #
+#                                                                               #
+# Another possible use case for such "use after copy" scenarios is to avoid     #
+# any hassle while trying to unmount/eject an USB volume. If there's a loop     #
+# mount for an image from such a volume, the FRITZ!OS will not find a process   #
+# to be killed before dismounting the volume and therefore the dismount will    #
+# fail. If the USB volume is removed - without being properly dismounted first, #
+# an error in the extension package will be the usual result.                   #
+#                                                                               #
+# The filename may contain another "hint", how the image should be mounted ...  #
+# if it has a part "rw" or "ro" between underscores (or after the last one), it #
+# will be considered as the wanted access mode for this image. The default mode #
+# is assumed as "read/write", as long as the images uses an writable format and #
+# the location, where the image file resides, is writable. In other cases the   #
+# default is changed to "read only" (SquashFS images are read-only by design    #
+# and the filesystem partition (yaffs2) on NAND-based models is usually mounted #
+# read-only) and the wanted mount mode from the filename can (and will) only be #
+# set, if no other circumstances preclude it from being used.                   #
+#                                                                               #
+# There are only three filesystem image formats supported: ext2/ext3 and        #
+# squashfs.                                                                     #
+#                                                                               #
+# An advantage of the ext2 format is the opportunity, to use such an image in   #
+# read/write mode and therefore you may store local settings within such an     #
+# image.                                                                        #
+#                                                                               #
+# But the ext2 image will not be compressed and that's the biggest disadvantage #
+# here. There's not so much free space in the yaffs2 partition and you should   #
+# use the compressed SquashFS image format as often as possible, if you store   #
+# your images there.                                                            #
+#                                                                               #
+# The script uses the "testvalue" binary from AVM to distinguish between the    #
+# filesystem formats used in an extension image. The existence of the better    #
+# suited "blkid" command isn't guaranteed, if the device we're running on does  #
+# not support NAS functions (CONFIG_NAS=n) and there are some known differences #
+# in the parameter list for the "blkid" command from "util-linux" and "blkid"   #
+# applet from Busybox. So it's easier to emulate the filesystem detection and   #
+# to look into the image file to find the magic strings to guess the right      #
+# filesystem format.                                                            #
+#                                                                               #
+# The ext3 format is only a good choice, if you need a read/write filesystem    #
+# and you expect, that your filesystem isn't clean sometimes due to improper or #
+# missing dismount. If you use the image only in r/o mode, there's no advantage #
+# from ext3 over ext2.                                                          #
+#                                                                               #
+# If an extension image contains software, which needs to store its own set-    #
+# tings somewhere on the device, it's solely responsible itself to create any   #
+# configaration file needed and also to save any changes to such files.         #
+#                                                                               #
+# There should be no assumption, that a special path or file exists, if it is   #
+# not explicitely created by the extension package.                             #
+#                                                                               #
+# Each image will be mounted with a path of /var/$package, which makes it im-   #
+# possible to use a package name built from an existing subdirectory on stock   #
+# firmware (e.g. "tmp" or "media" and so forth). If you have multiple images    #
+# using the same package name, the behavior - which package will "win" - is un- #
+# defined.                                                                      #
+#                                                                               #
+# For each successfully mounted image, the contained subdirectory etc/init.d    #
+# is searched for init scripts and each of them will be called with "start" as  #
+# first and only parameter. To start these scripts, one independent instance of #
+# a Busybox shell is used for each script and they're called simultanoeously,   #
+# while any return/exit code is ignored silently.                               #
+#                                                                               #
+# If an extension expects the device to be "online" or relies on any other pre- #
+# condition for the services to be started, it has to ensure itself, that the   #
+# conditions are met.                                                           #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# our output goes to a file under /var/tmp and our error messages go directly   #
+# to /dev/console                                                               #
+#                                                                               #
+#################################################################################
+exec 2>>/var/tmp/E99-custom.error 1>>/var/tmp/E99-custom.out
+#################################################################################
+#                                                                               #
+# set some initial variables to ensure a defined state                          #
+#                                                                               #
+#################################################################################
+ignore_list=""
+debug_list=""
+packages=""
+#################################################################################
+#                                                                               #
+# some constants - makes it easier to adapt the script on different systems     #
+#                                                                               #
+#################################################################################
+custom_sources="/wrapper /var/media/ftp"
+custom_extension=".custom"
+custom_keyword="custom"
+copy_key="tmpfs"
+ro_key="ro"
+rw_key="rw"
+supported_formats="ext2 ext3 squashfs"
+supported_modes="rw+ro rw+ro ro"
+varbase="/var"
+tmpbase="/var/tmp"
+initdir="etc/init.d"
+#################################################################################
+#                                                                               #
+# only use commands from the SquashFS image mounted as root filesystem or call  #
+# commands located elsewhere with their absolute path                           #
+#                                                                               #
+#################################################################################
+PATH="/bin:/usr/bin:/sbin:/usr/sbin"
+#################################################################################
+#                                                                               #
+# find the first command line kvs, starting(!) with "custom=" to avoid errors   #
+# with multiple occurences of such a kvs                                        #
+# accept any command line parameter instead of searching /proc/cmdline, if it's #
+# specified - this means: call "E99-custom custom=..." to ignore procfs file    #
+#                                                                               #
+#################################################################################
+[ ${#1} -gt 0 ] && \
+	custom="$1" || \
+	custom="$(for p in $(cat /proc/cmdline);do echo $p; done | \
+			sed -n -e "s|^$custom_keyword=\(.*\)|\1|p" | sed -n -e "1p")"
+[ ${#custom} -eq 0 ] && custom=normal
+#################################################################################
+#                                                                               #
+# emergency switch to "kill" all extensions started this way                    #
+#                                                                               #
+#################################################################################
+[ $custom == off ] && exit 1
+#################################################################################
+#                                                                               #
+# internal subfunctions                                                         #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# build space delimited list from a double-colon delimited list and remove the  #
+# keyword in front of the list, if there's one                                  #
+#                                                                               #
+#################################################################################
+get_list()
+{
+	local kvs="$1"
+	if [ ${kvs/(*)/} != $kvs ]; then
+		kvs="${kvs#*(}"
+		kvs="${kvs%)*}"
+		kvs="${kvs//:/ }"
+		echo "$kvs"
+	else
+		echo "Invalid list format '$kvs'" 1>&2
+		return 1
+	fi	
+	return 0
+}
+#################################################################################
+#                                                                               #
+# check, if the specified word is in the list                                   #
+#                                                                               #
+#################################################################################
+is_in_list()
+{
+	local needle="$1" w
+	shift
+	for w in $*; do
+		[ $w == $needle ] && return 0
+	done
+	return 1
+}
+#################################################################################
+#                                                                               #
+# detect filesystem type of the specified image file                            #
+#                                                                               #
+#################################################################################
+get_fstype()
+{
+	local image="$1" sig
+	[ ! -e "$image" ] && return 1
+	sig=$(testvalue "$image" 4 0)
+	[ $? -ne 0 ] && return 1
+	if [ $sig -eq 1936814952 ]; then # sqsh, the BE/LE difference is solved by testvalue
+		printf "squashfs"
+		return 0
+	fi
+	sig=$(testvalue "$image" 2 1080)
+	[ $? -ne 0 ] && return 1
+	if [ $sig -eq 21487 -o $sig -eq 61267 ]; then # 1st on BE, 2nd on LE
+		jrnl=$(testvalue "$image" 4 1116)
+		if [ $sig -eq 21487 ]; then # BE machine, journal flag is 0x04000000
+			jrnl=$(( jrnl & 0x04000000 ))
+		else # LE machine, journal flag is 0x04
+			jrnl=$(( jrnl & 0x04 ))
+		fi
+		if [ $jrnl -ne 0 ]; then
+			echo "ext3" # journal is expected to be ext3, ext4 is useless for images
+		else
+			echo "ext2" # no journal means ext2
+		fi
+		return 0
+	fi
+	echo "unknown"
+	return 1
+}
+#################################################################################
+#                                                                               #
+# find the index of needle in a haystack                                        #
+#                                                                               #
+#################################################################################
+index_of()
+{
+	local needle="$1" haystack="$2" w i=0
+	for w in $haystack; do
+		i=$(( i + 1 ))
+		[ $w == $needle ] && echo $i && return 0
+	done
+	return 1
+}
+#################################################################################
+#                                                                               #
+# get the n-th word from the list                                               #
+#                                                                               #
+#################################################################################
+word_of()
+{
+	local index=$1 list="$2" w i=0
+	for w in $list; do
+		i=$(( i + 1 ))
+		[ $i -eq $index ] && echo $w && return 0
+	done
+	return 1
+}
+#################################################################################
+#                                                                               #
+# detect, if the busybox binary contains the specified applet                   #
+#                                                                               #
+#################################################################################
+is_busybox_applet()
+{
+	local applet="$1" line
+	line=$(/bin/busybox --list | sed -n -e "/^$applet\$/p")
+	[ ${#line} -gt 0 ] && return 0 || return 1
+}
+#################################################################################
+#                                                                               #
+# check, if the specified directory is a mountpoint, wraps or emulates the      #
+# busybox applet, if it's not available                                         #
+#                                                                               #
+#################################################################################
+is_mountpoint()
+{
+	local dir="$1"
+	mp=$(sed -n -e "s|[^ ]*[ ]*\($dir\)[ ]*[^ ]*[ ]*[^ ]*[ ]*[0-9]*[ ]*[0-9]*\$|\1|p" /proc/mounts)
+	[ ${#mp} -gt 0 ] && return 0 || return 1
+}
+#################################################################################
+#                                                                               #
+# find the mountpoint for the specified directory and determine, if it's writ-  #
+# able                                                                          #
+#                                                                               #
+#################################################################################
+is_mountpoint_writable()
+{
+	local dir="$1"
+	while [ ${#dir} -ge 1 ]; do
+		if is_mountpoint "$dir"; then
+			mode=$(sed -n -e "s|^[^ ]*[ ]*$dir [^ ]*[ ]*\([^,]*\),[^ ]*[ ]*[0-9]*[ ]*[0-9]*\$|\1|p" /proc/mounts)
+			[ x$mode == xrw ] && return 0 || return 1
+		fi
+		[ "$dir" == "/" ] && break || dir="${dir%/*}"
+		[ ${#dir} -eq 0 ] && dir="/"
+	done
+	return 1
+}
+#################################################################################
+#                                                                               #
+# break up a file name and check, if a part of it is the specified option tag   #
+#                                                                               #
+#################################################################################
+contains_tag()
+{
+	local tag="$1" fullname="$2" file parts p
+	file="${fullname##*/}"
+	file="${file%$custom_extension}"
+	parts="${file//_/ }"
+	for p in $parts; do
+		[ $p == $tag ] && return 0
+	done
+	return 1
+}
+#################################################################################
+#                                                                               #
+# add a script to be executed to our script listing                             #
+#                                                                               #
+#################################################################################
+add_script()
+{
+	local script="$1" package="$2" image="$3" mountedimage="$4" basedir="$5" 
+	local mode="$6" fstype="$7" tmpfs="$8" debug
+	local scriptname="${script##*/}"
+	scriptname="${scriptname%$custom_extension}"
+	cat >${basedir}.${scriptname}.environ <<EOT
+PKG_${package}_SCRIPT="$script"
+PKG_${package}_IMAGE="$image"
+PKG_${package}_MOUNTEDIMAGE="$mountedimage"
+PKG_${package}_MOUNTPOINT="$basedir"
+PKG_${package}_MOUNTMODE="$mode"
+PKG_${package}_IMAGE_FSTYPE="$fstype"
+PKG_${package}_IMAGE_IS_VOLATILE="$tmpfs"
+EOT
+	if is_in_list "$package" "$debug_list"; then
+		lf="/tmp/${script##*/}"
+		echo "/bin/busybox env PKG_NAME=\"$package\" sh -x \"$script\" start >${lf}.out 2>${lf}.error &" >>$startscript
+	else
+		echo "/bin/busybox env PKG_NAME=\"$package\" sh \"$script\" start &" >>$startscript
+	fi
+}
+#################################################################################
+#                                                                               #
+# end of internal subfunctions                                                  #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# I declare the Games officially open                                           #
+#                                                                               #
+#################################################################################
+startscript="$tmpbase/E99-custom-startup.sh"
+echo "#! /bin/sh -x" >$startscript
+#################################################################################
+#                                                                               #
+# check other possible actions to be taken in response to the "custom" value    #
+#                                                                               #
+# - spaces within the $custom value are limited here by the source ... they are #
+# interpreted as delimiter by the for..in statement and so the custom value may #
+# not contain any space characters at this point                                #
+#                                                                               #
+#################################################################################
+custom="${custom//,/ }"
+rc=0
+for p in $custom; do
+	v="$p"
+	p="${p%(*}"
+	case $p in
+		ignore)
+			ignore_list="$ignore_list $(get_list "$v")"
+			[ $? -ne 0 ] && rc=1
+			;;
+		debug)
+			debug_list="$debug_list $(get_list "$v")"
+			[ $? -ne 0 ] && rc=1
+			;;
+		path)
+			custom_sources="$(get_list "$v")"
+			echo "Extension search path changed to '$custom_sources'" 1>&2
+			[ $? -ne 0 ] && rc=1
+			;;
+		normal)
+			echo "Starting customization, no 'custom' entry found in our command line" 1>&2
+			;;
+		*)
+			echo "Unknown keyword '$p' in 'custom' variable" 1>&2
+			;;
+	esac
+done
+if [ $rc -ne 0 ]; then
+	echo "Customization terminated due to parameter error." 1>&2
+	rm $startscript 2>/dev/null
+	exit 1
+fi
+#################################################################################
+#                                                                               #
+# build an extensions list with possible packages                               #
+#                                                                               #
+#################################################################################
+for name in $(find $custom_sources -maxdepth 1 -name "*$custom_extension"); do
+	package="${name%$custom_extension}"
+	package="${package##*/}"
+	package="${package%%_*}"
+	if is_in_list "$package" "$ignore_list"; then
+		echo "Package '$package' found ($name), but it's in the ignore list." 1>&2
+	else
+		if [ -d $varbase/$package ]; then
+			if ! is_in_list "$package" "$packages"; then
+				echo "The package name '$package' cannot be used, there's a directory with this name in the stock firmware." 1>&2
+			else
+				echo "The package name '$package' is duplicate, only the first package with this name will be started." 1>&2
+			fi
+		else
+			mkdir $varbase/$package
+			packages="$packages $package"
+			eval image_$package=$name
+			echo "Found package '$package' with image file '$name'." 1>&2
+		fi
+	fi
+done
+[ ${#packages} -eq 0 ] && rm $startscript 2>/dev/null && exit 1
+#################################################################################
+#                                                                               #
+# now we loop over all found packages and mount the images as needed, no script #
+# from the images will be started here in the first round                       #
+#                                                                               #
+# after an image is mounted, we'll enumerate all startup scripts to be executed #
+# and write a line to call them to a temporary shell file, which will later be  #
+# used to start an independent process, so we can early exit from init          #
+# processing                                                                    #
+#                                                                               #
+#################################################################################
+for p in $packages; do
+	image=$(eval echo \$image_$p)
+	contains_tag "tmpfs" "$image" && copy=1 || copy=0
+	if [ $copy -eq 1 ]; then
+		mountimage="${image##*/}"
+		if contains_tag "gz" "$mountimage"; then
+			mountimage="${mountimage/_gz/}"
+			/bin/busybox gunzip -c "$image" >"$varbase/$mountimage"
+		else
+			/bin/busybox cp -a "$image" "$varbase/$mountimage"
+		fi
+		mountimage="$varbase/$mountimage"
+	else
+		mountimage="$image"
+	fi
+	fstype=$(get_fstype "$mountimage")
+	if [ $? -ne 0 ]; then
+		echo "Package '$p': Error detecting filesystem type of image '$mountimage'." 1>&2
+		continue
+	fi
+	if ! is_in_list "$fstype" "$supported_formats"; then
+		# this cannot be reached yet, it's a precaution for the future and a 
+		# more comprehensive detection of formats in get_fstype
+		echo "Package '$p': Filesystem type '$fstype' isn't supported yet." 1>&2
+		continue
+	fi
+	modes=$(word_of $(index_of "$fstype" "$supported_formats") "$supported_modes")
+	if [ $modes == "rw+ro" ]; then
+		if contains_tag "rw" "$mountimage"; then # read/write requested
+			mode=rw
+		elif contains_tag "ro" "$mountimage"; then # read-only requested
+			mode=ro
+		else # auto-detect default mode
+			mode=auto
+		fi
+		if [ $mode != ro ]; then 
+			if [ $copy -eq 1 ]; then # tmpfs, read/write is always possible
+				[ $mode == auto ] && mode=rw
+			else
+				is_mountpoint_writable "$mountimage" && mode=rw || mode=ro
+			fi
+		fi
+	else
+		mode=ro
+	fi
+	/bin/busybox mount -t $fstype -o $mode $mountimage $varbase/$p 2>/dev/null
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "Package '$p': Error $rc mounting $fstype image '$mountimage' on '$varbase/$p'." 1>&2
+		continue
+	fi
+	for s in $(find $varbase/$p/$initdir -maxdepth 1 2>/dev/null); do
+		[ -f $s ] && add_script "$s" "$p" "$image" "$mountimage" "$varbase/$p" "$mode" "$fstype" "$copy"
+	done
+done
+#################################################################################
+#                                                                               #
+# finally we have to start our temporary shell file ... we use nohup command    #
+# here to create an instance, which continues to run after we've finished       #
+#                                                                               #
+#################################################################################
+echo "wait" >>$startscript
+chmod 555 $startscript
+nohup /bin/busybox sh -c "$startscript >/dev/console 2>&1" &
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################
+exit 0
