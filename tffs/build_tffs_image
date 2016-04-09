@@ -11,9 +11,9 @@
 # $3 - path to counters file
 # $n - additional file(s) to be included; the TFFS node ID is determined by the
 #      name of the file (that means, it has to be the 4-character hexadecimal ID
-#      to be used, e.g. 0029 for "provider_addtive.tar") and the content has to be
+#      to be used, e.g. 001d for "provider_addtive.tar") and the content has to be
 #      the (zlib) deflated text (or binary data); the name may carry any suffix 
-#      as "extension" - "0029.bin" is a valid one.
+#      as "extension" - "001d.bin" is a valid one.
 #
 ##################################################################################
 #
