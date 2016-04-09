@@ -64,7 +64,7 @@ secure_load_environment_file()
 #####################################################################################
 start_service()
 {
-	export LD_LIBRARY_PATH="${PKG_MOUNTPOINT}/lib:$LD_LIBRARY_PATH"
+	export LD_LIBRARY_PATH="${PKG_MOUNTPOINT}/lib${LD_LIBRARY_PATH+:}$LD_LIBRARY_PATH"
 	eval $PKG_MOUNTPOINT$my_executable $my_executable_params
 }
 #####################################################################################
