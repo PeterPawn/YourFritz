@@ -1,0 +1,107 @@
+#! /bin/sh
+#
+# convert AVM's format of a public key file to a PEM file usable for "openssl"
+#
+# get modulus and exponent
+#
+if [ -z $1 ]; then
+	if [ -t 0 ]; then
+		echo "Usage: $0 <input_file>"
+		echo "Convert a public key file from AVM format (two lines containing modulus and exponent) to DER format."
+		exit 1
+	else
+		read modulus
+		read exponent
+	fi
+else
+	eval $(cat $1 | (read modulus; read exponent; echo "modulus=$modulus exponent=$exponent"))
+fi
+#
+# get even number of hexadecimal digits
+#
+hex_even()
+{
+	local value=$1 len count rem
+	len=$(printf %x $value)
+	count=${#len}
+	rem=$(( count % 2 ))
+	[ $rem -ne 0 ] && len="0$len"
+	echo $len
+}
+#
+# convert hexadecimal string to binary content
+#
+hex2bin()
+{
+	local val="$1" out=""
+	while [ ${#val} -gt 0 ]; do
+		out="$out\x${val:0:2}"
+		val="${val:2}"
+	done
+	printf "$out"
+}
+#
+# encode ASN.1 length field
+#
+asn1_length()
+{
+	local len=0 value=$1 res interm
+	len=$(( ${#value} / 2 ))
+	if [ $len -gt 127 ]; then
+		interm=$(hex_even $len)
+		len=$(( ( ${#interm} / 2 ) + 128 ))
+		res=$(hex_even $len)$interm
+	else
+		res=$(hex_even $len)
+	fi
+	echo $res
+}
+#
+# ASN.1 types needed
+#
+asn1_type_int=02
+asn1_type_seq=30
+asn1_type_bstr=03
+asn1_type_oid=06
+asn1_type_null=0500
+#
+# build rsa_public_key sequence (RFC 2313, chapter 7.1)
+#
+modulus_len=$asn1_type_int$(asn1_length "$modulus")
+exponent_len=$asn1_type_int$(asn1_length "$exponent")
+#
+# PKCS#1 format
+#
+rsa_pubkey_content=$modulus_len$modulus$exponent_len$exponent
+rsa_pubkey_len=$(asn1_length "$rsa_pubkey_content")
+rsa_pubkey_seq=$asn1_type_seq$rsa_pubkey_len$rsa_pubkey_content
+#
+# embed it into a BIT STRING, zero unused bits on last byte
+#
+rsa_pubkey_bitstring=00$rsa_pubkey_seq
+rsa_bitstring=$asn1_type_bstr$(asn1_length "$rsa_pubkey_bitstring")$rsa_pubkey_bitstring
+#
+# create an object of type rsaEncryption (object id
+# 1.2.840.113549.1.1.1 - RFC 2313), no parameters (NULL)
+#
+# 1 x 40 + 2 = 42 = 0x2A ==> 0x2A
+# 840 = 0x348 = multibyte = ( 0x8000 + ((0x348 << 1) & ~255) + (0x348 & 127) ) ==> 0x8648
+# 113549 = 0x1BB8D = multibyte ==> 0x86F70D
+# each 1 ==> 0x01
+#
+objectid=2A864886F70D010101
+rsa_object_rsaEncryption=$asn1_type_oid$(asn1_length "$objectid")$objectid
+rsa_algorithm=$rsa_object_rsaEncryption$asn1_type_null
+rsa_object_seq=$asn1_type_seq$(asn1_length "$rsa_algorithm")$rsa_algorithm
+#
+# outer sequence 
+#
+der_outermost_seq=$asn1_type_seq$(asn1_length "$rsa_object_seq$rsa_bitstring")
+#
+# encode it in base64 and add headers
+#
+printf "-----BEGIN PUBLIC KEY-----\n"
+hex2bin "$der_outermost_seq$rsa_object_seq$rsa_bitstring" | base64
+printf "-----END PUBLIC KEY-----\n"
+exit 0
+
