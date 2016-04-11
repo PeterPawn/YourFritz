@@ -7,7 +7,7 @@
 if [ -z $1 ]; then
 	if [ -t 0 ]; then
 		echo "Usage: $0 <input_file>"
-		echo "Convert a public key file from AVM format (two lines containing modulus and exponent) to DER format."
+		echo "Convert a public key file from AVM format (two lines containing modulus and exponent) to PEM format."
 		exit 1
 	else
 		read modulus
