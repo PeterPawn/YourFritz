@@ -1,51 +1,51 @@
 #! /bin/true
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 #######################################################################################
-#
-# summarize some often needed helper (shell) functions, which provide replacements
-# of missing features in the very limited environment of FRITZ!OS with only a small
-# selection of busybox applets and without many "generally available" commands like 
-# "awk" or "od" and so on ...
-#
-# Surely some functions may be implemented in a more effective manner ... but the
-# purpose of this file is to provide a very basic implementation of such functions
-# with as few dependencies as possible and the normal shell in a busybox-based
-# environment is "ash", which has limited capabilities too.
-#
-# Copyright (C) 2014-2016 P.Hämmerlein (http://www.yourfritz.de)
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License under
-# http://www.gnu.org/licenses/gpl-2.0.html
-# for more details.
-#
+#                                                                                     #
+# summarize some often needed helper (shell) functions, which provide replacements    #
+# of missing features in the very limited environment of FRITZ!OS with only a small   #
+# selection of busybox applets and without many "generally available" commands like   #
+# "awk" or "od" and so on ...                                                         #
+#                                                                                     #
+# Surely some functions may be implemented in a more effective manner ... but the     #
+# purpose of this file is to provide a very basic implementation of such functions    #
+# with as few dependencies as possible and the normal shell in a busybox-based        #
+# environment is "ash", which has limited capabilities too.                           #
+#                                                                                     #
+# Copyright (C) 2014-2016 P.Hämmerlein (http://www.yourfritz.de)                      #
+#                                                                                     #
+# This program is free software; you can redistribute it and/or                       #
+# modify it under the terms of the GNU General Public License                         #
+# as published by the Free Software Foundation; either version 2                      #
+# of the License, or (at your option) any later version.                              #
+#                                                                                     #
+# This program is distributed in the hope that it will be useful,                     #
+# but WITHOUT ANY WARRANTY; without even the implied warranty of                      #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                       #
+# GNU General Public License under                                                    #
+# http://www.gnu.org/licenses/gpl-2.0.html                                            #
+# for more details.                                                                   #
+#                                                                                     #
 #######################################################################################
-#
-# endianess - detect the endianess of the system we're running on
-#
-# - this will "abuse" the routing table via /proc/net/route to find a network
-#   mask which doesn't contain all ones or all zeros and the value of the most
-#   left bit will be used to determine the endianess
-# - if the "Mask" column cannot be found, "B" (big endian) is assumed, because
-#   the main purpose of this script is the usage on a FRITZ!Box device and all
-#   newer devices use big endian scheme to store data
-#
-# parameters:
-#   none
-#
-# stdout:
-#   "B" for big endian system and "L" for little endian system
-#
-# return code:
-#   always 0 (no errors, default output of "B" in case of problems)
-#
+#                                                                                     #
+# endianess - detect the endianess of the system we're running on                     #
+#                                                                                     #
+# - this will "abuse" the routing table via /proc/net/route to find a network         #
+#   mask which doesn't contain all ones or all zeros and the value of the most        #
+#   left bit will be used to determine the endianess                                  #
+# - if the "Mask" column cannot be found, "B" (big endian) is assumed, because        #
+#   the main purpose of this script is the usage on a FRITZ!Box device and all        #
+#   newer devices use big endian scheme to store data                                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   "B" for big endian system and "L" for little endian system                        #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 (no errors, default output of "B" in case of problems)                   #
+#                                                                                     #
 #######################################################################################
 yf_endianess()
 {
@@ -67,16 +67,16 @@ yf_endianess()
 	return 0
 }
 #######################################################################################
-#
-# is_decimal - check, if input string contains only decimal digits
-#
-# parameters:
-#   $1 - input string
-#
-# return code:
-#   0 - only digits found
-#   1 - non-digit characters present
-#
+#                                                                                     #
+# is_decimal - check, if input string contains only decimal digits                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - only digits found                                                             #
+#   1 - non-digit characters present                                                  #
+#                                                                                     #
 #######################################################################################
 yf_is_decimal()
 {
@@ -85,16 +85,16 @@ yf_is_decimal()
 	return 0
 }
 #######################################################################################
-#
-# is_hexadecimal - check, if input string contains only hexadecimal digits
-#
-# parameters:
-#   $1 - input string
-#
-# return code:
-#   0 - only valid digits found
-#   1 - non-digit characters present
-#
+#                                                                                     #
+# is_hexadecimal - check, if input string contains only hexadecimal digits            #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - only valid digits found                                                       #
+#   1 - non-digit characters present                                                  #
+#                                                                                     #
 #######################################################################################
 yf_is_hexadecimal()
 {
@@ -103,18 +103,20 @@ yf_is_hexadecimal()
 	return 0
 }
 #######################################################################################
-#
-# reverse_hex - reverse a hexadecimal string byte-wise
-#
-# parameters:
-#   $1 - input string
-#
-# stdout:
-#   input string in reverse order, swapped in two-character slices
-#
-# return code:
-#   always 0
-#
+#                                                                                     #
+# reverse_hex - reverse a hexadecimal string byte-wise                                #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# stdout:                                                                             #
+#   input string in reverse order, swapped in two-character slices                    #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0                                                                          #
+#                                                                                     #
+#                                                                                     #
 #######################################################################################
 yf_reverse_hex()
 {
@@ -127,18 +129,23 @@ yf_reverse_hex()
 	return 0
 }
 #######################################################################################
-#
-# count_of - return the count of words in the specified list
-#
-# parameters:
-#   $1 - word list 
-#
-# stdout:
-#   the number of (IFS-based) separate entries in $1 
-#
-# return code:
-#   always zero
-#
+#                                                                                     #
+#                                                                                     #
+# count_of - return the count of words in the specified list                          #
+#                                                                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - word list                                                                    #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the number of (IFS-based) separate entries in $1                                  #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   always zero                                                                       #
+#                                                                                     #
+#                                                                                     #
 #######################################################################################
 yf_count_of()
 {
@@ -147,21 +154,26 @@ yf_count_of()
 	return 0
 }
 #######################################################################################
-#
-# word_of - return the n-th entry from a list of words
-#
-# parameters:
-#   $1 - number of word to retrieve
-#   $2 - word list 
-#
-# stdout:
-#   the n-th word
-#
-# return code:
-#   0 - value found
-#   1 - invalid parameter ($1 isn't a decimal number or 0)
-#   2 - word list is too short to find the n-th entry
-#
+#                                                                                     #
+#                                                                                     #
+# word_of - return the n-th entry from a list of words                                #
+#                                                                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - number of word to retrieve                                                   #
+#   $2 - word list                                                                    #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the n-th word                                                                     #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - value found                                                                   #
+#   1 - invalid parameter ($1 isn't a decimal number or 0)                            #
+#   2 - word list is too short to find the n-th entry                                 #
+#                                                                                     #
+#                                                                                     #
 #######################################################################################
 yf_word_of()
 {
@@ -176,20 +188,25 @@ yf_word_of()
 	return 2
 }
 #######################################################################################
-#
-# index_of - return the index of the specified word in the specified list
-#
-# parameters:
-#   $1 - word to find
-#   $2 - word list 
-#
-# stdout:
-#   the index of the word in the list
-#
-# return code:
-#   0 - value found
-#   1 - word not found in list
-#
+#                                                                                     #
+#                                                                                     #
+# index_of - return the index of the specified word in the specified list             #
+#                                                                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - word to find                                                                 #
+#   $2 - word list                                                                    #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the index of the word in the list                                                 #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - value found                                                                   #
+#   1 - word not found in list                                                        #
+#                                                                                     #
+#                                                                                     #
 #######################################################################################
 yf_index_of()
 {
@@ -201,24 +218,24 @@ yf_index_of()
 	return 1
 }
 #######################################################################################
-#
-# dec2hex - convert decimal value to hexadecimal string of the specified length
-#           (two characters per byte)
-#
-# parameters:
-#   $1 - input value (string representing a decimal)
-#   $2 - length (in bytes) to use for the output (the resulting string will use
-#        this value * 2, because each output byte consists of two nibbles); if this
-#        parameter is not specified, the needed length is determined by the value
-#
-# stdout:
-#   input value converted to hexadecimal string, padded to the specified length if
-#   necessary
-#
-# return code:
-#   0 - stdout content is valid
-#   1 - error occured (e.g. invalid parameter values)
-#
+#                                                                                     #
+# dec2hex - convert decimal value to hexadecimal string of the specified length       #
+#           (two characters per byte)                                                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input value (string representing a decimal)                                  #
+#   $2 - length (in bytes) to use for the output (the resulting string will use       #
+#        this value * 2, because each output byte consists of two nibbles); if this   #
+#        parameter is not specified, the needed length is determined by the value     #
+#                                                                                     #
+# stdout:                                                                             #
+#   input value converted to hexadecimal string, padded to the specified length if    #
+#   necessary                                                                         #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout content is valid                                                       #
+#   1 - error occured (e.g. invalid parameter values)                                 #
+#                                                                                     #
 #######################################################################################
 yf_dec2hex()
 {
@@ -239,19 +256,19 @@ yf_dec2hex()
 	return 0
 }
 #######################################################################################
-#
-# hex2dec - convert hexadecimal string to decimal value
-#
-# parameters:
-#   $1 - input value representing a hexadecimal string
-#
-# stdout:
-#   input value converted to decimal value
-#
-# return code:
-#   0 - stdout content is valid
-#   1 - error occured (e.g. input format is invalid)
-#
+#                                                                                     #
+# hex2dec - convert hexadecimal string to decimal value                               #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input value representing a hexadecimal string                                #
+#                                                                                     #
+# stdout:                                                                             #
+#   input value converted to decimal value                                            #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout content is valid                                                       #
+#   1 - error occured (e.g. input format is invalid)                                  #
+#                                                                                     #
 #######################################################################################
 yf_hex2dec()
 {
@@ -267,19 +284,19 @@ yf_hex2dec()
 	return 0
 }
 #######################################################################################
-#
-# hex2bin - convert hexadecimal string to binary data
-#
-# parameters:
-#   $1 - input value representing a hexadecimal string
-#
-# stdout:
-#   input value converted to binary content
-#
-# return code:
-#   0 - stdout content is valid
-#   1 - error occured (e.g. input format is invalid)
-#
+#                                                                                     #
+# hex2bin - convert hexadecimal string to binary data                                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input value representing a hexadecimal string                                #
+#                                                                                     #
+# stdout:                                                                             #
+#   input value converted to binary content                                           #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout content is valid                                                       #
+#   1 - error occured (e.g. input format is invalid)                                  #
+#                                                                                     #
 #######################################################################################
 yf_hex2bin()
 {
@@ -295,18 +312,18 @@ yf_hex2bin()
 	return 0
 }
 #######################################################################################
-#
-# str2hex - convert a string to its hexadecimal representation
-#
-# parameters:
-#   $1 - input string
-#
-# stdout:
-#   input string converted to its hexadecimal content (one character per nibble)
-#
-# return code:
-#   always 0 - no errors possible
-#
+#                                                                                     #
+# str2hex - convert a string to its hexadecimal representation                        #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# stdout:                                                                             #
+#   input string converted to its hexadecimal content (one character per nibble)      #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 - no errors possible                                                     #
+#                                                                                     #
 #######################################################################################
 yf_str2hex()
 {
@@ -318,20 +335,20 @@ yf_str2hex()
 	return 0
 }
 #######################################################################################
-#
-# from_right - left trim the specified string to the specified length
-#
-# parameters:
-#   $1 - input string
-#   $2 - remaining characters in string after cutting from left
-#
-# stdout:
-#   output string                                                                
-#
-# return code:
-#   0 - no error 
-#   1 - invalid parameter (missing or non-numeric length)
-#
+#                                                                                     #
+# from_right - left trim the specified string to the specified length                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#   $2 - remaining characters in string after cutting from left                       #
+#                                                                                     #
+# stdout:                                                                             #
+#   output string                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - no error                                                                      #
+#   1 - invalid parameter (missing or non-numeric length)                             #
+#                                                                                     #
 #######################################################################################
 yf_from_right()
 {
@@ -344,28 +361,28 @@ yf_from_right()
 	return 0
 }
 #######################################################################################
-#
-# bin2hex - convert binary data its hexadecimal representation (via base64 utility)
-#
-# parameters:
-#   none
-#
-# stdio:
-#   binary data to encode
-#
-# stdout:
-#   input data converted to its hexadecimal format (one character per nibble) as string
-#
-# return code:
-#   always 0 - no errors possible, empty input results in empty output
-#
-# remarks:
-#   - this version can handle whitespace, newline and NUL characters too
-#   - it needs the "base64" utility to encode the binary data to base64 and the output
-#     of this applet is translated to hexadecimal in the next step
-#   - this "double conversion" is time-consuming and you should use yf_str2hex as often
-#     as possible
-#
+#                                                                                     #
+# bin2hex - convert binary data its hexadecimal representation (via base64 utility)   #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdio:                                                                              #
+#   binary data to encode                                                             #
+#                                                                                     #
+# stdout:                                                                             #
+#   input data converted to its hexadecimal format (one char per nibble) as string    #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 - no errors possible, empty input results in empty output                #
+#                                                                                     #
+# remarks:                                                                            #
+#   - this version can handle whitespace, newline and NUL characters too              #
+#   - it needs the "base64" utility to encode the binary data to base64 and the       #
+#     output of this applet is translated to hexadecimal in the next step             #
+#   - this "double conversion" is time-consuming and you should use yf_str2hex as     #
+#     often as possible                                                               #
+#                                                                                     #
 #######################################################################################
 yf_bin2hex()
 {
@@ -387,30 +404,30 @@ yf_bin2hex()
 	return 0
 }
 #######################################################################################
-#
-# ipv4addr - convert an IPv4 address from dotted-decimal format to hexadecimal
-#            string in "network order" (big endian)
-#
-# parameters:
-#   $1 - string representing the IPv4 address, may be any valid decimal value (within
-#        the range of validity) or a dotted-decimal of up to four parts 
-#
-# stdout:
-#   hexadecimal string representing the IP address in big endian order (MSB)
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, the specified parameter isn't a valid IPv4 address
-#
-# remarks:
-# The range check is performed with the final value, there may be an overflow earlier,
-# if the input string is very "malformed".
-#
+#                                                                                     #
+# ipv4addr - convert an IPv4 address from dotted-decimal format to hexadecimal        #
+#            string in "network order" (big endian)                                   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - string representing the IPv4 address, may be any valid decimal value (within #
+#        the range of validity) or a dotted-decimal of up to four parts               #
+#                                                                                     #
+# stdout:                                                                             #
+#   hexadecimal string representing the IP address in big endian order (MSB)          #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, the specified parameter isn't a valid IPv4 address             #
+#                                                                                     #
+# remarks:                                                                            #
+# The range check is performed with final value, there may be an overflow earlier,    #
+# if the input string is very "malformed".                                            #
+#                                                                                     #
 #######################################################################################
 yf_ipv4addr()
 {
 	local in="$1" addr=0 orgifs="$IFS" shifts=4 error=0
-	IFS=. 
+	IFS=.
 	set -- $in
 	IFS="$orgifs"
 	while [ ${#1} -gt 0 ]; do
@@ -440,22 +457,22 @@ yf_ipv4addr()
 	return $error
 }
 #######################################################################################
-#
-# uppercase - convert string to uppercase letters
-#
-# parameters:
-#   none
-#
-# stdin:
-#   input data to be translated ... only ASCII characters are handled correctly
-#
-# stdout:
-#   input data with each occurence of 'a' to 'z' translated to 'A' to 'Z'
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors
-#
+#                                                                                     #
+# uppercase - convert string to uppercase letters                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   input data to be translated ... only ASCII characters are handled correctly       #
+#                                                                                     #
+# stdout:                                                                             #
+#   input data with each occurence of 'a' to 'z' translated to 'A' to 'Z'             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors #
+#                                                                                     #
 #######################################################################################
 yf_uppercase()
 {
@@ -463,22 +480,22 @@ yf_uppercase()
 	return $?
 }
 #######################################################################################
-#
-# lowercase - convert string to lowercase letters
-#
-# parameters:
-#   none
-#
-# stdin:
-#   input data to be translated ... only ASCII characters are handled correctly
-#
-# stdout:
-#   input data with each occurence of 'A' to 'Z' translated to 'a' to 'z'
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors
-#
+#                                                                                     #
+# lowercase - convert string to lowercase letters                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   input data to be translated ... only ASCII characters are handled correctly       #
+#                                                                                     #
+# stdout:                                                                             #
+#   input data with each occurence of 'A' to 'Z' translated to 'a' to 'z'             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors #
+#                                                                                     #
 #######################################################################################
 yf_uppercase()
 {
@@ -486,19 +503,19 @@ yf_uppercase()
 	return $?
 }
 #######################################################################################
-#
-# sysfs - get sysfs mount point from /proc/mounts
-#
-# parameters:
-#   none
-#
-# stdout:
-#   the path, where the sysfs is mounted
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, sysfs isn't mounted or procfs isn't available
-#
+#                                                                                     #
+# sysfs - get sysfs mount point from /proc/mounts                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the path, where the sysfs is mounted                                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, sysfs isn't mounted or procfs isn't available                  #
+#                                                                                     #
 #######################################################################################
 yf_sysfs()
 {
@@ -509,44 +526,45 @@ yf_sysfs()
 	return 0
 }
 #######################################################################################
-#
-# pack - create a packed complex data structure from basic data types
-#
-# parameters:
-#   the input parameters are a list of type-value pairs representing the data to be
-#   packed to the resulting structure
-#
-# types:
-# - the first item in such type-value pairs is the desired type and it's simply the 
-#   number of bits in the output "value" - 8 for "one byte", "16" for "two byte values"
-#   (short integers, signed or unsigned) and "32" for "four byte values"
-# - beneath these "basic" types there are some more complex input types:
-#   STR - the value is a character string (don't forget to use proper escapes there)
-#   IP  - same as IP4
-#   IP4 - the value is an IPv4 address and is encoded to binary (32 bit value) by 
-#         yf_ipv4addr (see above) - it's "big endian" unless modified by "L" prefix
-#
-# modifiers:
-# - values with more than 8 bit size are affected by the "endianess" of the system - 
-#   it's the order in which multi-byte values are stored
-# - without any modifier the resulting data is stored in the order, which the system
-#   we're running on uses
-# - to set up an explicit order (e.g. "network" (BE) order on an LE host) you may
-#   specify a "prefix" character (L or B in mixed case) - "B32" is a 32-bit value in
-#   BE and "L8" is valid (but useless, because a single byte value cannot be swapped)
-#   and even the "STR" type could be prefix (the prefix will be silently ignored there)
-#
-# stdout:
-#   binary content of the packed structure, suitable to be written to a file/pipe
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, generally an invalid parameter was specified
-#
+#                                                                                     #
+# pack - create a packed complex data structure from basic data types                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   the input parameters are a list of type-value pairs representing the data to be   #
+#   packed to the resulting structure                                                 #
+#                                                                                     #
+# types:                                                                              #
+# - the first item in such type-value pairs is the desired type and it's simply the   #
+#   number of bits in the output "value" - 8 for "one byte", "16" for "two byte       #
+#   values" (short integers, signed or unsigned) and "32" for "four byte values"      #
+# - beneath these "basic" types there are some more complex input types:              #
+#   STR - the value is a character string (don't forget to use proper escapes there)  #
+#   IP  - same as IP4                                                                 #
+#   IP4 - the value is an IPv4 address and is encoded to binary (32 bit value) by     #
+#         yf_ipv4addr (see above) - it's "big endian" unless modified by "L" prefix   #
+#                                                                                     #
+# modifiers:                                                                          #
+# - values with more than 8 bit size are affected by the "endianess" of the system -  #
+#   it's the order in which multi-byte values are stored                              #
+# - without any modifier the resulting data is stored in the order, which the system  #
+#   we're running on uses                                                             #
+# - to set up an explicit order (e.g. "network" (BE) order on an LE host) you may     #
+#   specify a "prefix" character (L or B in mixed case) - "B32" is a 32-bit value in  #
+#   BE and "L8" is valid (but useless, because a single byte value cannot be swapped) #
+#   and even the "STR" type could be prefix (the prefix will be silently ignored      #
+#   there)                                                                            #
+#                                                                                     #
+# stdout:                                                                             #
+#   binary content of the packed structure, suitable to be written to a file/pipe     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, generally an invalid parameter was specified                   #
+#                                                                                     #
 #######################################################################################
 yf_pack()
 {
-	local out="" val type hex endian 
+	local out="" val type hex endian
 	while [ ${#1} -gt 0 ]; do
 		type="$1"
 		val="$2"
@@ -598,20 +616,20 @@ yf_pack()
 	return 0
 }
 #######################################################################################
-#
-# print_ip - print an IPv4 address in dotted-decimal format 
-#
-# parameters:
-#   $1 - string representing the IPv4 address in hexadecimal format (big endian)
-#
-# stdout:
-#   the decimal representation of the specified address as 4 decimal numbers separated
-#   by dots
-#
-# return code:
-#   0 - stdout value is valid
-#   1 - error occured, the specified parameter isn't a valid hexadecimal string
-#
+#                                                                                     #
+# print_ip - print an IPv4 address in dotted-decimal format                           #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - string representing the IPv4 address in hexadecimal format (big endian)      #
+#                                                                                     #
+# stdout:                                                                             #
+#   the decimal representation of the specified address as 4 decimal numbers          #
+#   separated by dots                                                                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, the specified parameter isn't a valid hexadecimal string       #
+#                                                                                     #
 #######################################################################################
 yf_print_ip()
 {
@@ -625,18 +643,18 @@ yf_print_ip()
 	return 0
 }
 #######################################################################################
-#
-# network_interfaces - get the name(s) of all network interfaces from sysfs 
-#
-# parameters:
-#   none
-#
-# stdout:
-#   the names of network interfaces ('lo' will be filtered out)
-#
-# return code:
-#   alwasy 0 - the list will be empty in case of an error
-#
+#                                                                                     #
+# network_interfaces - get the name(s) of all network interfaces from sysfs           #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the names of network interfaces ('lo' will be filtered out)                       #
+#                                                                                     #
+# return code:                                                                        #
+#   alwasy 0 - the list will be empty in case of an error                             #
+#                                                                                     #
 #######################################################################################
 yf_network_interfaces()
 {
@@ -648,18 +666,18 @@ yf_network_interfaces()
 	return 0
 }
 #######################################################################################
-#
-# wireless_interfaces - get the name(s) of all wireless interfaces from sysfs 
-#
-# parameters:
-#   none
-#
-# stdout:
-#   the names of wireless interfaces
-#
-# return code:
-#   alwasy 0 - the list will be empty in case of an error 
-#
+#                                                                                     #
+# wireless_interfaces - get the name(s) of all wireless interfaces from sysfs         #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the names of wireless interfaces                                                  #
+#                                                                                     #
+# return code:                                                                        #
+#   alwasy 0 - the list will be empty in case of an error                             #
+#                                                                                     #
 #######################################################################################
 yf_wireless_interfaces()
 {
@@ -671,18 +689,18 @@ yf_wireless_interfaces()
 	return 0
 }
 #######################################################################################
-#
-# bridge_interfaces - get the name(s) of all network bridges from sysfs 
-#
-# parameters:
-#   none
-#
-# stdout:
-#   the names of bridge interfaces
-#
-# return code:
-#   alwasy 0 - the list will be empty in case of an error
-#
+#                                                                                     #
+# bridge_interfaces - get the name(s) of all network bridges from sysfs               #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the names of bridge interfaces                                                    #
+#                                                                                     #
+# return code:                                                                        #
+#   alwasy 0 - the list will be empty in case of an error                             #
+#                                                                                     #
 #######################################################################################
 yf_bridge_interfaces()
 {
@@ -694,16 +712,16 @@ yf_bridge_interfaces()
 	return 0
 }
 #######################################################################################
-#
-# is_wireless_interface - check, if the specified interface name is for a wireless one
-#
-# parameters:
-#   $1 - interface to be checked
-#
-# return code:
-#   0 - the interface is a wireless device
-#   1 - the interface isn't a wireless device
-#
+#                                                                                     #
+# is_wireless_interface - check, if the specified interface is a wireless one         #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a wireless device                                            #
+#   1 - the interface isn't a wireless device                                         #
+#                                                                                     #
 #######################################################################################
 yf_is_wireless_interface()
 {
@@ -712,16 +730,16 @@ yf_is_wireless_interface()
 	[ -d $sysfs/devices/virtual/net/$intf/wireless ] && return 0 || return 1
 }
 #######################################################################################
-#
-# is_bridge_interface - check, if the specified interface name is for a bridge devive
-#
-# parameters:
-#   $1 - interface to be checked
-#
-# return code:
-#   0 - the interface is a brigde device
-#   1 - the interface isn't a bridge device
-#
+#                                                                                     #
+# is_bridge_interface - check, if the specified interface name is for a bridge devive #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde device                                              #
+#   1 - the interface isn't a bridge device                                           #
+#                                                                                     #
 #######################################################################################
 yf_is_bridge_interface()
 {
@@ -730,17 +748,17 @@ yf_is_bridge_interface()
 	[ -d $sysfs/devices/virtual/net/$intf/bridge ] && return 0 || return 1
 }
 #######################################################################################
-#
-# is_bridge_member - check, if the specified interface is a bridge member without an
-#                    own IP address
-#
-# parameters:
-#   $1 - interface to be checked
-#
-# return code:
-#   0 - the interface is a brigde member
-#   1 - the interface isn't a bridge member
-#
+#                                                                                     #
+# is_bridge_member - check, if the specified interface is a bridge member without an  #
+#                    own IP address                                                   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde member                                              #
+#   1 - the interface isn't a bridge member                                           #
+#                                                                                     #
 #######################################################################################
 yf_is_bridge_member()
 {
@@ -749,19 +767,19 @@ yf_is_bridge_member()
 	[ -d $sysfs/devices/virtual/net/$intf/brport ] && return 0 || return 1
 }
 #######################################################################################
-#
-# get_bridge - retrieve the bridge interface name for the specified interface, if any
-#
-# parameters:
-#   $1 - interface to be checked
-#
-# stdout:
-#   the name of the bridge, where the specified interface is a member
-#
-# return code:
-#   0 - the interface is a brigde member, stdout is valid
-#   1 - the interface isn't a bridge member
-#
+#                                                                                     #
+# get_bridge - retrieve the bridge interface name for the specified interface, if any #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# stdout:                                                                             #
+#   the name of the bridge, where the specified interface is a member                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde member, stdout is valid                             #
+#   1 - the interface isn't a bridge member                                           #
+#                                                                                     #
 #######################################################################################
 yf_get_bridge()
 {
@@ -773,19 +791,19 @@ yf_get_bridge()
 	return 0
 }
 #######################################################################################
-#
-# get_bridge_members - retrieve the bridge member names for the specified interface
-#
-# parameters:
-#   $1 - interface to be checked
-#
-# stdout:
-#   a (possibly empty) list of interface names assembled in the bridge
-#
-# return code:
-#   0 - the interface is a bridge, stdout is valid
-#   1 - the interface isn't a bridge
-#
+#                                                                                     #
+# get_bridge_members - retrieve the bridge member names for the specified interface   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# stdout:                                                                             #
+#   a (possibly empty) list of interface names assembled in the bridge                #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a bridge, stdout is valid                                    #
+#   1 - the interface isn't a bridge                                                  #
+#                                                                                     #
 #######################################################################################
 yf_get_bridge_members()
 {
@@ -798,19 +816,19 @@ yf_get_bridge_members()
 	return 0
 }
 #######################################################################################
-#
-# get_ip_addresses - retrieve the IPv4 addresses for the specified interface
-#
-# parameters:
-#   $1 - interface to be used
-#
-# stdout:
-#   a list of IPv4 addresses available at the interface                
-#
-# return code:
-#   0 - stdout is valid and contains at least one entry
-#   1 - the interface name is invalid or the interface has no IPv4 address assigned
-#
+#                                                                                     #
+# get_ip_addresses - retrieve the IPv4 addresses for the specified interface          #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be used                                                         #
+#                                                                                     #
+# stdout:                                                                             #
+#   a list of IPv4 addresses available at the interface                               #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid and contains at least one entry                               #
+#   1 - the interface name is invalid or the interface has no IPv4 address assigned   #
+#                                                                                     #
 #######################################################################################
 yf_get_ip_addresses()
 {
@@ -821,23 +839,24 @@ yf_get_ip_addresses()
 	return 0
 }
 #######################################################################################
-#
-# get_default_gateway_address - retrieve the IPv4 addresses for the specified interface
-#
-# parameters:
-#   none
-#
-# stdout:
-#   gateway address for default route (0.0.0.0/0.0.0.0), only one should be present
-#
-# return code:
-#   0 - stdout is valid
-#   1 - no default gateway found at /proc/net/route
-#
-# remarks:
-#   Any policy based routing is silently ignored - usually it's not used on a FRITZ!Box
-#   device.
-#
+#                                                                                     #
+# get_default_gateway_address - retrieve the IPv4 addresses for the specified         #
+#                               interface                                             #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   gateway address for default route (0.0.0.0/0.0.0.0), only one should be present   #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - no default gateway found at /proc/net/route                                   #
+#                                                                                     #
+# remarks:                                                                            #
+#   Any policy based routing is silently ignored - usually it's not used on a         #
+#   FRITZ!Box device.                                                                 #
+#                                                                                     #
 #######################################################################################
 yf_get_default_gateway_address()
 {
@@ -851,23 +870,23 @@ yf_get_default_gateway_address()
 	return $?
 }
 #######################################################################################
-#
-# get_default_gateway_interface - retrieve the interface name for the default route
-#
-# parameters:
-#   none
-#
-# stdout:
-#   interface name for the device with the default route (0.0.0.0/0.0.0.0)
-#
-# return code:
-#   0 - stdout is valid
-#   1 - no default gateway found at /proc/net/route
-#
-# remarks:
-#   Any policy based routing is silently ignored - usually it's not used on a FRITZ!Box
-#   device.
-#
+#                                                                                     #
+# get_default_gateway_interface - retrieve the interface name for the default route   #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   interface name for the device with the default route (0.0.0.0/0.0.0.0)            #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - no default gateway found at /proc/net/route                                   #
+#                                                                                     #
+# remarks:                                                                            #
+#   Any policy based routing is silently ignored - usually it's not used on a         #
+#   FRITZ!Box device.                                                                 #
+#                                                                                     #
 #######################################################################################
 yf_get_default_gateway_interface()
 {
@@ -878,25 +897,26 @@ yf_get_default_gateway_interface()
 	return 0
 }
 #######################################################################################
-#
-# get_first_host_in_subnet - compute the first usable IPv4 address in the specified
-#                            subnet
-#
-# parameters:
-#   $1 - the subnet to use for computations in dotted decimal notation with mask suffix
-#
-# stdout:
-#   the first usable host address (as hexadecimal string)
-#
-# return code:
-#   0 - stdout is valid
-#   1 - parameter error
-#
-# remarks:
-#   The first address (all unmasked bits set to zero) is interpreted as the 'network'
-#   address and is skipped. There's no usable result with a mask greater than 30,
-#   because the possible two addresses with a 31-bit mask can't form a valid subnet.
-#
+#                                                                                     #
+# get_first_host_in_subnet - compute the first usable IPv4 address in the specified   #
+#                            subnet                                                   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the subnet to use for computations in dotted decimal notation with mask      #
+#        suffix                                                                       #
+#                                                                                     #
+# stdout:                                                                             #
+#   the first usable host address (as hexadecimal string)                             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error                                                               #
+#                                                                                     #
+# remarks:                                                                            #
+#   The first address (all unmasked bits set to zero) is interpreted as the 'network' #
+#   address and is skipped. There's no usable result with a mask greater than 30,     #
+#   because the possible two addresses with a 31-bit mask can't form a valid subnet.  #
+#                                                                                     #
 #######################################################################################
 yf_get_first_host_in_subnet()
 {
@@ -914,26 +934,27 @@ yf_get_first_host_in_subnet()
 	return 0
 }
 #######################################################################################
-#
-# get_last_host_in_subnet - compute the last usable IPv4 address in the specified
-#                           subnet
-#
-# parameters:
-#   $1 - the subnet to use for computations in dotted decimal notation with mask suffix
-#
-# stdout:
-#   the last usable host address (as hexadecimal string)
-#
-# return code:
-#   0 - stdout is valid
-#   1 - parameter error
-#
-# remarks:
-#   The really last address (all unmasked bits set to one) is interpreted as the 
-#   'broadcast' address and is skipped. There's no usable result with a mask greater 
-#   than 30, because the possible two addresses with a 31-bit mask can't form a valid
-#   subnet.
-#
+#                                                                                     #
+# get_last_host_in_subnet - compute the last usable IPv4 address in the specified     #
+#                           subnet                                                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the subnet to use for computations in dotted decimal notation with mask      #
+#        suffix                                                                       #
+#                                                                                     #
+# stdout:                                                                             #
+#   the last usable host address (as hexadecimal string)                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error                                                               #
+#                                                                                     #
+# remarks:                                                                            #
+#   The really last address (all unmasked bits set to one) is interpreted as the      #
+#   'broadcast' address and is skipped. There's no usable result with a mask greater  #
+#   than 30, because the possible two addresses with a 31-bit mask can't form a valid #
+#   subnet.                                                                           #
+#                                                                                     #
 #######################################################################################
 yf_get_last_host_in_subnet()
 {
@@ -949,4 +970,135 @@ yf_get_last_host_in_subnet()
 	yf_dec2hex "$res"
 	return 0
 }
-
+#######################################################################################
+#                                                                                     #
+# find_mountpoint - find the mountpoint for the filesystem containing the specified   #
+#                   file or directory                                                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the target name to be used                                                   #
+#                                                                                     #
+# stdout:                                                                             #
+#   the directory, where the filesystem was mounted                                   #
+#                                                                                     #
+# return code:                                                                        #
+#   always zero, at least the root filesystem will always be found                    #
+#                                                                                     #
+#######################################################################################
+yf_find_mountpoint()
+{
+	local target="$(realpath $1)" mp
+	target="${target:-/}"
+	while [ ${#target} -gt 1 ]; do
+		mp="$(sed -n -e "\|^[^ ]* $target [^ ]* [^ ]* [0-9] [0-9]|p" /proc/mounts)"
+		if [ ${#mp} -gt 0 ]; then
+			echo "$target"
+			return 0
+		fi
+	done
+	echo "/"
+	return 0
+}
+#######################################################################################
+#                                                                                     #
+# get_fstype_for_mountpoint - retrieve the filesystem type for the specified          #
+#                             mountpoint                                              #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the mountpoint to be used                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   the filesystem type from /proc/mounts                                             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error, e.g. the specified path isn't a mountpoint                   #
+#                                                                                     #
+#######################################################################################
+yf_get_fstype_for_mountpoint()
+{
+	local mp="$(realpath $1)" fstype
+	fstype="$(sed -n -e "s|^[^ ]* $mp \([^ ]*\) [^ ]* [0-9] [0-9]|\1|p" /proc/mounts)"
+	if [ ${#fstype} -gt 0 ]; then
+		echo "$fstype"
+		return 0
+	fi
+	return 1
+}
+#######################################################################################
+#                                                                                     #
+# is_mountpoint_writable - detect, if the specified mountpoint is backed by a         #
+#                          writable filesystem                                        #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the mountpoint to be used                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   0 - the filesystem isn't 'rw' in /proc/mounts                                     #
+#   1 - the filesystem is marked as 'rw' in /proc/mounts                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error, e.g. the specified path isn't a mountpoint                   #
+#                                                                                     #
+#######################################################################################
+yf_is_mountpoint_writable()
+{
+	local mp="$(realpath $1)" rw 
+	rw="$(sed -n -e "s|^[^ ]* $mp [^ ]* \(\(rw\|ro\)\),[^ ]* [0-9] [0-9]|\1|p" /proc/mounts)"
+	if [ ${#rw} -gt 0 ]; then
+		[ "$rw" == "rw" ] && echo 1 || echo 0
+		return 0
+	fi
+	return 1
+}
+#######################################################################################
+#                                                                                     #
+# initialize_ringbuffer - initialize a file to be used with AVM's "showshringbuf"     #
+#                         utility (a litte program supporting a file backed ring      #
+#                         buffer maintaining a limited set of last messages due to    #
+#                         overwriting the oldest messages with the newest ones)       #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the "facility" to be used for the log file, the file is stored under /var as #
+#        ".srb_$1", the name has to be a simple name of up to 8 lowercase letters and #
+#        digits and an existing file with this name remains unchanged (but can still  #
+#        be used for logging)                                                         #
+#   $2 - the requested size of the ring buffer file, if it's missing, 8192 bytes are  #
+#        used (the same size is used by 'showshringbuf', if the file does not exist), #
+#        the size has to be specified in KBytes (1KByte = 1024 Byte) and it has to be #
+#        a value between 8 and 64                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - ring buffer file created                                                      #
+#   1 - parameter error, e.g. the specified facility is invalid (too long or contains #
+#       invalid character) or the specified size is invalid                           #
+#   2 - ring buffer file does already exist, the file was not changed                 #
+#                                                                                     #
+#######################################################################################
+yf_initialize_ringbuffer()
+{
+	local facility="$1" size="${2:-8}" check maxoffset header filename
+	[ ${#facility} -eq 0 ] && return 1
+	check="${facility//[a-z0-9]/}"
+	[ ${#check} -gt 0 ] && return 1
+	[ ${#facility} -gt 8 ] && return 1
+	yf_is_decimal $size || return 1
+	[ $size -ge 8 -a $size -le 64 ] || return 1
+	filename=/var/.srb_$facility
+	[ -f $filename ] && return 2
+	maxoffset=$(( ( size * 1024 ) - 1 ))
+	# file starts with signature 0xF913668E, followed by first, next and last entry and
+	# finally by the maximum usable offset
+	yf_pack 8 249 8 19 8 102 8 142 32 20 32 20 32 20 32 $maxoffset >$filename
+	# first 1K block
+	dd if=/dev/zero bs=$(( 1024 - 20 )) count=1 >>$filename
+	# remaining blocks
+	dd if=/dev/zero bs=1024 count=$(( size - 1 )) >>$filename
+	return 0
+}
+#######################################################################################
+#                                                                                     #
+# end of file                                                                         #
+#                                                                                     #
+#######################################################################################
