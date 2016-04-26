@@ -1,0 +1,225 @@
+#! /bin/sh
+[ ${#2} -eq 0 -o ${#3} -ne 0 ] && echo "Calling: $0 <interface> <ip address to use>" 2>&1 && exit 1
+#
+# some constants to be changed, if needed
+#
+ip=$(eva_discover INTERFACE=$1 TO=$2)
+[ $? -ne 0 ] && exit 1
+eval $ip
+box_ip=$EVA_IP
+box_port=21
+box_user=adam2
+box_pass=adam2
+passive_ftp="P@SW"
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+writefifo=$tmpdir/write
+readfifo=$tmpdir/read
+storefifo=$tmpdir/store
+outstream=7
+instream=8
+upstream=9
+logstream=3
+logfile=eva_switch_system.log
+#
+# helper functions
+#
+read_ftp_response()
+{
+	local line="   -" rc=0 instream="$1" log="$2" lines=""
+	while read -u $instream -r line; do
+		[ ! -z "$log" ] && echo "$line" >&$log
+		number="${line:0:3}"
+		number="${number//[0-9]/}"
+		if [ ${#number} -eq 0 -a "${line:3:1}" == " " ]; then
+			if [ ${#lines} -gt 0 ]; then
+				echo -e "$lines\n$line"
+			else
+				echo "$line"
+			fi
+			break
+		fi
+		lines="$(echo -e "$lines${lines:+\n}$line")"
+	done
+	return $rc
+}
+write_ftp_command()
+{
+	local outstream="$2" cmd="$1" log="$3"
+	[ ! -z "$log" ] && echo "$cmd" >&$log
+	echo "$cmd" >&$outstream
+}
+login_to_box()
+{
+	local instream="$1" outstream="$2" log="$3" lines=0
+	write_ftp_command "USER $box_user" $outstream $log
+	while [ $lines -lt 10 ]; do
+		line="$(read_ftp_response $instream $log)"
+		ec="${line:0:3}"
+		if [ x"$ec" == x"331" ]; then
+			write_ftp_command "PASS $box_pass" $outstream $log
+		else
+			if [ x"$ec" == x"230" ]; then
+				return 0
+			fi
+		fi
+		lines=$(( lines++ ))
+	done
+}
+get_environment_value()
+{
+	local instream="$1" outstream="$2" log="$3" lines=0 name="$4"
+	write_ftp_command "GETENV $name" $outstream $log
+	lines="$(read_ftp_response $instream $log)"
+	echo "$lines" | while read line; do
+		if [ "${line:0:3}" == "200" ]; then
+			echo "$lines" | sed -e "s|\r||" | sed -n -e "s|^$name *\(.*\)\$|\1|p"
+			return 0 
+		fi
+	done
+	return $?
+}
+set_environment_value()
+{
+	local instream="$1" outstream="$2" log="$3" lines=0 name="$4" value="$5"
+	if [ ${#value} -gt 0 ]; then
+		write_ftp_command "SETENV $name $value" $outstream $log
+	else
+		write_ftp_command "UNSETENV $name" $outstream $log
+	fi
+	line="$(read_ftp_response $instream $log)"
+	ec="${line:0:3}"
+	[ x"$ec" == x"200" ] && return 0 || return 1
+}
+#
+# check, if "mkfifo" and "nc" are present and usable
+#
+mkfifo 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'mkfifo' command."
+	exit 1
+fi
+nc 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'nc' command."
+	exit 1
+fi
+#
+# build redirections for FTP with "nc"
+#
+mkdir -p $tmpdir
+mkfifo $writefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating write fifo $writefifo."
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $readfifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating read fifo $readfifo."
+	rm $writefifo
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $storefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating upload fifo $storefifo."
+	rm $writefifo
+	rm $readfifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $outstream<>$writefifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting write fifo to output stream."
+	rm $writefifo	
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $instream<>$readfifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting read fifo to input stream."
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $logstream<>$logfile"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting log stream to log file."
+	eval "exec $instream>&-"
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+#
+# now open a connection to the box
+#
+nc $box_ip $box_port <&$outstream >&$instream 2>/dev/null &
+control_connection=$!
+data_connection=""
+line="$(read_ftp_response $instream $logstream)"
+ec="${line:0:3}"
+if [ x"$ec" == x"220" ]; then
+	login_to_box $instream $outstream $logstream
+	if [ $? -eq 0 ]; then
+		write_ftp_command "SYST" $outstream $logstream
+		line="$(read_ftp_response $instream $logstream)"
+		ec="${line:0:3}"
+		if [ x"$ec" == x"215" ]; then	
+			syst=$(echo "$line" | sed -n -e "s/.*\(AVM EVA\).*/\1/p")
+			if [ ${#syst} -ne 0 ]; then
+				echo "Found AVM bootloader: ${line:4}"
+				current=$(get_environment_value $instream $outstream $logstream "linux_fs_start")
+				if [ $? -eq 0 ]; then
+					echo "Current system selected: $current"
+					new=$(( ( current + 1 ) % 2 ))
+					echo "New system selected: $new"
+					set_environment_value $instream $outstream $logstream "linux_fs_start" "$new"
+					if [ $? -eq 0 ]; then
+						echo "New value set, rebooting the device ..."
+						write_ftp_command "REBOOT" $outstream $logstream
+					fi
+				fi
+			else
+				echo "Unexpected system found: ${line:4}"
+			fi
+		fi
+	else
+		echo "Login failed."
+	fi
+else
+	echo "Error connecting to FRITZ!Box boot loader."
+fi
+if [ ${#data_connection} -ne 0 ]; then
+	if [ -d /proc/$data_connection ]; then
+		kill $data_connection 2>/dev/null &
+		wait $data_connection 2>/dev/null
+	fi
+fi
+if [ ${#control_connection} -ne 0 ]; then
+	if [ -d /proc/$control_connection ]; then
+		kill $control_connection 2>/dev/null &
+		wait $control_connection 2>/dev/null
+	fi
+fi
+eval "exec $logstream>&-"
+eval "exec $instream>&-"
+eval "exec $outstream>&-"
+rm $writefifo
+rm $readfifo
+rm -r $tmpdir
+exit 1
