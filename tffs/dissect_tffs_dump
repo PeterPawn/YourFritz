@@ -26,6 +26,9 @@
 # files under a temporary location. The name of this temporary directory is
 # presented on stdout and the caller is responsible for the later deletion.
 #
+# !!ATTENTION!!
+# This script does not work with a NAND based TFFS dump, do not try this at home.
+#
 ##################################################################################
 #
 # some constants
