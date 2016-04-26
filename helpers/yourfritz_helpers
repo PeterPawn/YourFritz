@@ -995,6 +995,7 @@ yf_find_mountpoint()
 			echo "$target"
 			return 0
 		fi
+		target="${target%/*}"
 	done
 	echo "/"
 	return 0
