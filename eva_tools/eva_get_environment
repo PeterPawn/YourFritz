@@ -5,7 +5,7 @@
 #
 # some constants to be changed, if needed
 #
-box_ip=192.168.178.1
+box_ip=${2:-192.168.178.1} # EVA_IP may be the second parameter (the 1st is the virtual file name) and defaults to 192.168.178.1
 box_port=21
 box_user=adam2
 box_pass=adam2
