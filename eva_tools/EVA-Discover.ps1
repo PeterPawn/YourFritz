@@ -20,14 +20,16 @@
 # for more details.                                                                   #
 #                                                                                     #
 #######################################################################################
-Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of packets to be sent, with 1 second delay in-between (defaults to 120 -> 2 minutes)')][int]$maxWait = 120,
+Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of packets to be sent, with 1 second delay in-between (defaults to 120 -> 2 minutes)')][int]$maxWait = 30,
       [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'the IP address, which the device should use (defaults to 192.168.178.1)')][string]$requested_address,
       [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
       [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the port number to use')][int]$discovery_port = 5035
 )
       
+if ($PSBoundParameters["Debug"] -and $DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }      
+      
 # our own IP address, we use it to determine an address for EVA, if none was provided
-# Oops ... Get-NetIPAddress is only avaiblable in Windows 8 and above ... uncomment it, because it's not really used yet and if someone has an unusual network configuration,
+# Oops ... Get-NetIPAddress is only avaiblable in Windows 8 and above ... uncomment it if it's needed, but it's not really used yet and if someone has an unusual network configuration,
 # he/she can specify the address to be used as 2nd argument
 if ($requested_address.Length -eq 0) {
 #    $my_address = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where { $_.IPAddress -ne "127.0.0.1" } | Select -First 1 IPAddress -ExpandProperty IPAddress
@@ -89,13 +91,11 @@ catch {
 
 # the address of EVA found
 $EVA_IP = ""
-# continue after debug messages
-$DebugPreference = "Continue"
 # send the packet until an answer was received
 for ($i = 0; $i -lt $maxWait; $i++) {
     # send out a new discovery packet
-    Write-Debug "Sending discovery packet ..."
-    $sent=$sender.Send($discovery_packet,$discovery_packet.length,$bc_ep)
+    Write-Verbose "Sending discovery packet ($($i + 1)) ..."
+    $sent = $sender.Send($discovery_packet,$discovery_packet.length,$bc_ep)
     # EVA not found so far
     $EVA_found = $False
     # read all pending packets
@@ -106,6 +106,7 @@ for ($i = 0; $i -lt $maxWait; $i++) {
         try {
             # try to receive a packet
             $answer = $listener.Receive([ref]$listener_ep)
+            Write-Debug "Received UDP packet from $($listener_ep.Address.ToString()):$($listener_ep.Port.ToString()) ..."
             # packet exists, check remote port
             if ($listener_ep.Port -eq $discovery_port) {
                 # an answer from the discovery port is from EVA
@@ -134,4 +135,3 @@ $sender.Close()
 # notify caller
 Write-Output "EVA_IP=$EVA_IP"
 return $($EVA_IP.Length -gt 0)
-

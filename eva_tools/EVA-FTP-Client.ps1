@@ -2,6 +2,14 @@
 #                                                                                     #
 # PowerShell script to communicate with the FTP server in AVM's bootloader            #
 #                                                                                     #
+# The script has been tested on Windows 7 (PowerShell 2) with .NET framework 2 as CLR #
+# environment, but its primary target was a Windows 10 system with PowerShell 5 and   #
+# Common Language Runtime 4.6 and above.                                              #
+#                                                                                     #
+# Some newer cmdlets and/or methods for stream objects (especially every asynchronous #
+# method) aren't available under Windows 7 - but their presence is tested first and   #
+# the fallback to other functions is only used, if they're really missing.            #
+#                                                                                     #
 #######################################################################################
 #                                                                                     #
 # Copyright (C) 2010-2016 P.Hämmerlein (packages@yourfritz.de)                        #
@@ -56,6 +64,7 @@ function ParseAnswer {
 #                                                                                     #
 #######################################################################################
 function ReadAnswer {
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     # a large buffer to hold potential answers ... they should never reach 4 KB in one single read from the FTP control channel
     $inputBuffer = New-Object System.Byte[] 4096
     # the whole conversation is ASCII based here
@@ -80,6 +89,7 @@ function SendCommand {
     Param([ValidateNotNullOrEmpty()][Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the command string to be sent to the server')][string]$command
     )
 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     # simple as possible, write and flush - could be done without the function call
     $Global:EVAWriter.WriteLine($command)
     $Global:EVAWriter.Flush()
@@ -168,18 +178,27 @@ function GetEnvironmentFile {
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error setting binary transfer mode."
+        Write-Error "Error setting binary transfer mode."
         return $False
     }
     # set media type to SDRAM, retrieving is only functioning in this mode
     SendCommand "MEDIA SDRAM"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error selecting media type."
+        Write-Error "Error selecting media type."
         return $False
     }
-    $file = New-TemporaryFile 
-    if (ReadFile $file.FullName $name) { 
+    try {
+        $file = New-TemporaryFile
+        $fname = $file.FullName
+    }
+    catch {
+        $fname = [System.IO.Path]::GetTempFileName()
+    }
+    if (ReadFile $fname $name) { 
+        if (-not ($file)) {
+            $file = Get-Item -Path $fname
+        }
         Get-Content $file
     }
     Remove-Item $file
@@ -199,18 +218,18 @@ function UploadFlashFile {
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error setting binary transfer mode."
+        Write-Error "Error setting binary transfer mode."
         return $False
     }
     # set media type to flash, we want to write to this memory type
     SendCommand "MEDIA FLSH"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error selecting media type."
+        Write-Error "Error selecting media type."
         return $False
     }
     if (-not (WriteFile $filename $target)) {
-        Write-Error -Message "Error uploading file."
+        Write-Error "Error uploading file."
         return $False
     }
     return $True
@@ -225,8 +244,9 @@ function BootDeviceFromImage {
     Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the file containing the image to be loaded')][String]$filename
     )    
 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     if (-not (Test-Path $filename)) {
-        Write-Error -Message "The specified file cannot be found or accessed."
+        Write-Error "The specified file cannot be found or accessed."
         return $False
     }
     $fileattr = Get-Item "$filename"
@@ -239,7 +259,7 @@ function BootDeviceFromImage {
     # check, if memsize is a multiple of 32 MB, else it's already change by an earlier attempt
     $rem = $memsize % (1024 * 1024 * 32)
     if ($rem -ne 0) {
-        Write-Error -Message "The memory size was already reduced by an earlier upload, restart the device first."
+        Write-Error "The memory size was already reduced by an earlier upload, restart the device first."
         return $False
     }
     # compute the needed size values (as strings)
@@ -254,29 +274,29 @@ function BootDeviceFromImage {
     Write-Debug "Set MTD ram device to: $startaddr,$endaddr"
     # set the new environment values
     if (-not (SetEnvironmentValue "memsize" "$newmemsize")) {
-        Write-Error -Message "Setting the new memory size failed."
+        Write-Error "Setting the new memory size failed."
         return $False
     }
     if (-not (SetEnvironmentValue "kernel_args_tmp" "mtdram1=$startaddr,$endaddr")) {
-        Write-Error -Message "Setting the temporary kernel parameters failed."
+        Write-Error "Setting the temporary kernel parameters failed."
         return $False
     }
     # set binary transfer mode
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error setting binary transfer mode."
+        Write-Error "Error setting binary transfer mode."
         return $False
     }
     # set media type to SDRAM, we'll start from memory
     SendCommand "MEDIA SDRAM"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error -Message "Error selecting media type."
+        Write-Error "Error selecting media type."
         return $False
     }
     if (-not (WriteFile $filename "$startaddr $endaddr")) {
-        Write-Error -Message "Error uploading image file."
+        Write-Error "Error uploading image file."
         return $False
     }
     return $True
@@ -294,12 +314,13 @@ function WriteFile {
           [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the command to be used for passive data transfers, defaults to "P@SW"')][String]$passive_cmd = "P@SW"
     )
 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     Write-Debug "Uploading file '$filename' to '$target' ..."
     # set passive mode
     SendCommand $passive_cmd
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "227")) {
-        Write-Error -Message "Error selecting media type."
+        Write-Error "Error selecting media type."
         return $False
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
@@ -327,31 +348,58 @@ function WriteFile {
         $answer = ReadAnswer
         if (ParseAnswer $answer "150") {
             $sending = $True
-            $copytask = $file.CopyToAsync($stream)
-            while ($sending) {
-                if ($copytask.IsCompleted) {
-                    $stream.Close()
-                    $sending = $False
+            # CopyToAsync is .NET 4.5 and above
+            if ($file.CopyToAsync) {
+                $copytask = $file.CopyToAsync($stream)
+                while ($sending) {
+                    if ($copytask.IsCompleted) {
+                        $stream.Close()
+                        $sending = $False
+                    }
+                    $answer = ReadAnswer
+                    if (ParseAnswer $answer "226") {
+                        $sending = $False
+                        $result = $True
+                    }
+                    elseif (ParseAnswer $answer "553") {
+                        # may only occur while we're uploading an in-memory image
+                        $sending = $False
+                        Write-Error "Error executing the uploaded image."
+                        $result = $False
+                    }
                 }
-                $answer = ReadAnswer
-                if (ParseAnswer $answer "226") {
-                    $sending = $False
-                    $result = $True
-                }
-                elseif (ParseAnswer $answer "553") {
-                    # may only occur while we're uploading an in-memory image
-                    $sending = $False
-                    Write-Error -Message "Error executing the uploaded image."
-                    $result = $False
+            }
+            else {
+                $inputbuffer = New-Object System.Byte[] 65536
+                while ($sending) {
+                    $readbytes = $file.Read($inputbuffer, 0, 65536)
+                    if ($readbytes -gt 0) {
+                        $stream.Write($inputbuffer, 0, $readbytes)
+                    }
+                    else {
+                        $sending = $False
+                        $stream.Close()
+                    }
+                    $answer = ReadAnswer
+                    if (ParseAnswer $answer "226") {
+                        $sending = $False
+                        $result = $True
+                        $stream.Close()
+                    }
+                    elseif (ParseAnswer $answer "553") {
+                        # may only occur while we're uploading an in-memory image
+                        $sending = $False
+                        Write-Error "Error executing the uploaded image."
+                        $result = $False
+                        $stream.Close()
+                    }
                 }
             }
         }
     }
     catch {
         $result = $False
-    }
-    finally {
-        if ($stream) {
+        if ($sending) {
             $stream.Close()
         }
     }
@@ -375,11 +423,12 @@ function ReadFile {
           [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the command to be used for passive data transfers, defaults to "P@SW"')][String]$passive_cmd = "P@SW"
     )
 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     # set passive mode
     SendCommand $passive_cmd
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "227")) {
-        Write-Error -Message "Error selecting media type."
+        Write-Error "Error selecting media type."
         return $False
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
@@ -388,9 +437,15 @@ function ReadFile {
         $data_port = ( [System.Int32]::Parse($Matches["p1"]) * 256 ) + [System.Int32]::Parse($Matches["p2"])
     }
     # if no file name was specified, we'll use a temporary file and write its content to the pipeline later
-    if (-not $filename) {
-        $tempfile = New-TemporaryFile
-        $filename = $tempfile.FullName
+    if ($filename.Length -eq 0) {
+        try {
+            $tempfile = New-TemporaryFile
+            $filename = $tempfile.FullName
+        }
+        catch {
+            $filename = [System.IO.Path]::GetTempFileName()
+            $tempfile = New-Item -Name $filename
+        }
     }
     else {
         $tempfile = $null
@@ -415,7 +470,7 @@ function ReadFile {
         $file = [System.IO.File]::Open($filename, "Create", "Write")
     }
     catch {
-        Write-Error -Message "Error opening output file."
+        Write-Error "Error opening output file."
         return $False
     }
     # set timeout on input stream, no more data means end of file
@@ -430,38 +485,96 @@ function ReadFile {
             while (-not $stream.DataAvailable) {
                 Start-Sleep -Milliseconds 100
             }
-            try {
-                $stream.CopyToAsync($file)
-                while ($receiving) {
-                    $answer = ReadAnswer
-                    if (ParseAnswer $answer "226") {
-                        $receiving = $False
+            if ($stream.CopyToAsync) {
+                Write-Debug "Using asynchronous CopyTo method ..."
+                try {
+                    # CopyToAsync is .NET 4.5 and above
+                    $single_copies = $False
+                    $copytask = $stream.CopyToAsync($file)
+                    while ($receiving) {
+                        $answer = ReadAnswer
+                        if (ParseAnswer $answer "226") {
+                            $receiving = $False
+                        }
+                        elseif ($copytask.IsCompleted) {
+                            $receiving = $False
+                        }
                     }
                 }
+                catch [System.IO.IOException] {
+                    # usually our expected timeout, because the connection will not be closed by EVA
+                    Write-Debug "Timeout from network stream"
+                    $receiving = $False
+                }
+                finally {
+                    $stream.Close()
+                }
             }
-            catch [System.IO.IOException] {
-                # usually our expected timeout, because the connection will not be closed by EVA
-                $receiving = $False
-            }
-            finally {
-                if ($stream) {
+            else {                              
+                # no RETR from the device should give more than 8K as result
+                Write-Debug "Using synchronous Read/Write methods ..."
+                $inputBuffer = New-Object System.Byte[] 8192
+                try {
+                    while ($receiving) {
+                        $readbytes = $stream.Read($inputbuffer, 0, 8192)
+                        if ($readbytes -eq 0) {
+                            $receiving = $False
+                        }
+                        else {
+                            $file.Write($inputbuffer, 0, $readbytes)
+                        }
+                        $answer = ReadAnswer
+                        if (ParseAnswer $answer "226") {
+                            $receiving = $False
+                        }
+                    }
+                }
+                catch [System.IO.IOException] {
+                    # timeout means EOF
+                    Write-Debug "Timeout from network stream"
+                    $answer = ReadAnswer
+                }
+                finally {
                     $stream.Close()
                 }
             }
         }
         else {
             # short data transfer only, already done 
+            Write-Debug "Using synchronous CopyTo method ..."
             try {
-                $stream.CopyTo($file)
-            }
-            catch [System.IO.IOException] {
-            }
-            finally {
-                if ($stream) {
-                    $stream.Close()
+                # .NET 4.5 and above ... it's really annoying and I would think, it's better to support no elder .NET versions
+                # nowadays everyone can use Windows 10 (and if I would do it yet, I would abandon the support for other versions,
+                # but luckily I'm still using Windows 7 on some devices)
+                if ($stream.CopyTo) {
+                    $stream.CopyTo($file)
+                }
+                else {
+                    $inputBuffer = New-Object System.Byte[] 8192
+                    while ($receiving) {
+                        $readbytes = $stream.Read($inputbuffer, 0, 8192)
+                        if ($readbytes -eq 0) {
+                            $receiving = $False
+                        }
+                        else {
+                            $file.Write($inputbuffer, 0, $readbytes)
+                        }
+                    }
                 }
             }
+            catch [System.IO.IOException] {
+                # timeout means EOF
+                Write-Debug "Timeout from network stream"
+            }
+            finally {
+                $stream.Close()
+            }
         }
+    }
+    elseif (ParseAnswer $answer "501")
+    {
+        Write-Output "Invalid file name '$name'."
+        return $False
     }
     # close file
     if ($file) {
@@ -542,10 +655,13 @@ catch {
 $answer = ReadAnswer
 if (ParseAnswer $answer "220") {
     if (Login) {
-        if ($ScriptBlock) {
-            $ScriptBlock.Invoke()
-        }
-        else {
+        SendCommand "SYST"
+        $answer = ReadAnswer
+        if (ParseAnswer $answer "215 AVM EVA") {
+            if ($ScriptBlock) {
+                $ScriptBlock.Invoke()
+            }
+            else {
 #####################################################################################
 #                                                                                   #
 # place your orders here, you may use the provided subfunctions or build your own   #
@@ -582,6 +698,10 @@ if (ParseAnswer $answer "220") {
 # or blame the author                                                               #
 #                                                                                   #
 #####################################################################################
+            }
+        }
+        else {
+            Write-Verbose "Unexpected FTP server found:`n$answer"
         }
     }
     else {
@@ -598,7 +718,8 @@ $Global:EVAStream.Close()
 $Global:EVAConnection.Close()
 $Global:EVAWriter.Dispose()
 $Global:EVAStream.Dispose()
-$Global:EVAConnection.Dispose()
+# earlier .NET environment versions do not support "Dispose" method for System.Net.Sockets.TCPClient
+if ($Global:EVAConnection.Dispose) { $Global:EVAConnection.Dispose() }
 $Global:EVAWriter = $null
 $Global:EVAStream = $null
 $Global:EVAConnection = $null
