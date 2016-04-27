@@ -85,6 +85,7 @@ catch {
     }
     $sender.Close()
     return $False
+}
 
 # the address of EVA found
 $EVA_IP = ""
