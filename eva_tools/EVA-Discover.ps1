@@ -27,12 +27,14 @@ Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of 
 )
       
 # our own IP address, we use it to determine an address for EVA, if none was provided
+# Oops ... Get-NetIPAddress is only avaiblable in Windows 8 and above ... uncomment it, because it's not really used yet and if someone has an unusual network configuration,
+# he/she can specify the address to be used as 2nd argument
 if ($requested_address.Length -eq 0) {
-    $my_address = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where { $_.IPAddress -ne "127.0.0.1" } | Select -First 1 IPAddress -ExpandProperty IPAddress
+#    $my_address = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where { $_.IPAddress -ne "127.0.0.1" } | Select -First 1 IPAddress -ExpandProperty IPAddress
     $requested_address = "192.168.178.1"
 }
 else {
-    $my_address = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where { $_.IPAddress -ne "127.0.0.1" } | Select -First 1 IPAddress -ExpandProperty IPAddress
+#    $my_address = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred | Where { $_.IPAddress -ne "127.0.0.1" } | Select -First 1 IPAddress -ExpandProperty IPAddress
 }
 # get address part into $Matches
 if (-not ($requested_address -match "^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$")) {
@@ -83,8 +85,8 @@ catch {
     }
     $sender.Close()
     return $False
-}
-# the address of EA found
+
+# the address of EVA found
 $EVA_IP = ""
 # continue after debug messages
 $DebugPreference = "Continue"
@@ -113,7 +115,7 @@ for ($i = 0; $i -lt $maxWait; $i++) {
             }
         }
         catch {
-            # usually not packet available, send next discovery packet
+            # usually no packet available, send next discovery packet
             $Error.Clear()
             $loopReceive = $False
         }
@@ -131,3 +133,4 @@ $sender.Close()
 # notify caller
 Write-Output "EVA_IP=$EVA_IP"
 return $($EVA_IP.Length -gt 0)
+

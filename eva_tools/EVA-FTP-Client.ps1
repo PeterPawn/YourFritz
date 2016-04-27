@@ -285,7 +285,7 @@ function BootDeviceFromImage {
 #######################################################################################
 #                                                                                     #
 # write a file to the FTP server, the needed preparation have to be done before this  #
-# function is called (set transfer mode, select target media type)
+# function is called (set transfer mode, select target media type)                    #
 #                                                                                     #
 #######################################################################################
 function WriteFile {
