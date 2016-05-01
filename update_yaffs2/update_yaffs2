@@ -77,8 +77,8 @@ sleep 5
 # wait until tmpfs is mounted on /var
 #
 while true; do
-        grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
-        sleep 2
+	grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
+	sleep 2
 done
 #
 # check for "uninstall" request
@@ -86,10 +86,10 @@ done
 # as "decision helper"
 #
 if [ -f $WRAPPER/remove_$CUSTOM.flag ]; then
-        while true; do
-                pidof run_clock >/dev/null 2>&1 && break
-        done
-        cat >/var/remove_$CUSTOM.sh <<EOI
+	while true; do
+		pidof run_clock >/dev/null 2>&1 && break
+	done
+	cat >/var/remove_$CUSTOM.sh <<EOI
 mount -o remount,rw $WRAPPER
 rm $WRAPPER/remove_$CUSTOM.flag
 rm $WRAPPER/remove_$CUSTOM.sh
@@ -100,8 +100,8 @@ sync
 mount -o remount,ro $WRAPPER
 exit 0
 EOI
-    		nohup sh -x /var/remove_$CUSTOM.sh >/var/tmp/remove_$CUSTOM.out 2>&1 &
-        exit 0
+	nohup sh -x /var/remove_$CUSTOM.sh >/var/tmp/remove_$CUSTOM.out 2>&1 &
+	exit 0
 fi
 #
 # mount our additional SquashFS image to /var/$CUSTOM
@@ -113,8 +113,8 @@ grep -q "^/dev/loop[0-9] /var/$CUSTOM squashfs" /proc/mounts || exit 1
 # wait until lan device was started
 #
 while true; do
-        ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
-        sleep 2
+	ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
+	sleep 2
 done
 #
 # start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
@@ -151,8 +151,8 @@ sleep 5
 # wait until tmpfs is mounted on /var
 #
 while true; do
-				grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
-        sleep 2
+	grep -q "^tmpfs /var tmpfs" /proc/mounts 2>/dev/null && break
+	sleep 2
 done
 #
 # check for "uninstall" request
@@ -160,17 +160,17 @@ done
 # as "decision helper"
 #
 if [ -f $WRAPPER/remove_$CUSTOM.flag ]; then
-        while true; do
-                pidof run_clock >/dev/null 2>&1 && break
-        done
-        mount -o remount,rw $WRAPPER
-        rm $WRAPPER/remove_$CUSTOM.flag
-        rm $WRAPPER/remove_$CUSTOM.sh
-        rm $WRAPPER/filesystem_$CUSTOM.squashfs
-        echo "exit 0" >$WRAPPER/sbin/flash_update
-        sync
-        mount -o remount,ro $WRAPPER
-        exit 0                                                                                                                                                                                                                              ]
+	while true; do
+		pidof run_clock >/dev/null 2>&1 && break
+	done
+	mount -o remount,rw $WRAPPER
+	rm $WRAPPER/remove_$CUSTOM.flag
+	rm $WRAPPER/remove_$CUSTOM.sh
+	rm $WRAPPER/filesystem_$CUSTOM.squashfs
+	echo "exit 0" >$WRAPPER/sbin/flash_update
+	sync
+	mount -o remount,ro $WRAPPER
+	exit 0                                                                                                                                                                                                                              ]
 fi
 #
 # mount our additional SquashFS image to /var/$CUSTOM
@@ -182,8 +182,8 @@ grep -q "^/dev/loop[0-9] /var/$CUSTOM squashfs" /proc/mounts || exit 1
 # wait until lan device was started
 #
 while true; do
-        ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
-        sleep 2
+	ifconfig lan 2>/dev/null | grep -q ".*UP.*RUNNING.*" && break
+	sleep 2
 done
 #
 # start the init script (etc/init.d/rc.$CUSTOM) of the mounted extension
