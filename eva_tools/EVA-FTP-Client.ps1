@@ -72,12 +72,16 @@ function ReadAnswer {
     [String]$lines = [String]::Empty;
     # short hold, it seems that too early access attempts are unsuccessfully
     Start-Sleep -Milliseconds 100
+    $debug = $False
     while ($Global:EVAStream.DataAvailable) {
         $bytesread = $Global:EVAStream.Read($inputBuffer, 0, 4096)
         $lines = [String]::Concat($lines, $encoding.GetString($inputBuffer, 0, $bytesread))
+        if ($bytesread -gt 0) { $debug = $True }
     }
     $lines -split "`r`n"
-    Write-Debug "Response:`n$lines`n================"
+    if ($debug) {
+        Write-Debug "Response:`n$lines`n================"
+    }
 }
 
 #######################################################################################
@@ -178,15 +182,15 @@ function GetEnvironmentFile {
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error setting binary transfer mode."
-        return $False
+        $ex = New-Object System.IO.IOException "Error setting binary transfer mode."
+        Throw $ex
     }
     # set media type to SDRAM, retrieving is only functioning in this mode
     SendCommand "MEDIA SDRAM"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error selecting media type."
-        return $False
+        $ex = New-Object System.IO.IOException "Error selecting media type."
+        Throw $ex
     }
     try {
         $file = New-TemporaryFile
@@ -218,19 +222,19 @@ function UploadFlashFile {
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error setting binary transfer mode."
-        return $False
+        $ex = New-Object System.IO.IOException "Error setting binary transfer mode."
+        Throw $ex
     }
     # set media type to flash, we want to write to this memory type
     SendCommand "MEDIA FLSH"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error selecting media type."
-        return $False
+        $ex = New-Object System.IO.IOException "Error selecting media type."
+        Throw $ex
     }
     if (-not (WriteFile $filename $target)) {
-        Write-Error "Error uploading file."
-        return $False
+        $ex = New-Object System.IO.IOException "Error uploading image file."
+        Throw $ex
     }
     return $True
 }
@@ -246,21 +250,21 @@ function BootDeviceFromImage {
 
     if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
     if (-not (Test-Path $filename)) {
-        Write-Error "The specified file cannot be found or accessed."
-        return $False
+        $ex = New-Object System.Management.Automation.MethodInvocationException "The specified file cannot be found or accessed." 
+        Throw $ex
     }
     $fileattr = Get-Item "$filename"
     $filesize = $fileattr.Length
     if ($filesize -eq 0) {
-        Write-Error "The specified file is empty."
-        return $False
+        $ex = New-Object System.Management.Automation.MethodInvocationException "The specified file is empty."
+        Throw $ex
     }
     $memsize = GetEnvironmentValue "memsize"
     # check, if memsize is a multiple of 32 MB, else it's already change by an earlier attempt
     $rem = $memsize % (1024 * 1024 * 32)
     if ($rem -ne 0) {
-        Write-Error "The memory size was already reduced by an earlier upload, restart the device first."
-        return $False
+        $ex = New-Object System.Management.Automation.MethodInvocationException "The memory size was already reduced by an earlier upload, restart the device first."
+        Throw $ex
     }
     # compute the needed size values (as strings)
     Write-Debug $("Memory size found    : {0:x8}" -f $memsize)
@@ -274,30 +278,34 @@ function BootDeviceFromImage {
     Write-Debug "Set MTD ram device to: $startaddr,$endaddr"
     # set the new environment values
     if (-not (SetEnvironmentValue "memsize" "$newmemsize")) {
-        Write-Error "Setting the new memory size failed."
-        return $False
+        $ex = New-Object System.IO.IOException "Setting the new memory size failed."
+        Throw $ex
     }
     if (-not (SetEnvironmentValue "kernel_args_tmp" "mtdram1=$startaddr,$endaddr")) {
-        Write-Error "Setting the temporary kernel parameters failed."
-        return $False
+        $ex = New-Object System.IO.IOException "Setting the temporary kernel parameters failed."
+        Throw $ex
     }
     # set binary transfer mode
     SendCommand "TYPE I"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error setting binary transfer mode."
-        return $False
+        $ex = New-Object System.IO.IOException "Error setting binary transfer mode."
+        Throw $ex
     }
     # set media type to SDRAM, we'll start from memory
     SendCommand "MEDIA SDRAM"
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "200")) {
-        Write-Error "Error selecting media type."
-        return $False
+        $ex = New-Object System.IO.IOException "Error selecting media type."
+        Throw $ex
     }
     if (-not (WriteFile $filename "$startaddr $endaddr")) {
-        Write-Error "Error uploading image file."
-        return $False
+        # try to reset environment settings
+        SetEnvironmentValue "memsize" $memsize
+        SetEnvironmentValue "kernel_args_tmp"
+        # throw error from WriteFile
+        $ex = New-Object System.IO.IOException "Error uploading image file."
+        Throw $ex
     }
     return $True
 }
@@ -320,8 +328,8 @@ function WriteFile {
     SendCommand $passive_cmd
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "227")) {
-        Write-Error "Error selecting media type."
-        return $False
+        $ex = New-Object System.IO.IOException "Error setting passive transfer mode."
+        Throw $ex
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
     if ($answer[0] -match "^227 Entering Passive Mode \((?'a1'[0-9]{1,3}),(?'a2'[0-9]{1,3}),(?'a3'[0-9]{1,3}),(?'a4'[0-9]{1,3}),(?'p1'[0-9]{1,3}),(?'p2'[0-9]{1,3})\).*$") {
@@ -350,13 +358,17 @@ function WriteFile {
             $sending = $True
             # CopyToAsync is .NET 4.5 and above
             if ($file.CopyToAsync) {
+                Write-Debug "Using CopyToAsync to read from device ..."
                 $copytask = $file.CopyToAsync($stream)
                 while ($sending) {
+                    Write-Debug "CheckCompletion ..."
                     if ($copytask.IsCompleted) {
                         $stream.Close()
                         $sending = $False
+                        Start-Sleep -Milliseconds 1000
                     }
                     $answer = ReadAnswer
+                    Write-Debug "ReadAnswer ..."
                     if (ParseAnswer $answer "226") {
                         $sending = $False
                         $result = $True
@@ -364,21 +376,28 @@ function WriteFile {
                     elseif (ParseAnswer $answer "553") {
                         # may only occur while we're uploading an in-memory image
                         $sending = $False
-                        Write-Error "Error executing the uploaded image."
                         $result = $False
                     }
                 }
             }
             else {
+                # Write-Debug "Using 64 KB buffer to read from device ..."
                 $inputbuffer = New-Object System.Byte[] 65536
                 while ($sending) {
                     $readbytes = $file.Read($inputbuffer, 0, 65536)
+                    # Write-Debug "Read $readbytes bytes from file ..."
                     if ($readbytes -gt 0) {
                         $stream.Write($inputbuffer, 0, $readbytes)
+                        # Write-Debug "Wrote $readbytes bytes to device ..."
                     }
                     else {
+                        # Write-Debug "End of input reached ..."
                         $sending = $False
+                        $result = $True
                         $stream.Close()
+                        # try to read "226" from device ... this may fail, if we're
+                        # uploading an image to start the device from it
+                        Start-Sleep -Milliseconds 100
                     }
                     $answer = ReadAnswer
                     if (ParseAnswer $answer "226") {
@@ -389,7 +408,6 @@ function WriteFile {
                     elseif (ParseAnswer $answer "553") {
                         # may only occur while we're uploading an in-memory image
                         $sending = $False
-                        Write-Error "Error executing the uploaded image."
                         $result = $False
                         $stream.Close()
                     }
@@ -398,6 +416,8 @@ function WriteFile {
         }
     }
     catch {
+        # Write-Debug "Error occured"
+        # Write-Debug $Error
         $result = $False
         if ($sending) {
             $stream.Close()
@@ -428,8 +448,8 @@ function ReadFile {
     SendCommand $passive_cmd
     $answer = ReadAnswer
     if (-not (ParseAnswer $answer "227")) {
-        Write-Error "Error selecting media type."
-        return $False
+        $ex = New-Object System.IO.IOException "Error setting passive transfer mode."
+        Throw $ex
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
     if ($answer[0] -match "^227 Entering Passive Mode \((?'a1'[0-9]{1,3}),(?'a2'[0-9]{1,3}),(?'a3'[0-9]{1,3}),(?'a4'[0-9]{1,3}),(?'p1'[0-9]{1,3}),(?'p2'[0-9]{1,3})\).*$") {
@@ -470,8 +490,8 @@ function ReadFile {
         $file = [System.IO.File]::Open($filename, "Create", "Write")
     }
     catch {
-        Write-Error "Error opening output file."
-        return $False
+        $ex = New-Object System.IO.IOException "Error opening output file."
+        Throw $ex
     }
     # set timeout on input stream, no more data means end of file
     $stream.ReadTimeout = 500
@@ -486,7 +506,7 @@ function ReadFile {
                 Start-Sleep -Milliseconds 100
             }
             if ($stream.CopyToAsync) {
-                Write-Debug "Using asynchronous CopyTo method ..."
+                # Write-Debug "Using asynchronous CopyTo method ..."
                 try {
                     # CopyToAsync is .NET 4.5 and above
                     $single_copies = $False
@@ -503,7 +523,7 @@ function ReadFile {
                 }
                 catch [System.IO.IOException] {
                     # usually our expected timeout, because the connection will not be closed by EVA
-                    Write-Debug "Timeout from network stream"
+                    # Write-Debug "Timeout from network stream"
                     $receiving = $False
                 }
                 finally {
@@ -512,7 +532,7 @@ function ReadFile {
             }
             else {                              
                 # no RETR from the device should give more than 8K as result
-                Write-Debug "Using synchronous Read/Write methods ..."
+                # Write-Debug "Using synchronous Read/Write methods ..."
                 $inputBuffer = New-Object System.Byte[] 8192
                 try {
                     while ($receiving) {
@@ -531,7 +551,7 @@ function ReadFile {
                 }
                 catch [System.IO.IOException] {
                     # timeout means EOF
-                    Write-Debug "Timeout from network stream"
+                    # Write-Debug "Timeout from network stream"
                     $answer = ReadAnswer
                 }
                 finally {
@@ -541,7 +561,7 @@ function ReadFile {
         }
         else {
             # short data transfer only, already done 
-            Write-Debug "Using synchronous CopyTo method ..."
+            # Write-Debug "Using synchronous CopyTo method ..."
             try {
                 # .NET 4.5 and above ... it's really annoying and I would think, it's better to support no elder .NET versions
                 # nowadays everyone can use Windows 10 (and if I would do it yet, I would abandon the support for other versions,
@@ -564,7 +584,7 @@ function ReadFile {
             }
             catch [System.IO.IOException] {
                 # timeout means EOF
-                Write-Debug "Timeout from network stream"
+                # Write-Debug "Timeout from network stream"
             }
             finally {
                 $stream.Close()

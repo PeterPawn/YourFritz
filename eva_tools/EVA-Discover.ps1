@@ -106,9 +106,9 @@ for ($i = 0; $i -lt $maxWait; $i++) {
         try {
             # try to receive a packet
             $answer = $listener.Receive([ref]$listener_ep)
-            Write-Debug "Received UDP packet from $($listener_ep.Address.ToString()):$($listener_ep.Port.ToString()) ..."
             # packet exists, check remote port
             if ($listener_ep.Port -eq $discovery_port) {
+                Write-Debug "Received UDP packet from $($listener_ep.Address.ToString()):$($listener_ep.Port.ToString()) ..."
                 # an answer from the discovery port is from EVA
                 $EVA_IP = $listener_ep.Address.ToString()
                 # terminate the loop
