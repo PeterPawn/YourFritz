@@ -2,14 +2,6 @@
 #                                                                                     #
 # PowerShell script to communicate with the FTP server in AVM's bootloader            #
 #                                                                                     #
-# The script has been tested on Windows 7 (PowerShell 2) with .NET framework 2 as CLR #
-# environment, but its primary target was a Windows 10 system with PowerShell 5 and   #
-# Common Language Runtime 4.6 and above.                                              #
-#                                                                                     #
-# Some newer cmdlets and/or methods for stream objects (especially every asynchronous #
-# method) aren't available under Windows 7 - but their presence is tested first and   #
-# the fallback to other functions is only used, if they're really missing.            #
-#                                                                                     #
 #######################################################################################
 #                                                                                     #
 # Copyright (C) 2010-2016 P.Hämmerlein (packages@yourfritz.de)                        #
@@ -356,68 +348,44 @@ function WriteFile {
         $answer = ReadAnswer
         if (ParseAnswer $answer "150") {
             $sending = $True
-            # CopyToAsync is .NET 4.5 and above
-            if ($file.CopyToAsync) {
-                Write-Debug "Using CopyToAsync to read from device ..."
-                $copytask = $file.CopyToAsync($stream)
-                while ($sending) {
-                    Write-Debug "CheckCompletion ..."
-                    if ($copytask.IsCompleted) {
-                        $stream.Close()
-                        $sending = $False
-                        Start-Sleep -Milliseconds 1000
-                    }
-                    $answer = ReadAnswer
-                    Write-Debug "ReadAnswer ..."
-                    if (ParseAnswer $answer "226") {
-                        $sending = $False
-                        $result = $True
-                    }
-                    elseif (ParseAnswer $answer "553") {
-                        # may only occur while we're uploading an in-memory image
-                        $sending = $False
-                        $result = $False
-                    }
+            # CopyToAsync is .NET 4.5 and above (as stated by MSDN), but it seems to be available in 4.0 (W7/PS3/CLR4.0)
+            #
+            # $PSVersionTable
+            # Name                           Value
+            # ----                           -----
+            # PSVersion                      3.0
+            # WSManStackVersion              3.0
+            # SerializationVersion           1.1.0.1
+            # CLRVersion                     4.0.30319.42000
+            # BuildVersion                   6.2.9200.16481
+            # PSCompatibleVersions           {1.0, 2.0, 3.0}
+            # PSRemotingProtocolVersion      2.2
+            #
+            $copytask = $file.CopyToAsync($stream)
+            while ($sending) {
+                if ($copytask.IsCompleted) {
+                    $stream.Close()
+                    $file.Close()
+                    $connection.Close()
+                    $sending = $False
+                    # try to get an answer from the device after closing the data stream and the connection, the response from the device was
+                    # very late during my tests
+                    Start-Sleep -Milliseconds 5000
                 }
-            }
-            else {
-                # Write-Debug "Using 64 KB buffer to read from device ..."
-                $inputbuffer = New-Object System.Byte[] 65536
-                while ($sending) {
-                    $readbytes = $file.Read($inputbuffer, 0, 65536)
-                    # Write-Debug "Read $readbytes bytes from file ..."
-                    if ($readbytes -gt 0) {
-                        $stream.Write($inputbuffer, 0, $readbytes)
-                        # Write-Debug "Wrote $readbytes bytes to device ..."
-                    }
-                    else {
-                        # Write-Debug "End of input reached ..."
-                        $sending = $False
-                        $result = $True
-                        $stream.Close()
-                        # try to read "226" from device ... this may fail, if we're
-                        # uploading an image to start the device from it
-                        Start-Sleep -Milliseconds 100
-                    }
-                    $answer = ReadAnswer
-                    if (ParseAnswer $answer "226") {
-                        $sending = $False
-                        $result = $True
-                        $stream.Close()
-                    }
-                    elseif (ParseAnswer $answer "553") {
-                        # may only occur while we're uploading an in-memory image
-                        $sending = $False
-                        $result = $False
-                        $stream.Close()
-                    }
+                $answer = ReadAnswer
+                if (ParseAnswer $answer "226") {
+                    $sending = $False
+                    $result = $True
+                }
+                elseif (ParseAnswer $answer "553") {
+                    # may only occur while we're uploading an in-memory image
+                    $sending = $False
+                    $result = $False
                 }
             }
         }
     }
     catch {
-        # Write-Debug "Error occured"
-        # Write-Debug $Error
         $result = $False
         if ($sending) {
             $stream.Close()
@@ -505,86 +473,34 @@ function ReadFile {
             while (-not $stream.DataAvailable) {
                 Start-Sleep -Milliseconds 100
             }
-            if ($stream.CopyToAsync) {
-                # Write-Debug "Using asynchronous CopyTo method ..."
-                try {
-                    # CopyToAsync is .NET 4.5 and above
-                    $single_copies = $False
-                    $copytask = $stream.CopyToAsync($file)
-                    while ($receiving) {
-                        $answer = ReadAnswer
-                        if (ParseAnswer $answer "226") {
-                            $receiving = $False
-                        }
-                        elseif ($copytask.IsCompleted) {
-                            $receiving = $False
-                        }
-                    }
-                }
-                catch [System.IO.IOException] {
-                    # usually our expected timeout, because the connection will not be closed by EVA
-                    # Write-Debug "Timeout from network stream"
-                    $receiving = $False
-                }
-                finally {
-                    $stream.Close()
-                }
-            }
-            else {                              
-                # no RETR from the device should give more than 8K as result
-                # Write-Debug "Using synchronous Read/Write methods ..."
-                $inputBuffer = New-Object System.Byte[] 8192
-                try {
-                    while ($receiving) {
-                        $readbytes = $stream.Read($inputbuffer, 0, 8192)
-                        if ($readbytes -eq 0) {
-                            $receiving = $False
-                        }
-                        else {
-                            $file.Write($inputbuffer, 0, $readbytes)
-                        }
-                        $answer = ReadAnswer
-                        if (ParseAnswer $answer "226") {
-                            $receiving = $False
-                        }
-                    }
-                }
-                catch [System.IO.IOException] {
-                    # timeout means EOF
-                    # Write-Debug "Timeout from network stream"
-                    $answer = ReadAnswer
-                }
-                finally {
-                    $stream.Close()
-                }
-            }
-        }
-        else {
-            # short data transfer only, already done 
-            # Write-Debug "Using synchronous CopyTo method ..."
             try {
-                # .NET 4.5 and above ... it's really annoying and I would think, it's better to support no elder .NET versions
-                # nowadays everyone can use Windows 10 (and if I would do it yet, I would abandon the support for other versions,
-                # but luckily I'm still using Windows 7 on some devices)
-                if ($stream.CopyTo) {
-                    $stream.CopyTo($file)
-                }
-                else {
-                    $inputBuffer = New-Object System.Byte[] 8192
-                    while ($receiving) {
-                        $readbytes = $stream.Read($inputbuffer, 0, 8192)
-                        if ($readbytes -eq 0) {
-                            $receiving = $False
-                        }
-                        else {
-                            $file.Write($inputbuffer, 0, $readbytes)
-                        }
+                $copytask = $stream.CopyToAsync($file)
+                while ($receiving) {
+                    $answer = ReadAnswer
+                    if (ParseAnswer $answer "226") {
+                        $receiving = $False
+                    }
+                    elseif ($copytask.IsCompleted) {
+                        $receiving = $False
                     }
                 }
             }
             catch [System.IO.IOException] {
-                # timeout means EOF
+                # usually our expected timeout, because the connection will not be closed by EVA
                 # Write-Debug "Timeout from network stream"
+                $receiving = $False
+            }
+            finally {
+                $stream.Close()
+            }
+        }
+        else {
+            # short data transfer only, already done 
+            try {
+                $stream.CopyTo($file)
+            }
+            catch [System.IO.IOException] {
+                # timeout means EOF
             }
             finally {
                 $stream.Close()
@@ -738,8 +654,7 @@ $Global:EVAStream.Close()
 $Global:EVAConnection.Close()
 $Global:EVAWriter.Dispose()
 $Global:EVAStream.Dispose()
-# earlier .NET environment versions do not support "Dispose" method for System.Net.Sockets.TCPClient
-if ($Global:EVAConnection.Dispose) { $Global:EVAConnection.Dispose() }
+$Global:EVAConnection.Dispose()
 $Global:EVAWriter = $null
 $Global:EVAStream = $null
 $Global:EVAConnection = $null

@@ -22,8 +22,9 @@
 #######################################################################################
 Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of packets to be sent, with 1 second delay in-between (defaults to 120 -> 2 minutes)')][int]$maxWait = 30,
       [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'the IP address, which the device should use (defaults to 192.168.178.1)')][string]$requested_address,
-      [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
-      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the port number to use')][int]$discovery_port = 5035
+      [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'do not hold up the device in the bootloader')][bool]$nohold = $False,
+      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
+      [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the port number to use')][int]$discovery_port = 5035
 )
       
 if ($PSBoundParameters["Debug"] -and $DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }      
@@ -64,8 +65,7 @@ catch {
     return $False
 }
 
-# our discovery packet ... some more sophisticated code is needed to build it "on the fly"
-# split into pairs, remove empty values, convert to bytes based on 16
+# our discovery packet
 [System.Byte[]]$discovery_packet = 0,0,                 # 16 bits of zero
                                    18,                  # one byte of 18
                                    1,                   # one byte of 1
@@ -114,6 +114,18 @@ for ($i = 0; $i -lt $maxWait; $i++) {
                 # terminate the loop
                 $loopReceive = $False
                 $EVA_found = $True
+                if (-not $nohold) {
+                    Write-Verbose "Trying to connect to the FTP port to hold up the device in bootloader ..."
+                    try {
+                        $ftpconn = New-Object System.Net.Sockets.TcpClient $EVA_IP, 21
+                        $ftpstream = $ftpconn.GetStream()
+                        $ftpstream.Close()
+                        $ftpconn.Close()
+                    }
+                    catch {
+                        Write-Debug "Error during FTP connection attempt ..."
+                    }
+                }
             }
         }
         catch {
