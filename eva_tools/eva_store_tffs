@@ -7,7 +7,7 @@ filename="$2"
 #
 # some constants to be changed, if needed
 #
-box_ip=192.168.178.1
+box_ip=${3:-192.168.178.1}
 box_port=21
 box_user=adam2
 box_pass=adam2
@@ -92,14 +92,14 @@ upload_image()
 			return 1
 		fi
 		eval "$data_conn"
-		nc -w 3 $data_ip $data_port <&$upstream 2>/dev/null 1>&2 &
+		nc -w 60 $data_ip $data_port <&$upstream 2>/dev/null 1>&2 &
 		data_connection=$!
 		sleep 1
 		write_ftp_command "STOR $mtd" $outstream $logstream
 		line="$(read_ftp_response $instream $log)"
 		ec=${line:0:3}
 		if [ x$ec == x150 ]; then
-			cat $file >$storefifo
+			cat $file >$storefifo &
 			line="$(read_ftp_response $instream $log)"
 			ec=${line:0:3}
 			if [ x$ec == x226 ]; then
