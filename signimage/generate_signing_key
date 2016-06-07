@@ -52,47 +52,7 @@ else
 	export KEYPASSWORD="$1"
 fi
 #
-# get even number of hexadecimal digits
-#
-hex_even()
-{
-	local value=$1 len count rem
-	len=$(printf %x $value)
-	count=${#len}
-	rem=$(( count % 2 ))
-	[ $rem -ne 0 ] && len="0$len"
-	echo $len
-}
-#
-# convert hexadecimal string to binary content
-#
-hex2bin()
-{
-	local val="$1" out=""
-	while [ ${#val} -gt 0 ]; do
-		out="$out\x${val:0:2}"
-		val="${val:2}"
-	done
-	printf "$out"
-}
-#
-# encode ASN.1 length field
-#
-asn1_length()
-{
-	local len=0 value=$1 res interm
-	len=$(( ${#value} / 2 ))
-	if [ $len -gt 127 ]; then
-		interm=$(hex_even $len)
-		len=$(( ( ${#interm} / 2 ) + 128 ))
-		res=$(hex_even $len)$interm
-	else
-		res=$(hex_even $len)
-	fi
-	echo $res
-}
-#
-# ASN.1 types needed
+# check OpenSSL presence and version
 #
 version="$(openssl version)"
 if [ $? -eq 127 ]; then
