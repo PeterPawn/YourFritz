@@ -106,7 +106,6 @@ fi
 echo -n "Extracting public key in AVM format to '${name_prefix}.${avm_extension}' ... " 2>&1
 # the exponent was set by '-f4' and does not need to be read from file
 EXPONENT=010001
-openssl rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout
 eval $(openssl rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout)
 rc=$?
 if [ $rc -ne 0 ]; then
