@@ -15,7 +15,9 @@
 #   5 - the signature file has a wrong size                                        #
 #   6 - the specified list file does not exist                                     #
 #   7 - no usable public key found                                                 #
-#   8 - the signature file contains no MD5 hash                                    #
+#   8 - the signature file contains no ASN.1 structure                             #
+#   9 - the signature file uses an unsupported hash algorithm                      #
+#  10 - the hash algorithm used to sign isn't supported by the openssl binary      #
 #  32 - "openssl" binary not found                                                 #
 #  33 - "openssl" function "dgst" is not available                                 #
 #  34 - "openssl" function "rsautl" is not available                               #
@@ -54,6 +56,14 @@ usage()
 	echo -e "to contain the name(s) of possible public key files, one name per line."
 	echo -e "If you know the right public key for sure, you may specify its file name"
 	echo -e "instead of using a list."
+	echo -e ""
+	echo -e "Remark:"
+	echo -e "If you have an image file not signed by AVM, it may use better hash"
+	echo -e "algorithms from a limited set (md5, sha1, sha224, sha256, sha512,"
+	echo -e "whirlpool), as long as the openssl binary supports this algorithm."
+	echo -e "The algorithm used to create the signature (by the signer) is detected"
+	echo -e "while decoding the signature file in a first step (its format will be"
+	echo -e "checked too in this step)."
 }
 ####################################################################################
 #                                                                                  #
@@ -198,17 +208,39 @@ if [ $multiple_keys -eq 1 ]; then
 	echo -e "Trying to determine the correct key ... " 1>&2
 fi
 key_found=0
+valid_algo=0
+algo=""
 for k in $(cat "$tmp/public_keys"); do
 	echo -en "Checking the public key from \x1B[1m$k\x1B[0m ... " 1>&2
 	avm_pubkey_to_pkcs8 <"$k" >"$tmp/pubkey.pem"
 	output="$(openssl rsautl -verify -pubin -inkey "$tmp/pubkey.pem" -asn1parse -in "$tmp/var/signature" 2>&1)"
 	rc=$?
 	if [ $rc -eq 0 ]; then
-		echo "$output" | grep -q "OBJECT.*:md5" 2>/dev/null
-		if [ $? -eq 0 ]; then
-			show_ok
-			key_found=1
-			break
+		key_found=1
+		show_ok
+		algo=$(echo "$output" | sed -n -e "s|^.*OBJECT.*:\(.*\)\$|\1|p" 2>/dev/null)
+		if [ ${#algo} -gt 0 ]; then
+			echo -en "Checking support for the used hash algorithm '$algo' ... " 1>&2
+			valid_algo=0
+			for a in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
+				if [ "$a" == "$algo" ]; then
+					valid_algo=1
+					break
+				fi
+			done
+			if [ $valid_algo -eq 1 ]; then
+				echo "" | openssl dgst -$algo 2>&1 2>/dev/null 1>&2
+				rc=$?
+				if [ $rc -eq 0 ]; then
+					show_ok
+				else
+					show_error
+					exit 10
+				fi
+			else
+				show_error
+				exit 9
+			fi
 		else
 			show_error
 			exit 8
@@ -230,7 +262,7 @@ fi
 res="$( ( dd if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
 dd if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
 dd if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) |
-openssl dgst -md5 -verify "$tmp/pubkey.pem" -signature "$tmp/var/signature")"
+openssl dgst -$algo -verify "$tmp/pubkey.pem" -signature "$tmp/var/signature")"
 rc=$?
 if [ $rc -ne 0 ]; then
 	echo -e "Signature verification failed." 1>&2
