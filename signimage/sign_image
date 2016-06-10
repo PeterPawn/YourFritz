@@ -1,0 +1,215 @@
+#! /bin/sh
+####################################################################################
+#                                                                                  #
+# sign a tar archive with our private RSA key                                      #
+#                                                                                  #
+# The key has to be generated with the right name (look at image_signing_files.inc #
+# for the name components) and has to be reachable at the current working          #
+# directory, if the "name_prefix" component does not contain a complete path       #
+# (absolute or relative).                                                          #
+#                                                                                  #
+# The archive to sign may not contain a var/signature member, it would lead to     #
+# a confusion in "firmwarecfg", if the hash is recomputed later for checking.      #
+#                                                                                  #
+# The signed image is written to STDOUT (it is created "on the fly" and will never #
+# be stored by the script itself to save space, if the process runs on the target  #
+# device) and the caller is responsible to redirect the output to the final        #
+# destination.                                                                     #
+#                                                                                  #
+####################################################################################
+#                                                                                  #
+# determine our script path to locate the include file                             #
+#                                                                                  #
+####################################################################################
+my_path="$0"
+[ "${my_path%/*}" == "$my_path" ] && my_path="." || my_path="${my_path%/*}"
+my_name="${0##*/}"
+####################################################################################
+#                                                                                  #
+# include the common file definitions                                              #
+#                                                                                  #
+####################################################################################
+source "$my_path/image_signing_files.inc"
+####################################################################################
+#                                                                                  #
+# some subfunctions                                                                #
+#                                                                                  #
+####################################################################################
+show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
+show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
+show_version() 
+{ 
+	local v
+	v=$(openssl version 2>/dev/null)
+	if [ $? -eq 127 ]; then
+		echo "Missing 'openssl' binary." 1>&2
+		return 1
+	else
+		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
+		return 0
+	fi
+}
+####################################################################################
+#                                                                                  #
+# usage screen, caller has to redirect output to STDERR if needed                  #
+#                                                                                  #
+####################################################################################
+usage()
+{
+	echo -e "\x1B[1mSign a tar archive file as firmware image for FRITZ!OS devices.\
+\x1B[0m\n"
+	echo -e "Usage:\n"
+	echo -e "$0 \x1B[1mimagefile\x1B[0m [\x1B[1mpassword\x1B[0m]\n"
+	echo -e "\x1B[1mimagefile\x1B[0m is the archive to sign, there must be no \x1B[\
+1mvar/signature\x1B[0m file"
+	echo -e "embedded yet."
+	echo -e "The \x1B[1mpassword\x1B[0m will be read from the terminal, if it's not\
+ specified."
+	echo -e "The signed image is written to STDOUT, you should redirect it to the"
+	echo -e "proper target file location."
+}
+####################################################################################
+#                                                                                  #
+# check parameters                                                                 #
+#                                                                                  #
+####################################################################################
+if [ -z $1 ]; then
+		usage 1>&2
+		exit 1
+else
+	image_file="$1"
+fi
+if ! [ -f "$image_file" ]; then
+	echo "The specified image file \x1B[1m]$image_file\x1B[0m] does not exist." 1>&2
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# check OpenSSL presence and version                                               #
+#                                                                                  #
+####################################################################################
+show_version
+[ $? -ne 0 ] && exit 1
+echo -n "Check 'dgst' command ... " 1>&2
+echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 1
+fi
+echo -n "Check 'rsa' command ... " 1>&2
+echo "" | openssl rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# get the password for the private key                                             #
+#                                                                                  #
+####################################################################################
+if [ -z $2 ]; then
+	if ! [ -t 0 ]; then
+		usage 1>&2
+		exit 1
+	else
+		read -sp "Enter the password for the signing key: " KEYPASSWORD
+		echo "" 1>&2
+	fi
+else
+	KEYPASSWORD="$2"
+fi
+####################################################################################
+#                                                                                  #
+# check key password first (and key file presence)                                 #
+#                                                                                  #
+####################################################################################
+echo -en "Check the password for the private key file ... " 1>&2
+openssl rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# prepare a temporary directory and cleanup on exit                                #
+#                                                                                  #
+####################################################################################
+tmp=$(mktemp -d)
+[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
+trap "rm -r \"$tmp\"" EXIT HUP
+####################################################################################
+#                                                                                  #
+# create a subdirectory 'var' to prepare a TAR file of our signature later         #
+#                                                                                  #
+####################################################################################
+mkdir -p "$tmp/var"
+####################################################################################
+#                                                                                  #
+# prepare a temporary block for an empty TAR member - 512 byte header and 512 byte #
+# content, it will be used as "end of archive" header too (2 continous empty       #
+# blocks with a size of 512 octets)                                                #
+#                                                                                  #
+####################################################################################
+dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
+####################################################################################
+#                                                                                  #
+# determine image size without EoA headers in 512 blocks                           #
+#                                                                                  #
+####################################################################################
+file_size=$(stat -c %s "$image_file")
+shortened_size=$(( file_size - ( 2 * 512 ) ))
+shortened_blocks=$(( shortened_size / ( 2 * 512 ) ))
+####################################################################################
+#                                                                                  #
+# generate the signature file                                                      #
+#                                                                                  #
+# - the input file will be combined with another 1 KB containing zeros             #
+# - the original EoA entry will be seen as placeholder for the new signature file  #                                        
+# - the additional zeros serve as the new EoA header                               #
+#                                                                                  #
+##################################A#################################################
+echo -en "Signing the image hash with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
+cat "$image_file" "$tmp/1K.bin" | 
+openssl dgst -md5 -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# stream the shortened image file (without EoA) to STDOUT                          #
+#                                                                                  #
+####################################################################################
+echo -en "Copying resulting image to output ... " 1>&2
+dd if="$image_file" bs=1024 count=$shortened_blocks status=none
+####################################################################################
+#                                                                                  #
+# and append another TAR archive containing only our newly created signature file  #
+#                                                                                  #
+####################################################################################
+tar -C "$tmp" -O -c ./var/signature
+show_ok
+####################################################################################
+#                                                                                  #
+# all done, now STDOUT has seen all the needed data to be used as a signed image   #
+#                                                                                  #
+####################################################################################
+exit 0
+####################################################################################
+#                                                                                  #
+# end of file                                                                      #
+#                                                                                  #
+####################################################################################
+
