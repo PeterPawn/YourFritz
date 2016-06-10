@@ -33,7 +33,7 @@ hex2bin()
 		out="$out\x${val:0:2}"
 		val="${val:2}"
 	done
-	printf "$out"
+	printf "%s" "$out"
 }
 ################################################################################
 #                                                                              #
@@ -143,9 +143,9 @@ der_outermost_seq=$asn1_type_seq$(asn1_length "$rsa_object_seq$rsa_bitstring")
 # encode it in base64 and add headers                                          #
 #                                                                              #
 ################################################################################
-printf "-----BEGIN PUBLIC KEY-----\n"
+printf "%s\n" "-----BEGIN PUBLIC KEY-----"
 hex2bin "$der_outermost_seq$rsa_object_seq$rsa_bitstring" | base64
-printf "-----END PUBLIC KEY-----\n"
+printf "%s\n" "-----END PUBLIC KEY-----"
 ################################################################################
 #                                                                              #
 # all done                                                                     #
