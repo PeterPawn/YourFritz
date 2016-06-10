@@ -16,6 +16,9 @@
 # device) and the caller is responsible to redirect the output to the final        #
 # destination.                                                                     #
 #                                                                                  #
+# To ensure proper archive handling, the input file must use the pure GNU tar      #
+# format without PAXHEADERS and longer EoA headers.                                #
+#                                                                                  #
 ####################################################################################
 #                                                                                  #
 # determine our script path to locate the include file                             #
@@ -62,11 +65,16 @@ usage()
 	echo -e "$0 \x1B[1mimagefile\x1B[0m [\x1B[1mpassword\x1B[0m]\n"
 	echo -e "\x1B[1mimagefile\x1B[0m is the archive to sign, there must be no \x1B[\
 1mvar/signature\x1B[0m file"
-	echo -e "embedded yet."
+	echo -e "embedded yet.\n"
 	echo -e "The \x1B[1mpassword\x1B[0m will be read from the terminal, if it's not\
  specified."
 	echo -e "The signed image is written to STDOUT, you should redirect it to the"
-	echo -e "proper target file location."
+	echo -e "proper target file location.\n"
+	echo -e "The default hash algorithm used is MD5, as it's used by the current\nA\
+VM implementation. If you know for sure, that you will only use non-\nAVM scripts/c\
+omponents to sign and verify, you may specify a better\nhash algorithm (remember th\
+at the openssl binary still has to support\nit) with an environment variable USEHAS\
+H specifying the name of the\nalgorithm to use."
 }
 ####################################################################################
 #                                                                                  #
@@ -107,6 +115,92 @@ if [ $rc -eq 0 ]; then
 else
 	show_error
 	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# check the specified hash algorithm and verify, it's provided by the openssl      #
+# binary                                                                           #
+#                                                                                  #
+####################################################################################
+if [ "${#USEHASH}" -gt 0 ]; then
+	check_algo="$(echo "$USEHASH" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/")"
+	hash_algo=""
+	for algo in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
+		if [ "$algo" == "$check_algo" ]; then
+			hash_algo=$algo
+		fi
+	done
+	if [ "${#hash_algo}" -eq 0 ]; then
+		echo "Unknown or unsupported (by this script) hash algorithm '$USEHASH' specified."
+		exit 1
+	fi
+else
+	hash_algo="md5"
+fi
+echo -n "Verify hash algorithm '$hash_algo' is supported ... " 1>&2
+echo "" | openssl dgst -$hash_algo 2>&1 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# verify input file format                                                         #
+#                                                                                  #
+####################################################################################
+dd if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null
+if [ $? -ne 0 ]; then
+	echo "Input file doesn't look like a TAR archive." 1>&2
+	exit 1
+fi
+dd if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null
+if [ $? -eq 0 ]; then
+	echo "Input file contains extended headers (PaxHeaders) and may not be signed this way." 1>&2
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# prepare a temporary directory and cleanup on exit                                #
+#                                                                                  #
+####################################################################################
+tmp=$(mktemp -d)
+[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
+trap "rm -r \"$tmp\"" EXIT HUP
+####################################################################################
+#                                                                                  #
+# check end of archive headers, GNU tar writes more than needed                    #
+#                                                                                  #
+####################################################################################
+offset=0
+tar -t -v -f "$image_file" |
+sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
+while read line; do
+	eval $line
+	file_offset=$offset
+	file_start=$(( file_offset + 512 ))
+	file_end=$(( file_start + SIZE ))
+	offset=$(( ( ( file_end + 511 ) / 512 ) * 512 ))
+	echo "HEADER=$file_offset START=$file_start END=$file_end SIZE=$SIZE BLOCKS=$(( ( offset - file_offset ) / 512 )) MEMBER=\"$MEMBER\"" >>"$tmp/image_members"
+done
+copy_blocks=0
+while read line; do
+	i=$(( i + 1 ))
+	eval $line
+	copy_blocks=$(( copy_blocks + BLOCKS ))
+	if [ "$MEMBER" == "./var/signature" ]; then
+		echo "The input file already contains a member './var/signature' and may not be signed (again) by this script." 1>&2
+		exit 1
+	fi
+done <"$tmp/image_members"
+file_size="$(stat -c %s "$image_file")"
+file_blocks=$(( file_size / 512 ))
+eoa_blocks=$(( file_blocks - copy_blocks ))
+if [ $eoa_blocks -gt 4 ]; then
+	echo "The end of archive markers at the input file are too large: blocks expected=4, blocks present=$eoa_blocks." 1>&2
+	echo "The input file will be truncated after the last archive member." 1>&2
 fi
 ####################################################################################
 #                                                                                  #
@@ -162,24 +256,17 @@ mkdir -p "$tmp/var"
 dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
 ####################################################################################
 #                                                                                  #
-# determine image size without EoA headers in 512 blocks                           #
-#                                                                                  #
-####################################################################################
-file_size=$(stat -c %s "$image_file")
-shortened_size=$(( file_size - ( 2 * 512 ) ))
-shortened_blocks=$(( shortened_size / ( 2 * 512 ) ))
-####################################################################################
-#                                                                                  #
 # generate the signature file                                                      #
 #                                                                                  #
 # - the input file will be combined with another 1 KB containing zeros             #
-# - the original EoA entry will be seen as placeholder for the new signature file  #                                        
-# - the additional zeros serve as the new EoA header                               #
+# - any superfluous blocks at the end of the archive are truncated                 #
+# - the original EoA entry will be replaced with an empty 1K block for the sig     #                                        
+# - an additional 1K block of zeroes serves as new EoA header                      #
 #                                                                                  #
 ##################################A#################################################
-echo -en "Signing the image hash with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-cat "$image_file" "$tmp/1K.bin" | 
-openssl dgst -md5 -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
+echo -en "Signing the image hash ($hash_algo) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
+dd if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/1K.bin" "$tmp/1K.bin" | 
+openssl dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -193,13 +280,14 @@ fi
 #                                                                                  #
 ####################################################################################
 echo -en "Copying resulting image to output ... " 1>&2
-dd if="$image_file" bs=1024 count=$shortened_blocks status=none
+dd if="$image_file" bs=512 count=$copy_blocks status=none
 ####################################################################################
 #                                                                                  #
 # and append another TAR archive containing only our newly created signature file  #
 #                                                                                  #
 ####################################################################################
-tar -C "$tmp" -O -c ./var/signature
+tar --version | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
+tar $format -C "$tmp" -O -c ./var/signature | dd bs=512 count=4 status=none 2>/dev/null
 show_ok
 ####################################################################################
 #                                                                                  #
