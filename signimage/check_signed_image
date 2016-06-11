@@ -67,6 +67,63 @@ usage()
 }
 ####################################################################################
 #                                                                                  #
+# helper to convert from hexadecimal dumped modulus to DER format, look at         #
+# avm_pubkey_to_pkcs8 for a version with comments                                  #
+#                                                                                  #
+####################################################################################
+modulus_to_der()
+{
+	local mod="$1" exp="${2:-010001}"
+	local type_int=02 type_seq=30 type_bstr=03 type_oid=06 type_null=0500
+
+	hex_even()
+	{
+		local value=$1 len count rem
+		len=$(printf %x $value)
+		count=${#len}
+		rem=$(( count % 2 ))
+		[ $rem -ne 0 ] && len="0$len"
+		echo $len
+	}
+	hex2bin()
+	{
+		local val="$1" out=""
+		while [ ${#val} -gt 0 ]; do
+			out="$out\x${val:0:2}"
+			val="${val:2}"
+		done
+		printf "$out"
+	}
+	asn1_length()
+	{
+		local len=0 value=$1 res interm
+		len=$(( ${#value} / 2 ))
+		if [ $len -gt 127 ]; then
+			interm=$(hex_even $len)
+			len=$(( ( ${#interm} / 2 ) + 128 ))
+			res=$(hex_even $len)$interm
+		else
+			res=$(hex_even $len)
+		fi
+		echo $res
+	}
+
+	m_len=$type_int$(asn1_length "$mod")
+	e_len=$type_int$(asn1_length "$exp")
+	pk_c=$m_len$mod$e_len$exp
+	pk_len=$(asn1_length "$pk_c")
+	pk_seq=$type_seq$pk_len$pk_c
+	pk_bit=00$pk_seq
+	bits=$type_bstr$(asn1_length "$pk_bit")$pk_bit
+	oid=2A864886F70D010101
+	o_enc=$type_oid$(asn1_length "$oid")$oid
+	o_alg=$o_enc$type_null
+	o_seq=$type_seq$(asn1_length "$o_alg")$o_alg
+	der=$type_seq$(asn1_length "$o_seq$bits")
+	hex2bin "$der$o_seq$bits"
+}
+####################################################################################
+#                                                                                  #
 # check image file                                                                 #
 #                                                                                  #
 ####################################################################################
@@ -193,10 +250,20 @@ if [ "$2" == "-f" ]; then
 		echo -e "The specified public key list file \x1B[1m$3\x1B[0m does not exist." 1>&2
 		exit 6
 	fi
-	cat "$3" >"$tmp/public_keys"
+	while read filename; do
+		if [ -f "$filename" ]; then
+			mod=$(sed -n -e "1p" "$filename")
+			exp=$(sed -n -e "2p" "$filename")
+			[ ${#exp} -eq 0 ] && exp=010001
+			echo "DESC=\"\" SRC=\"$filename\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+		fi
+	done <"$3"
 else
 	multiple_keys=0
-	echo "$2" >"$tmp/public_keys"
+	mod=$(sed -n -e "1p" "$2")
+	exp=$(sed -n -e "2p" "$2")
+	[ ${#exp} -eq 0 ] && exp=010001
+	echo "DESC=\"from command line\" SRC=\"$2\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
 fi
 ####################################################################################
 #                                                                                  #
@@ -210,10 +277,11 @@ fi
 key_found=0
 valid_algo=0
 algo=""
-for k in $(cat "$tmp/public_keys"); do
-	echo -en "Checking the public key from \x1B[1m$k\x1B[0m ... " 1>&2
-	avm_pubkey_to_pkcs8 <"$k" >"$tmp/pubkey.pem"
-	output="$(openssl rsautl -verify -pubin -inkey "$tmp/pubkey.pem" -asn1parse -in "$tmp/var/signature" 2>&1)"
+while read line; do
+	eval $line
+	echo -en "Checking the public key from \x1B[1m$SRC\x1B[0m ... " 1>&2
+	modulus_to_der $MOD $EXP >"$tmp/pubkey.der"
+	output="$(openssl rsautl -verify -pubin -inkey "$tmp/pubkey.der" -keyform der -asn1parse -in "$tmp/var/signature" 2>&1)"
 	rc=$?
 	if [ $rc -eq 0 ]; then
 		key_found=1
@@ -248,7 +316,7 @@ for k in $(cat "$tmp/public_keys"); do
 	else
 		show_error
 	fi
-done
+done <"$tmp/public_keys"
 if [ $key_found -eq 0 ]; then
 	echo -e "No usable public key was found." 1>&2
 	exit 7
@@ -262,7 +330,7 @@ fi
 res="$( ( dd if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
 dd if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
 dd if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) |
-openssl dgst -$algo -verify "$tmp/pubkey.pem" -signature "$tmp/var/signature")"
+openssl dgst -$algo -verify "$tmp/pubkey.der" -keyform der -signature "$tmp/var/signature")"
 rc=$?
 if [ $rc -ne 0 ]; then
 	echo -e "Signature verification failed." 1>&2
