@@ -9,21 +9,32 @@
 # of the values below:                                                             #
 #                                                                                  #
 #   0 - verification successful                                                    #
+#   1 - invalid arguments on command line                                          #
 #   2 - missing arguments                                                          #
 #   3 - specified image file not found                                             #
 #   4 - the image file contains no "./var/signature" member                        #
 #   5 - the signature file has a wrong size                                        #
-#   6 - the specified list file does not exist                                     #
+#   6 - the specified file does not exist                                          #
 #   7 - no usable public key found                                                 #
 #   8 - the signature file contains no ASN.1 structure                             #
 #   9 - the signature file uses an unsupported hash algorithm                      #
 #  10 - the hash algorithm used to sign isn't supported by the openssl binary      #
 #  11 - none of the specified public key sources was able to provide a key         #
+#  12 - a specified file contains invalid data                                     #
+#  13 - the builtin key files from FRITZ!OS (option -b) can only be used, if we're #
+#       running in the correct environment (or a valid emulation of such one)      #
 #  32 - "openssl" binary not found                                                 #
 #  33 - "openssl" function "dgst" is not available                                 #
 #  34 - "openssl" function "rsautl" is not available                               #
 #  64 - signature verification failed                                              #
 #                                                                                  #
+####################################################################################
+#                                                                                  #
+# constants                                                                        #
+#                                                                                  #
+####################################################################################
+avm_default_files="/etc/avm_firmware_public_key[1-9] plugin_global_key.pem"
+eva_prompt="Eva_AVM"
 ####################################################################################
 #                                                                                  #
 # some subfunctions                                                                #
@@ -52,14 +63,33 @@ usage()
 {
 	echo -e "\x1B[1mCheck, if the signature of the specified image file is valid.\x1B[0m\n"
 	echo -e "Usage:\n"
-	echo -e "$0 \x1B[1mimagefile\x1B[0m \x1B[1mpublickey_source\x1B[0m [...]\n"
+	echo -e "$0 \x1B[1mimagefile\x1B[0m \x1B[1;34mpublic_keys\x1B[0m\n"
 	echo -e "\x1B[1mimagefile\x1B[0m is the archive to check and the list of public keys to consider"
-	echo -e "for decryption may be built from the following sources:"
+	echo -e "for decryption (the \x1B[1;34mpublic_keys\x1B[0m part above) may be built from the following"
+	echo -e "sources:"
 	echo -e ""
 	echo -e "-f \x1B[1mfilename\x1B[0m - add the file names in the specified file"
-	echo -e "-b          - add AVM default keys (avm_firmware_public_key[1-3] and"
-	echo -e "              plugin_global_key.pem) to considerations"
-	echo -e "\x1B[1mfilename\x1B[0m    - add the specified file to the list"
+#	echo -e "-m \x1B[1mmajor\x1B[0m    - add AVM's default keys (avm_firmware_public_key[1-9] for the"
+#	echo -e "              specified device (major version) to the list, requires the sqlite3"
+#	echo -e "              database with the keys and adds all public keys (version doesn't"
+#	echo -e "              matter) ever seen for this model - even the known plugin signing"
+#	echo -e "              keys"
+#	echo -e "-k \x1B[1mindex\x1B[0m    - add only the key with the specified index from the"
+#	echo -e "              sqlite3 database as consideration, index may be taken from the"
+#	echo -e "              database listing displayed with the '-l' option"
+#	echo -e "-l            show a list of keys from the sqlite3 database, you have to use"
+#	echo -e "              external filters to restrict output volume"
+	echo -e "-b          - add the key files from the current OS to the list, this option"
+	echo -e "              makes only sense, if the script is executed on a FRITZ!OS-based"
+	echo -e "              device or in a proper emulation; an existing plugin signing key"
+	echo -e "              is also affected by this option"
+	echo -e "-c \x1B[1mfilename\x1B[0m - add raw lines from the specified file to the list,"
+	echo -e "              each line needs a MOD and EXP value, SRC as a pseudo"
+	echo -e "              filename and DESC as an optional description to be"
+	echo -e "              displayed for this key (unused yet)"
+	echo -e "-a \x1B[1mfilename\x1B[0m - add the specified file (AVM text format) to the list"
+	echo -e "-p \x1B[1mfilename\x1B[0m - add the specified file (PEM format) to the list"
+	echo -e "-d \x1B[1mfilename\x1B[0m - add the specified file (DER format) to the list"
 	echo -e ""
 	echo -e "The first key from the specified sources (which are probed in the"
 	echo -e "given order) able to decode the signature file will be used for"
@@ -72,15 +102,23 @@ usage()
 	echo -e "The algorithm used to create the signature (by the signer) is detected"
 	echo -e "while decoding the signature file in a first step (its format will be"
 	echo -e "checked too in this step)."
+	echo -e ""
+	echo -e "\x1B[1;31mWARNING:\x1B[0m"
+	echo -e "Because the lines from a 'raw file' (used with option 'c') are read"
+	echo -e "and simply 'eval'uated as commands (leading to assignments for the"
+	echo -e "values on each line), NEVER use this option with an input file from"
+	echo -e "an untrusted source or check the content thoroughly, before you use"
+	echo -e "it with this script."
 }
 ####################################################################################
 #                                                                                  #
 # output the lines to use the builtin keys from AVM images - taken from the files  #
 # /etc/avm_firmware_public_keys[1-3] and in /etc/plugin_global_key.pem in current  #
-# firmware for the 7390 model (84.06.51)                                           #
+# firmware for the 7390 model (84.06.51) - is only a shortcut to get the keys for  #
+# development tests without the needs to carry them around as single files         #
 #                                                                                  #
 ####################################################################################
-builtin_keys()
+builtin_keys_for_test()
 {
 	local avm1="DESC=\"AVM default key 1\" SRC=\"avm_firmware_public_key1\" MOD=\"\
 00ab54b73f000e9fc5bf3c0d229e56ae1644507877ca1eaf364708975de1e50236754fdc8577bd9e9e\
@@ -97,15 +135,47 @@ e990ad64ff81\" EXP=\"010001\""
 aa12a23eb1d770df1520a998078738407e6a71b077f73ba976363836b880b0dd88741bc3b83ab06169\
 1226e823404b7fc88ed278d8130fe5336eb925c78f2f8ad7cb87d9586286f768ab3236fa8fb51ae7c4\
 bbe1e041d849\" EXP=\"010001\""
-	local plugin="DESC=\"AVM plugin key\" SRC=\"plugin_global_key.pem\"     MOD=\"\
-00bed5268d38b33fe9876f4ae22a5970657c3501adcb84879654def6fc83c1303667b12a031025782c\
-b6490fed946ec81c3968ebc5d50697af9a2475339692eb5c84240cac09b2b3ca2a419efb6ae206e782\
-209fc5a405054630634d4a4bb0f3c053c72547f2fb95add232929a7f722db94d873e02cbb2985106d6\
-dd66dfa5592f\" EXP=\"010001\""
 	echo "$avm1"
 	echo "$avm2"
 	echo "$avm3"
-	echo "$plugin"
+}
+####################################################################################
+#                                                                                  #
+# output the lines to use the builtin keys from the FRITZ!OS system, this script   #
+# is running on - any further search will be skipped, if the environment does not  #
+# match the usual characteristics of a FRITZ!Box router or a FRITZ!Repeater device #
+#                                                                                  #
+# The FRITZ!OS will be identified by looking for the environment variables:        #
+# HWRevision, CONFIG_ENVIRONMENT_PATH                                              #
+# If these values exist, the content of $CONFIG_ENVIRONMENT_PATH/environment is    #
+# searched for the value of HWRevision again, it is compared to the value from OS  #
+# environment and finally the content of 'prompt' is checked for 'Eva_AVM'         #
+#                                                                                  #
+####################################################################################
+builtin_keys()
+{
+	local rc=13
+	[ ${#HWRevision} -eq 0 ] && return $rc
+	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && return $rc
+	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || return $rc
+	[ -f "$CONFIG_ENVIRONMENT_PATH/environment" ] || return $rc
+	local HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#HWRev} -eq 0 ] && return $rc
+	[ "$HWRev" != "$HWRevision" ] && return $rc
+	local prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#prompt} -eq 0 ] && return $rc
+	[ "$prompt" != "$eva_prompt" ] && return $rc
+	local f mod exp
+	rc=0
+	for f in $avm_default_files; do
+		if [ -f "$f" ]; then
+			mod=$(sed -n -e "1p" "$f")
+			exp=$(sed -n -e "2p" "$f")
+			[ ${#exp} -eq 0 ] && exp=010001
+			echo "DESC=\"current system\" SRC=\"$f\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+		fi
+	done
+	return $rc
 }
 ####################################################################################
 #                                                                                  #
@@ -116,53 +186,92 @@ dd66dfa5592f\" EXP=\"010001\""
 modulus_to_der()
 {
 	local mod="$1" exp="${2:-010001}"
-	local type_int=02 type_seq=30 type_bstr=03 type_oid=06 type_null=0500
+	local t_int=02 t_seq=30 t_bstr=03 t_oid=06 t_null=0500
+	local m_len e_len pk_c pk_len pk_seq pk_bit bits oid o_enc o_alg o_seq der res
 
-	hex_even()
+	asn1_len()
 	{
-		local value=$1 len count rem
-		len=$(printf %x $value)
-		count=${#len}
-		rem=$(( count % 2 ))
-		[ $rem -ne 0 ] && len="0$len"
-		echo $len
-	}
-	hex2bin()
-	{
-		local val="$1" out=""
-		while [ ${#val} -gt 0 ]; do
-			out="$out\x${val:0:2}"
-			val="${val:2}"
-		done
-		printf "$out"
-	}
-	asn1_length()
-	{
-		local len=0 value=$1 res interm
-		len=$(( ${#value} / 2 ))
-		if [ $len -gt 127 ]; then
-			interm=$(hex_even $len)
-			len=$(( ( ${#interm} / 2 ) + 128 ))
-			res=$(hex_even $len)$interm
+		x()
+		{
+			local v=$1 l
+			l=$(printf %x $v)
+			[ $(( ${#l} % 2 )) -ne 0 ] && l="0$l"
+			echo $l
+		}
+
+		local l=0 v=$1 i
+		l=$(( ${#v} / 2 ))
+		if [ $l -gt 127 ]; then
+			i=$(x $l)
+			l=$(( ( ${#i} / 2 ) + 128 ))
+			echo $(x $l)$i
 		else
-			res=$(hex_even $len)
+			echo $(x $l)
 		fi
-		echo $res
 	}
 
-	m_len=$type_int$(asn1_length "$mod")
-	e_len=$type_int$(asn1_length "$exp")
+	m_len=$t_int$(asn1_len "$mod")
+	e_len=$t_int$(asn1_len "$exp")
 	pk_c=$m_len$mod$e_len$exp
-	pk_len=$(asn1_length "$pk_c")
-	pk_seq=$type_seq$pk_len$pk_c
+	pk_len=$(asn1_len "$pk_c")
+	pk_seq=$t_seq$pk_len$pk_c
 	pk_bit=00$pk_seq
-	bits=$type_bstr$(asn1_length "$pk_bit")$pk_bit
+	bits=$t_bstr$(asn1_len "$pk_bit")$pk_bit
 	oid=2A864886F70D010101
-	o_enc=$type_oid$(asn1_length "$oid")$oid
-	o_alg=$o_enc$type_null
-	o_seq=$type_seq$(asn1_length "$o_alg")$o_alg
-	der=$type_seq$(asn1_length "$o_seq$bits")
-	hex2bin "$der$o_seq$bits"
+	o_enc=$t_oid$(asn1_len "$oid")$oid
+	o_alg=$o_enc$t_null
+	o_seq=$t_seq$(asn1_len "$o_alg")$o_alg
+	der=$t_seq$(asn1_len "$o_seq$bits")
+	res=$der$o_seq$bits
+	while [ ${#res} -gt 0 ]; do
+		printf "\x${res:0:2}"
+		res=${res:2}
+	done
+}
+####################################################################################
+#                                                                                  #
+# helper to convert from openssl public key format (PEM or DER) to intermediate    #
+# text format ... it's an unnecessary conversion, but it makes handling easier, if #
+# we 'normalize' such keys to the intermediate format, even if the final format    #
+# the original again while calling openssl binary                                  #
+#                                                                                  #
+####################################################################################
+read_openssl_file()
+{
+	local file="$1" format="$2" rc=12 line MODULUS EXPONENT Modulus
+	line=$(openssl rsa -in "$file" -pubin -inform $format -modulus -noout 2>/dev/null)
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "Unable to read RSA key ($format) from input file '$file'." 1>&2
+		return $rc
+	else
+		eval $line
+		MODULUS="$(echo "$Modulus" | sed -e "y/ABCDEF/abcdef/")"
+		if [ ${#MODULUS} -eq 0 ]; then
+			echo "Unable to read RSA key ($format) from input file '$file'." 1>&2
+			return $rc
+		fi
+		first=${MODULUS:0:1}
+		[ "${first/[89a-f]/}" != "$first" ] && MODULUS="00$MODULUS"
+		openssl rsa -in "$file" -pubin -inform $format -text -noout 2>/dev/null |
+		grep -q "^Exponent: 65537 (0x10001)\$" 2>/dev/null 1>&2
+		if [ $? -ne 0 ]; then # different exponent, read it from the output
+			EXPONENT=$(openssl rsa -in "$file" -pubin -inform $format -text -noout |
+			sed -n -e "s|^Exponent: [0-9]* (\(0x[0-9a-fA-F]*\))\$|\1|p")
+			if [ ${#EXPONENT} -eq 0 ]; then
+				echo "Unexpected output from public key file '$file' ($format)." 1>&2
+				return $rc
+			fi
+			EXPONENT=$(printf "%016x" $(( EXPONENT )))
+			while [ ${EXPONENT:0:1} == 0 ]; do
+				EXPONENT=${EXPONENT:1}
+			done
+			[ $(( ${#EXPONENT} % 2 )) -ne 0 ] && EXPONENT=0$EXPONENT
+		else
+			EXPONENT=010001
+		fi
+		echo "DESC=\"$format key\" SRC=\"$file\" MOD=$MODULUS EXP=$EXPONENT"
+	fi
 }
 ####################################################################################
 #                                                                                  #
@@ -292,7 +401,7 @@ while [ "$#" -gt 0 ]; do
 				exit 2
 			fi
 			if ! [ -f "$2" ]; then
-				echo -e "The specified public key list file \x1B[1m$2\x1B[0m does not exist." 1>&2
+				echo -e "The specified public key files list \x1B[1m$2\x1B[0m does not exist." 1>&2
 				exit 6
 			fi
 			while read filename; do
@@ -307,16 +416,62 @@ while [ "$#" -gt 0 ]; do
 			;;
 		"-b")
 			builtin_keys >>"$tmp/public_keys"
-			shift
-			;;	
-		*)
-			mod=$(sed -n -e "1p" "$1")
-			exp=$(sed -n -e "2p" "$1")
-			if [ ${#mod} -gt 0 ]; then
-				[ ${#exp} -eq 0 ] && exp=010001
-				echo "DESC=\"command line\" SRC=\"$1\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+			rc=$?
+			if [ $rc -ne 0 ]; then
+				echo "The option -b may only be used on a FRITZ!OS device." 1>&2
+				exit $rc
 			fi
 			shift
+			;;	
+		"-c")
+			if [ -z "$2" ]; then
+				echo "Missing filename after -c option." 1>&2
+				exit 2
+			fi
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m (raw format) does not exist." 1>&2
+				exit 6
+			fi
+			cat "$2" 2>/dev/null >>"$tmp/public_keys"
+			shift 2
+			;;
+		"-a")
+			if [ -z "$2" ]; then
+				echo "Missing filename after -a option." 1>&2
+				exit 2
+			fi
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m (AVM format) does not exist." 1>&2
+				exit 6
+			fi
+			mod=$(sed -n -e "1p" "$2")
+			exp=$(sed -n -e "2p" "$2")
+			if [ ${#mod} -gt 0 ]; then
+				[ ${#exp} -eq 0 ] && exp=010001
+				echo "DESC=\"command line\" SRC=\"$2\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+			fi
+			shift 2
+			;;
+		"-p"|"-d")
+			if [ -z "$2" ]; then
+				echo "Missing filename after $1 option." 1>&2
+				exit 2
+			fi
+			[ "$1" == "-p" ] && format="PEM" || format="DER"
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m ($format format) does not exist." 1>&2
+				exit 6
+			fi
+			read_openssl_file "$2" "$format" >>"$tmp/public_keys"
+			if [ $? -ne 0 ]; then
+				exit 12
+			fi
+			shift 2
+			;;
+		*)
+			echo -e "Unknown option '$1' specified on command line." 1>&2
+			usage 1>&2
+			exit 1
 			;;
 	esac
 done
@@ -408,4 +563,3 @@ exit 0
 # end of file                                                                      #
 #                                                                                  #
 ####################################################################################
-
