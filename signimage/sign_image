@@ -27,6 +27,7 @@
 my_path="$0"
 [ "${my_path%/*}" == "$my_path" ] && my_path="." || my_path="${my_path%/*}"
 my_name="${0##*/}"
+box_key_name="/var/flash/websrv_ssl_key"
 ####################################################################################
 #                                                                                  #
 # include the common file definitions                                              #
@@ -45,7 +46,7 @@ show_version()
 	local v
 	v=$(openssl version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		echo "Missing 'openssl' binary." 1>&2
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
 		return 1
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
@@ -74,7 +75,36 @@ usage()
 VM implementation. If you know for sure, that you will only use non-\nAVM scripts/c\
 omponents to sign and verify, you may specify a better\nhash algorithm (remember th\
 at the openssl binary still has to support\nit) with an environment variable USEHAS\
-H specifying the name of the\nalgorithm to use."
+H specifying the name of the\nalgorithm to use.\n"
+	echo -e "A special use case is the signing of a TAR file directly in a FRITZ!OS\
+\nenvironment, if such a signature is surely checked later only on the\nsame device\
+. Than we may use the RSA key from \x1B[1mwebsrv_ssl_key.pem\x1B[0m\ninstead of an \
+additional key and we don't need to specify its\npassword, because it may be read w\
+ith  \x1B[1mprivatekeypassword \x1B[0m. To switch\nthis script into this 'internal-\
+only mode', set the environment\nvariable SIGN_ON_BOX to '1' while calling it. Be a\
+ware, that a key\nsize other than 1024 bits would lead to the impossibility to veri\
+fy\nthe signed file with AVM components."
+}
+####################################################################################
+#                                                                                  #
+# try to identify FRITZ!OS as runtime environment (not too sophisticated, but it   #
+# should be able to make this distinction)                                         #
+#                                                                                  #
+####################################################################################
+is_fritzos_environment()
+{
+	local rc=1 eva_prompt="Eva_AVM"
+	[ ${#HWRevision} -eq 0 ] && return $rc
+	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && return $rc
+	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || return $rc
+	[ -f "$CONFIG_ENVIRONMENT_PATH/environment" ] || return $rc
+	local HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#HWRev} -eq 0 ] && return $rc
+	[ "$HWRev" != "$HWRevision" ] && return $rc
+	local prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#prompt} -eq 0 ] && return $rc
+	[ "$prompt" != "$eva_prompt" ] && return $rc
+	return 0
 }
 ####################################################################################
 #                                                                                  #
@@ -88,7 +118,7 @@ else
 	image_file="$1"
 fi
 if ! [ -f "$image_file" ]; then
-	echo "The specified image file \x1B[1m]$image_file\x1B[0m] does not exist." 1>&2
+	echo -e "The specified image file \x1B[1m$image_file\x1B[0m does not exist." 1>&2
 	exit 1
 fi
 ####################################################################################
@@ -98,7 +128,7 @@ fi
 ####################################################################################
 show_version
 [ $? -ne 0 ] && exit 1
-echo -n "Check 'dgst' command ... " 1>&2
+echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
 echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -107,7 +137,7 @@ else
 	show_error
 	exit 1
 fi
-echo -n "Check 'rsa' command ... " 1>&2
+echo -en "Check  \x1B[1mrsa \x1B[0m command ... " 1>&2
 echo "" | openssl rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -131,13 +161,13 @@ if [ "${#USEHASH}" -gt 0 ]; then
 		fi
 	done
 	if [ "${#hash_algo}" -eq 0 ]; then
-		echo "Unknown or unsupported (by this script) hash algorithm '$USEHASH' specified."
+		echo -e "Unknown or unsupported (by this script) hash algorithm \x1B[1m$USEHASH\x1B[0m specified." 1>&2
 		exit 1
 	fi
 else
 	hash_algo="md5"
 fi
-echo -n "Verify hash algorithm '$hash_algo' is supported ... " 1>&2
+echo -en "Verify hash algorithm  \x1B[1m$hash_algo \x1B[0m is supported ... " 1>&2
 echo "" | openssl dgst -$hash_algo 2>&1 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -153,12 +183,12 @@ fi
 ####################################################################################
 dd if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null
 if [ $? -ne 0 ]; then
-	echo "Input file doesn't look like a TAR archive." 1>&2
+	echo -e "Input file doesn't look like a TAR archive." 1>&2
 	exit 1
 fi
 dd if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null
 if [ $? -eq 0 ]; then
-	echo "Input file contains extended headers (PaxHeaders) and may not be signed this way." 1>&2
+	echo -e "Input file contains extended headers (PaxHeaders) and may not be signed this way." 1>&2
 	exit 1
 fi
 ####################################################################################
@@ -191,7 +221,7 @@ while read line; do
 	eval $line
 	copy_blocks=$(( copy_blocks + BLOCKS ))
 	if [ "$MEMBER" == "./var/signature" ]; then
-		echo "The input file already contains a member './var/signature' and may not be signed (again) by this script." 1>&2
+		echo -e "The input file already contains a member \x1B[1m./var/signature\x1B[0m and may not be signed (again) by this script." 1>&2
 		exit 1
 	fi
 done <"$tmp/image_members"
@@ -199,38 +229,73 @@ file_size="$(stat -c %s "$image_file")"
 file_blocks=$(( file_size / 512 ))
 eoa_blocks=$(( file_blocks - copy_blocks ))
 if [ $eoa_blocks -gt 4 ]; then
-	echo "The end of archive markers at the input file are too large: blocks expected=4, blocks present=$eoa_blocks." 1>&2
-	echo "The input file will be truncated after the last archive member." 1>&2
+	echo -e "The end of archive markers at the input file are too large: blocks expected=\x1B[1m4\x1B[0m, blocks present=\x1B[1m$eoa_blocks\x1B[0m." 1>&2
+	echo -e "The input file will be truncated after the last archive member." 1>&2
 fi
 ####################################################################################
 #                                                                                  #
-# get the password for the private key                                             #
+# check the special case of signing on the FRITZ!Box with the internal key         #
 #                                                                                  #
 ####################################################################################
-if [ -z $2 ]; then
-	if ! [ -t 0 ]; then
-		usage 1>&2
-		exit 1
+on_box=0
+if [ ${#SIGN_ON_BOX} -gt 0 ]; then
+	if [ "$SIGN_ON_BOX" == "1" ]; then
+		if ! is_fritzos_environment; then
+			echo -e "The special mode to sign an image with the FRITZ!OS RSA key may only be used in a FRITZ!OS environment."
+			exit 1
+		else
+			pkp="$(which privatekeypassword)"
+			found=$rc
+			if [ $found -ne 0 ]; then
+				echo -e "The \x1B[1mprivatekeypassword\x1B[0m executable is missing." 1>&2
+				exit 1
+			else
+				KEYPASSWORD="$(privatekeypassword 2>/dev/null)"
+				if [ ${#KEYPASSWORD} -eq 0 ]; then
+					echo -e "Error determining the password for the FRITZ!OS RSA key." 1>&2
+					exit 1
+				else
+					name_prefix="$box_key_name"
+					private_extension="pem"
+					on_box=1
+				fi
+			fi
+		fi
+	fi		
+fi
+####################################################################################
+#                                                                                  #
+# get the password for the private key, if needed                                  #
+#                                                                                  #
+####################################################################################
+if [ $on_box -eq 0 ]; then
+	if [ -z $2 ]; then
+		if ! [ -t 0 ]; then
+			usage 1>&2
+			exit 1
+		else
+			read -sp "Enter the password for the signing key: " KEYPASSWORD
+			echo "" 1>&2
+		fi
 	else
-		read -sp "Enter the password for the signing key: " KEYPASSWORD
-		echo "" 1>&2
+		KEYPASSWORD="$2"
 	fi
-else
-	KEYPASSWORD="$2"
 fi
 ####################################################################################
 #                                                                                  #
 # check key password first (and key file presence)                                 #
 #                                                                                  #
 ####################################################################################
-echo -en "Check the password for the private key file ... " 1>&2
-openssl rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
-rc=$?
-if [ $rc -eq 0 ]; then
-	show_ok 
-else
-	show_error
-	exit 1
+if [ $on_box -eq 0 ]; then
+	echo -en "Check the password for the private key file ... " 1>&2
+	openssl rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		show_ok 
+	else
+		show_error
+		exit 1
+	fi
 fi
 ####################################################################################
 #                                                                                  #
@@ -264,7 +329,7 @@ dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
 # - an additional 1K block of zeroes serves as new EoA header                      #
 #                                                                                  #
 ##################################A#################################################
-echo -en "Signing the image hash ($hash_algo) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
+echo -en "Signing the image hash (\x1B[1m$hash_algo\x1B[0m) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
 dd if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/1K.bin" "$tmp/1K.bin" | 
 openssl dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
 rc=$?
@@ -286,7 +351,7 @@ dd if="$image_file" bs=512 count=$copy_blocks status=none
 # and append another TAR archive containing only our newly created signature file  #
 #                                                                                  #
 ####################################################################################
-tar --version | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
+tar --version 2>/dev/null | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
 tar $format -C "$tmp" -O -c ./var/signature | dd bs=512 count=4 status=none 2>/dev/null
 show_ok
 ####################################################################################
@@ -300,4 +365,3 @@ exit 0
 # end of file                                                                      #
 #                                                                                  #
 ####################################################################################
-

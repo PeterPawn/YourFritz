@@ -11,12 +11,13 @@
 # support such "read" calls (Busybox 1.24.2 knows the needed options), specify the    #
 # password as argument during call.                                                   #
 #                                                                                     #
-# We assume enough entropy here ... please make sure there's enough                   #
-# randomness, before you call this script and you should be profoundly                #
-# convinced, that your "openssl" binary does not seed the PRNG with any               #
-# fixed value. You could read some values from /dev/random (not /dev/urandom, because #
-# this uses unblocking access and may return poor values, if no entropy is available) #
-# before you call this script.                                                        #
+# We assume enough entropy here ... please make sure there's enough randomness,       #
+# before you call this script and you should be profoundly  convinced, that your      #
+# "openssl" binary does not seed the PRNG with any fixed value.                       #
+#                                                                                     # 
+# You could read some values from /dev/random (not /dev/urandom, because this uses    #
+# unblocking access and may return poor values, if no entropy is available)  before   #
+# you call this script.                                                               #
 #                                                                                     #
 # $ dd if=/dev/random bs=1 count=16 status=none | busybox hd                          #
 # 00000000  8f 29 47 29 4a b7 95 de  b0 f5 75 52 6c 51 63 4f  |.)G)J.....uRlQcO|      #
@@ -55,7 +56,7 @@ show_version()
 	local v
 	v=$(openssl version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		echo "Missing 'openssl' binary." 1>&2
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
 		return 1
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
@@ -99,7 +100,7 @@ show_version
 if [ $? -eq 127 ]; then
 	exit 1
 fi
-echo -n "Check 'genrsa' command ... " 1>&2
+echo -en "Check \x1B[1mgenrsa\x1B[0m command ... " 1>&2
 openssl genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -134,7 +135,7 @@ else
 	if [ "$KEYSIZE" == "1024" -o "$KEYSIZE" == "2048" -o "$KEYSIZE" == "4096" ]; then
 		key_size=$KEYSIZE
 	else
-		echo "Unsupported key size '$KEYSIZE' found in the environment." 1>&2
+		echo "Unsupported key size \x1B[1m$KEYSIZE\x1B[0m found in the environment." 1>&2
 		exit 1
 	fi
 fi
