@@ -137,7 +137,7 @@ else
 	show_error
 	exit 1
 fi
-echo -en "Check  \x1B[1mrsa \x1B[0m command ... " 1>&2
+echo -en "Check \x1B[1mrsa\x1B[0m command ... " 1>&2
 echo "" | openssl rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -167,7 +167,7 @@ if [ "${#USEHASH}" -gt 0 ]; then
 else
 	hash_algo="md5"
 fi
-echo -en "Verify hash algorithm  \x1B[1m$hash_algo \x1B[0m is supported ... " 1>&2
+echo -en "Verify hash algorithm \x1B[1m$hash_algo\x1B[0m is supported ... " 1>&2
 echo "" | openssl dgst -$hash_algo 2>&1 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
