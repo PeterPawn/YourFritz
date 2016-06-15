@@ -232,7 +232,7 @@ modulus_to_der()
 #                                                                                  #
 # helper to convert from openssl public key format (PEM or DER) to intermediate    #
 # text format ... it's an unnecessary conversion, but it makes handling easier, if #
-# we 'normalize' such keys to the intermediate format, even if the final format    #
+# we 'normalize' such keys to the intermediate format, even if the final format is #
 # the original again while calling openssl binary                                  #
 #                                                                                  #
 ####################################################################################
@@ -320,7 +320,7 @@ fi
 ####################################################################################
 tmp=$(mktemp -d)
 [ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
-trap "rm -r \"$tmp\"" EXIT HUP
+trap "rm -r \"$tmp\"" EXIT HUP INT
 ####################################################################################
 #                                                                                  #
 # If the signature isn't the last file (we've checked the length already), we have #
@@ -371,12 +371,13 @@ if [ $last_sig -eq 0 ]; then
 	exit 4
 fi
 eval "$(sed -n -e "${last_sig}p" "$tmp/image_members")"
-if [ $SIZE -ne 128 ]; then
+if [ $SIZE -eq 0 -o $SIZE -gt 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
 	exit 5
 fi
 tar -x -f "$image_file" -C "$tmp" ./var/signature 2>/dev/null
-if [ $(stat -c %s "$tmp/var/signature") -ne 128 ]; then
+fs=$(stat -c %s "$tmp/var/signature")
+if [ $fs -ne 128 -a $fs -ne 256 -a $fs -ne 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
 	exit 5
 fi
