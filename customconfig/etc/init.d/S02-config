@@ -1,0 +1,49 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# S02-config                                                                    #
+#                                                                               #
+# initialize the custom configuration subsystem                                 #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# the following settings have to match your device                              #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# the package name - will be a part of some path names                          #
+#                                                                               #
+#################################################################################
+PACKAGE=custom_config
+#################################################################################
+#                                                                               #
+# location of package settings file                                             #
+#                                                                               #
+#################################################################################
+PACKAGE_CFGDIR=/wrapper/etc
+#################################################################################
+#                                                                               #
+# package settings file name, undocked from the storage location                #
+#                                                                               #
+#################################################################################
+PACKAGE_CFG=$PACKAGE_CFGDIR/$PACKAGE.conf
+#################################################################################
+#                                                                               #
+# if the configuration file exists, initialize the settings subsystem           #
+#                                                                               #
+#################################################################################
+if [ -r $PACKAGE_CFG ]; then
+	export YF_CONFIG_PKGCONF=$PACKAGE_CFG
+	source $PACKAGE_CFG
+	if [ -x $YF_CONFIG_INIT ]; then
+		YF_CONFIG_EXPORTS=$($YF_CONFIG_INIT)
+		source $YF_CONFIG_EXPORTS
+	fi
+fi
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################

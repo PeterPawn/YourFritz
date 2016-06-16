@@ -1,0 +1,59 @@
+#! /bin/sh -x
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+##################################################################################
+#                                                                                #
+# custom configuration settings                                                  #
+#                                                                                #
+# link our settings file to a location, where the export functions of the stock  #
+# firmware can include it into their resulting file                              # 
+#                                                                                #
+# special care needs to taken, if such an export file should be restored to an   #
+# unmodified firmware, because restoring our settings to a TFFS node is usually  # 
+# a bad idea ... you should consider removing the complete file from such an     #
+# export file, if you want to restore it with original firmware (don't forget to #
+# set the correct CRC32 value after editing the file)                            #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_EXPORTS
+##################################################################################
+#                                                                                #
+# an empty link name is used as flag, that our settings should not be included   #
+# into a regular settings export                                                 #
+# - or -                                                                         #
+# that our settings file is already in the right place (if we use the 'config'   #
+# partition to store it or even the real TFFS)                                   #
+#                                                                                #
+# only an existing TFFS node (checked against the TFFS major device ID) will be  #
+# removed prior to creating the symlink for our settings, every other existing   #
+# file with the same name is considered as an error condition                    #
+#                                                                                #
+##################################################################################
+if [ ${#YF_CONFIG_SAVE_AS} -gt 0 ]; then
+	if [ -c $YF_CONFIG_SAVE_AS ]; then
+		tffs_major=$(sed -n -e "s|\([0-9]*\) tffs\$|\1|p" /proc/devices)
+		if [ ${#tffs_major} -eq 0 ]; then
+			$YF_CONFIG_LOG "Unable to determine the TFFS major device ID from /proc/devices."
+			exit 1
+		fi
+		file_major=$(( 0x$(stat -c %t $YF_CONFIG_SAVE_AS) ))
+		if [ $tffs_major -ne $file_major ]; then
+			$YF_CONFIG_LOG "The existing file '$YF_CONFIG_SAVE_AS' is a character device, but not a TFFS node and will not be replaced by a symlink to the '$YF_CONFIG_PACKAGE' storage."
+			exit 1
+		fi
+		rm $YF_CONFIG_SAVE_AS 2>/dev/null
+	else
+		if [ -e $YF_CONFIG_SAVE_AS ]; then
+			$YF_CONFIG_LOG "The existing file '$YF_CONFIG_SAVE_AS' isn't character device (and hence not a TFFS node) and will not be replaced by a symlink to the '$YF_CONFIG_PACKAGE' storage."
+			exit 1
+		fi
+	fi
+	ln -s $YF_CONFIG_SAVE_TO $YF_CONFIG_SAVE_AS
+	exit 0
+else
+	exit 1
+fi
+##################################################################################
+#                                                                                #
+# end of file                                                                    #
+#                                                                                #
+##################################################################################

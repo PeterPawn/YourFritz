@@ -1,0 +1,68 @@
+#! /bin/sh -x
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+##################################################################################
+#                                                                                #
+# custom configuration settings                                                  #
+#                                                                                #
+# check, if any pending changes are present and - if any - write them to the     #
+# persistent storage                                                             #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_EXPORTS
+##################################################################################
+#                                                                                #
+# if write access isn't enabled for our settings directory, reject any attempt   #
+# to save changes                                                                #
+#                                                                                #
+##################################################################################
+[ -f $YF_CONFIG_SEMAPHORE_FILE ] || exit 1
+##################################################################################
+#                                                                                #
+# disable write access and check, if there are unwritten changes                 #
+#                                                                                #
+##################################################################################
+rm $YF_CONFIG_SEMAPHORE_FILE 2>/dev/null 
+##################################################################################
+#                                                                                #
+# kill any running monitor instance                                              #
+#                                                                                #
+##################################################################################
+if [ -f $YF_CONFIG_MONITOR_PID ]; then
+        pid=$(cat $YF_CONFIG_MONITOR_PID 2>/dev/null)
+        if [ ${#pid} -gt 0 -a -d /proc/$pid ]; then
+                $YF_CONFIG_LOG "Stopping monitor process with PID $pid."
+                kill $pid
+        else
+                if [ ${#pid} -gt 0 ]; then
+                        $YF_CONFIG_LOG "Ignoring orphaned PID file ($YF_CONFIG_MONITOR_PID) for monitor process $pid."
+                fi
+        fi
+fi
+##################################################################################
+#                                                                                #
+# if a countdown instance is running, kill it too                                #
+#                                                                                #
+##################################################################################
+if [ -f $YF_CONFIG_LAYZ_COUNTDOWN_PID ]; then
+        pid=$(cat $YF_CONFIG_LAZY_COUNTDOWN_PID 2>/dev/null)
+        if [ ${#pid} -gt 0 -a -d /proc/$pid ]; then
+                $YF_CONFIG_LOG "Stopping lazy countdown process with PID $pid."
+                kill $pid
+        else
+                rm $YF_CONFIG_LAZY_COUNTDOWN_PID 2>/dev/null
+                if [ $? -eq 0 ]; then
+                        $YF_CONFIG_LOG "Deleted orphaned PID file ($YF_CONFIG_LAZY_COUNTDOWN_PID) for countdown process $pid."
+                fi
+        fi
+fi
+##################################################################################
+#                                                                                #
+# call the writer without semaphore checking, if necessary                       #
+#                                                                                #
+##################################################################################
+[ x$(cat $YF_CONFIG_STATUS_FILE) == xunchanged ] || $YF_CONFIG_WRITER nosema
+##################################################################################
+#                                                                                #
+# end of file                                                                    #
+#                                                                                #
+##################################################################################

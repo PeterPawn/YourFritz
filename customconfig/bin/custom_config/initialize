@@ -1,0 +1,120 @@
+#! /bin/sh -x
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+##################################################################################
+#                                                                                #
+# custom configuration settings                                                  #
+#                                                                                #
+# initialize the environment, this has to be called before any other function    #
+# may be used                                                                    # 
+#                                                                                #
+##################################################################################
+#                                                                                #
+# read installation settings once, every other component should source the file  #
+# where the environment variable YF_CONFIG_EXPORTS points to                     #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_PKGCONF
+##################################################################################
+#                                                                                #
+# prepare our runtime directories and files                                      #
+#                                                                                #
+##################################################################################
+mkdir -p $YF_CONFIG_RUNDIR $YF_CONFIG_LOGDIR $YF_CONFIG_CFGDIR
+##################################################################################
+#                                                                                #
+# install existing settings to volatile (and writable) storage                   #
+#                                                                                #
+##################################################################################
+if [ -f $YF_CONFIG_SAVE_TO ]; then
+	if [ $YF_CONFIG_SAVE_COMPRESSED -eq 1 ]; then
+		$YF_CONFIG_UNCOMPRESS_BIN <$YF_CONFIG_SAVE_TO | tar -x -C $YF_CONFIG_CFGDIR
+	else
+		tar -x -C $YF_CONFIG_CFGDIR -f $YF_CONFIG_SAVE_TO
+	fi
+fi
+##################################################################################
+#                                                                                #
+# we start with unchanged settings and without monitoring                        #
+#                                                                                #
+##################################################################################
+echo -n "unchanged" >$YF_CONFIG_STATUS_FILE
+rm $YF_CONFIG_SEMAPHORE_FILE 2>/dev/null
+##################################################################################
+#                                                                                #
+# prepare our exports file                                                       #
+#                                                                                #
+##################################################################################
+rm $YF_CONFIG_EXPORTS 2>/dev/null
+touch $YF_CONFIG_EXPORTS
+for var in $YF_CONFIG_EXPORT_SETTINGS; do
+	if [ ${var:0:1} == @ ]; then
+		export="export "
+		var="${var:1}"
+	else
+		unset export
+	fi
+	val="$(eval echo "\$YF_CONFIG_$var")"
+	echo "${export}YF_CONFIG_$var='$val'" >>$YF_CONFIG_EXPORTS
+done
+##################################################################################
+#                                                                                #
+# initialize our logging subsystem                                               #
+#                                                                                #
+# the supported targets are:                                                     #
+# - file       -> write the output (prefixed with current date/time) to a        #
+#                 regular file, the file will grow as long as you don't truncate #
+#                 it from time to time                                           #
+# - syslog     -> use syslog to save the messages, all "housekeeping" has to be  #
+#                 done by the syslog daemon                                      #
+# - ringbuffer -> write the output to a ring buffer file with AVM utility        #
+#                 'showshringbuf', which will maintain only a limited amount of  #
+#                 messages last written                                          #
+# - none       -> no logging at all                                              #
+#                                                                                #
+# we will create a short wrapper script for logging purposes, which is included  #
+# into our exports file and may be used without further preparation, after it    #
+# was sourced together with our other settings                                   #
+#                                                                                #
+##################################################################################
+# we need our helper functions here, let's include them
+source $YF_CONFIG_YF_HELPERS
+# determine the logging target and initialize the needed environment
+case "$YF_CONFIG_LOG_TO" in
+	none)
+		echo "${YF_CONFIG_LOG}() { cat - >/dev/null; return 0; }" >>$YF_CONFIG_EXPORTS
+		;;
+	ringbuffer)
+		echo "${YF_CONFIG_LOG}() {" >>$YF_CONFIG_EXPORTS
+		echo "[ \$# -gt 0 ] && echo \"\$*\" | /bin/showshringbuf -i $YF_CONFIG_LOG_FACILITY" >>$YF_CONFIG_EXPORTS
+		echo "[ -t 0 ] || cat - | /bin/showshringbuf -i $YF_CONFIG_LOG_FACILITY" >>$YF_CONFIG_EXPORTS
+		echo "}" >>$YF_CONFIG_EXPORTS
+		yf_initialize_ringbuffer $YF_CONFIG_LOG_FACILITY $YF_CONFIG_LOG_MAXSIZE
+		;;
+	syslog)
+		echo "${YF_CONFIG_LOG}() {" >>$YF_CONFIG_EXPORTS
+		echo "[ \$# -gt 0 ] && echo \"\$*\" | /bin/busybox logger -t YourFritz -p $YF_CONFIG_LOG_FACILITY" >>$YF_CONFIG_EXPORTS
+		echo "[ -t 0 ] || cat - | /bin/busybox logger -t YourFritz -p $YF_CONFIG_LOG_FACILITY" >>$YF_CONFIG_EXPORTS
+		echo "}" >>$YF_CONFIG_EXPORTS
+		;;
+	file)
+		echo "${YF_CONFIG_LOG}() {" >>$YF_CONFIG_EXPORTS
+		echo "[ \$# -gt 0 ] && echo \"\$(date +\"$YF_CONFIG_LOG_DATEFMT\") \$*\" >> $YF_CONFIG_LOG_FILENAME" >>$YF_CONFIG_EXPORTS
+		echo "[ -t 0 ] || while read line; do echo \"\$(date +\"$YF_CONFIG_LOG_DATEFMT\") \$line\" >>$YF_CONFIG_LOG_FILENAME; done" >>$YF_CONFIG_EXPORTS
+		echo "}" >>$YF_CONFIG_EXPORTS
+		rm $YF_CONFIG_LOG_FILENAME 2>/dev/null
+		;;
+	*)
+		echo "Invalid YF_CONFIG_LOG_TO settings found" >/dev/console
+		;;
+esac
+##################################################################################
+#                                                                                #
+# write our global configuration file name to stdout and continue                #
+#                                                                                #
+##################################################################################
+echo "$YF_CONFIG_EXPORTS"
+##################################################################################
+#                                                                                #
+# end of file                                                                    #
+#                                                                                #
+##################################################################################

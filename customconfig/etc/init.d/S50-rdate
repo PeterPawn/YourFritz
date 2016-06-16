@@ -1,0 +1,37 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# S50-rdate                                                                     #
+#                                                                               #
+# try to set our RTC from a local network source, this may lead to a faster     #
+# boot process, because any process waiting for a valid local time may continue #
+# to run after this script sets the correct date and time                       #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# our configuration                                                             #
+#                                                                               #
+#################################################################################
+CFG=$YF_CONFIG_CFGDIR/rdate.conf
+#################################################################################
+#                                                                               #
+# try to find our configuration file, the YF_CONFIG values are set by caller    #
+#                                                                               #
+#################################################################################
+if [ -f $CFG ]; then
+	if [ -s $CFG ]; then
+		SERVER=$(sed -n -e "s|^SERVER=\(.*\)\$|\1|p" $CFG)
+		if [ ${#SERVER} -gt 0 ]; then
+			SERVER="${SERVER//\"/}"
+		fi
+		/bin/busybox logger "Setting date/time from server $SERVER" 
+		/bin/busybox rdate $SERVER
+	fi
+fi
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################

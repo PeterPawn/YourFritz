@@ -1,0 +1,27 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# S03-path                                                                      #
+#                                                                               #
+# add the (primary) custom extension directory to our path, even if it's        #
+# mounted later                                                                 #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# our configuration                                                             #
+#                                                                               #
+#################################################################################
+CUSTOM_PATH=/var/custom
+#################################################################################
+#                                                                               #
+# our configuration                                                             #
+#                                                                               #
+#################################################################################
+export PATH=$CUSTOM_PATH/bin:/bin:$CUSTOM_PATH/usr/bin:/usr/bin:$CUSTOM_PATH/sbin:/sbin:$CUSTOM_PATH/usr/sbin:/usr/sbin
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################

@@ -1,0 +1,25 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# S20-config                                                                    #
+#                                                                               #
+# link our configuration file location, so it can be exported with the original #
+# firmware user interface                                                       #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# the YF_CONFIG values are set by the caller                                    #
+#                                                                               #
+#################################################################################
+if [ ${#YF_CONFIG_EXPORTS} -gt 0 ]; then
+	if [ -x $YF_CONFIG_LINK_TO_EXPORT ]; then
+		$YF_CONFIG_LINK_TO_EXPORT
+	fi
+fi
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################

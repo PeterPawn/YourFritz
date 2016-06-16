@@ -1,0 +1,150 @@
+#! /bin/sh -x
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+##################################################################################
+#                                                                                #
+# custom configuration settings                                                  #
+#                                                                                #
+# create a tar archive from the settings directory and store this (optionally    #
+# compressed) file to the target location                                        #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_EXPORTS
+##################################################################################
+#                                                                                #
+# if write access isn't enabled for our settings directory, reject any attempt   #
+# to save changes                                                                #
+#                                                                                #
+##################################################################################
+if [ x$1 != xnosema ]; then
+	[ -f $YF_CONFIG_SEMAPHORE_FILE ] || exit 1
+fi
+##################################################################################
+#                                                                                #
+# if a writer instance is running, wait 5 seconds and if its PID file still      #
+# exists, assume it's an orphan and delete it                                    #
+#                                                                                #
+##################################################################################
+if [ -f $YF_CONFIG_WRITER_PID ]; then
+	sleep 5
+	if [ -f $YF_CONFIG_WRITER_PID ]; then
+		pid=$(cat $YF_CONFIG_WRITER_PID 2>/dev/null)
+		if [ -d /proc/$pid ]; then
+			$YF_CONFIG_LOG "The older writer process '$pid' seems to be frozen, please check your system."
+			exit 1
+		else
+			rm $YF_CONFIG_WRITER_PID 2>/dev/null
+			if [ $? -eq 0 ]; then
+				$YF_CONFIG_LOG "Deleted orphaned PID file '$YF_CONFIG_WRITER_PID'."
+			fi
+		fi
+	fi
+fi
+##################################################################################
+#                                                                                #
+# establish this instance as active writer and lock further writes, until the    #
+# changes are archived into our file                                             #
+#                                                                                #
+##################################################################################
+[ -f $YF_CONFIG_SEMAPHORE_FILE ] && make="touch $YF_CONFIG_SEMAPHORE_FILE" || make="cat /dev/null"
+echo $$ >$YF_CONFIG_WRITER_PID
+trap "$make" EXIT HUP
+rm $YF_CONFIG_SEMAPHORE_FILE 2>/dev/null
+##################################################################################
+#                                                                                #
+# include our helpers file here, we need it to handle mountpoints                #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_YF_HELPERS
+##################################################################################
+#                                                                                #
+# create our archive file in a temporary location, so we may unlock the settings #
+# at all as soon as possible again                                               #
+#                                                                                #
+##################################################################################
+new=$(mktemp -u)
+tar -C $YF_CONFIG_CFGDIR -O -c . >$new
+##################################################################################
+#                                                                                #
+# unlock the settings again and remove the emergency trap, reset changed status  #
+#                                                                                #
+##################################################################################
+$make >/dev/null
+trap - EXIT HUP
+echo -n "unchanged" >$YF_CONFIG_STATUS_FILE
+##################################################################################
+#                                                                                #
+# now we have enough time to write the archived settings to the final location   #
+#                                                                                #
+# first we check, if the persistent storage is on a yaffs[2] filesystem which is #
+# mounted "read-only" (usually the filesystem partition accessible under the     #
+# /wrapper path) - in this case we remount it temporarily as "read-write" and    #
+# reverse this process (as a precaution against "wild writers") after our file   #
+# was written                                                                    #
+#                                                                                #
+##################################################################################
+remount=0
+mountpoint=$(yf_find_mountpoint $YF_CONFIG_SAVE_TO)
+rw=$(yf_is_mountpoint_writable $mountpoint)
+if [ $? -ne 0 ]; then
+	$YF_CONFIG_LOG "Unable to detect, if the target filesystem is writable - remounting is disabled now."
+else
+	if [ $rw -ne 1 ]; then
+		fstype=$(yf_get_fstype_for_mountpoint $mountpoint)
+		if [ $? -ne 0 ]; then
+			$YF_CONFIG_LOG "Unable to find the filesystem type for the persistent storage location, remounting isn't an option anymore."
+		else
+			if [ ${fstype:0:5} == yaffs ]; then
+				mount -o remount,rw $mountpoint && remount=1
+			fi
+		fi
+	fi
+fi
+##################################################################################
+#                                                                                #
+# now save our archived settings file, optional with compression                 #
+#                                                                                #
+##################################################################################
+if [ $YF_CONFIG_SAVE_SAFE_WRITES -eq 1 ]; then
+	rm -f ${YF_CONFIG_SAVE_TO}.old 2>/dev/null
+	if [ $YF_CONFIG_SAVE_COMPRESSED -eq 1 ]; then
+		$YF_CONFIG_COMPRESS_BIN <$new >${YF_CONFIG_SAVE_TO}.new && rm -f $new
+	else
+		mv -f $new ${YF_CONFIG_SAVE_TO}.new
+	fi
+	mv -f $YF_CONFIG_SAVE_TO ${YF_CONFIG_SAVE_TO}.old
+	mv -f ${YF_CONFIG_SAVE_TO}.new $YF_CONFIG_SAVE_TO
+else
+	if [ $YF_CONFIG_SAVE_COMPRESSED -eq 1 ]; then
+		$YF_CONFIG_COMPRESS_BIN <$new >$YF_CONFIG_SAVE_TO
+	else
+		mv -f $new $YF_CONFIG_SAVE_TO
+	fi
+fi
+$YF_CONFIG_LOG "Custom configuration settings saved to '$YF_CONFIG_SAVE_TO'."
+##################################################################################
+#                                                                                #
+# remount the filesystem, if necessary                                           #
+#                                                                                #
+##################################################################################
+[ $remount -eq 1 ] && mount -o remount,ro $mountpoint
+##################################################################################
+#                                                                                #
+# create an optional backup of the settings file                                 #
+#                                                                                #
+##################################################################################
+if [ ${#YF_CONFIG_SAVE_BACKUP_TO} -gt 0 ]; then
+	backup=$(eval echo $YF_CONFIG_SAVE_BACKUP_TO)
+	cp -p -f $YF_CONFIG_SAVE_TO $backup
+	[ $? -eq 0 ] && $YF_CONFIG_LOG "Saved settings backup to '$backup'."
+fi
+##################################################################################
+#                                                                                #
+# clean-up remaining locks                                                       #
+#                                                                                #
+##################################################################################
+rm $YF_CONFIG_WRITER_PID 2>/dev/null
+##################################################################################
+#                                                                                #
+# end of file                                                                    #
+#                                                                                #
+##################################################################################

@@ -1,0 +1,41 @@
+#! /bin/false
+# avoid to be called without explicit shell invocation
+# vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+#################################################################################
+#                                                                               #
+# S03-early-syslogd                                                             #
+#                                                                               #
+# start a very early syslog daemon to catch startup process messages            #
+#                                                                               #
+#################################################################################
+#                                                                               #
+# our configuration                                                             #
+#                                                                               #
+#################################################################################
+CFG=$YF_CONFIG_CFGDIR/syslogd.conf
+PIDFILE=/var/run/syslogd.pid
+#################################################################################
+#                                                                               #
+# try to find our configuration file, the YF_CONFIG values are set by caller    #
+#                                                                               #
+#################################################################################
+if [ -f $CFG ]; then
+	if [ -s $CFG ]; then
+		PARAMS="$(sed -n -e "s|^PARAMS=\"\(.*\)\"\$|\1|p" $CFG)"
+	fi
+fi
+[ ${#PARAMS} -eq 0 ] && PARAMS="-C32"
+#################################################################################
+#                                                                               #
+# started here without explicit path to busybox, because we know, our version   #
+# uses "prefer applets" as setting and it's much easier to find the running     #
+# process with "pidof", if it's called as direct command                        #
+#                                                                               #
+#################################################################################
+syslogd $PARAMS
+echo $(pidof syslogd) >$PIDFILE
+#################################################################################
+#                                                                               #
+# end of script                                                                 #
+#                                                                               #
+#################################################################################

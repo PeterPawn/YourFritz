@@ -1,0 +1,79 @@
+#! /bin/sh -x
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+##################################################################################
+#                                                                                #
+# custom configuration settings                                                  #
+#                                                                                #
+# start or extend the period for lazy writes of a changed configuration          #
+#                                                                                #
+# to avoid multiple write operations while changing some settings, we are a      #
+# little bit lazy and wait some time (120 seconds are an acceptable choice),     # 
+# before we create the settings archive and store this new file to the           #
+# persistent location - but this "lazy writing" will be executed immediately, if #
+# a packages forces it or the system has to be restarted                         #
+#                                                                                #
+##################################################################################
+source $YF_CONFIG_EXPORTS
+##################################################################################
+#                                                                                #
+# if write access isn't enabled for our settings directory, reject any attempt   #
+# to establish a write countdown                                                 #
+#                                                                                #
+##################################################################################
+[ -f $YF_CONFIG_SEMAPHORE_FILE ] || exit 1
+##################################################################################
+#                                                                                #
+# if a countdown instance is already running, send it a signal and exit here     #
+#                                                                                #
+##################################################################################
+if [ -f $YF_CONFIG_LAYZ_COUNTDOWN_PID ]; then
+	pid=$(cat $YF_CONFIG_LAZY_COUNTDOWN_PID 2>/dev/null)
+	if [ ${#pid} -gt 0 -a -d /proc/$pid ]; then
+		kill -USR1 $pid
+		[ $? -eq 0 ] && exit 0
+	else
+		rm $YF_CONFIG_LAZY_COUNTDOWN_PID 2>/dev/null
+		if [ $? -eq 0 ]; then
+			$YF_CONFIG_LOG "Deleted orphaned PID file '$YF_CONFIG_LAZY_COUNTDOWN_PID'."
+		fi
+	fi
+fi
+##################################################################################
+#                                                                                #
+# establish this instance as countdown manager and set up a trap to extend the   #
+# the period for further calls, initialize the timeout value for the first time  #
+#                                                                                #
+##################################################################################
+echo $$ >$YF_CONFIG_LAZY_COUNTDOWN_PID
+trap 'echo "$(( $(date +%s) + $YF_CONFIG_LAZY_WRITER_DELAY ))" >$YF_CONFIG_RUNDIR/lazy_timeout' USR1
+kill -USR1 $$
+echo -n "lazy" >$YF_CONFIG_STATUS_FILE
+##################################################################################
+#                                                                                #
+# loop until our timeout expires and call the writer executable to save the      #
+# changes assembled so far                                                       #
+#                                                                                #
+##################################################################################
+while [ x"$(cat $YF_CONFIG_STATUS_FILE 2>/dev/null)" == x"lazy" ]; do
+	timeout=$(cat $YF_CONFIG_RUNDIR/lazy_timeout 2>/dev/null)
+	[ ${#timeout} -eq 0 ] && timeout=$(date +%s)
+	if [ $(date +%s) -ge $timeout ]; then
+		echo -n "saving" >$YF_CONFIG_STATUS_FILE
+		$YF_CONFIG_WRITER
+	else
+		# not necessary to use an interval of one second, a little deviance isn't a
+		# real problem
+		sleep 3
+	fi
+done
+##################################################################################
+#                                                                                #
+# finally a little bit "housekeeping"                                            #
+#                                                                                #
+##################################################################################
+rm $YF_CONFIG_LAZY_COUNTDOWN_PID $YF_CONFIG_RUNDIR/lazy_timeout 2>/dev/null
+##################################################################################
+#                                                                                #
+# end of file                                                                    #
+#                                                                                #
+##################################################################################
