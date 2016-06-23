@@ -43,5 +43,5 @@ useless and while Freetz is a really big solution, changing many aspects of the 
 changes and prefer a solution, which can make them more "under the hood" without interferences with the original
 firmware.
 
-It's not possible the implement the final solution in one fell swoop ... but the building blocks are growing step
+It's not possible to implement the final solution in one fell swoop ... but the building blocks are growing step
 by step and meanwhile I think, we should be able to test the first integrated version during this year.
