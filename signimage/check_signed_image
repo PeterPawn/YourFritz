@@ -171,8 +171,7 @@ read_box_key()
 {
 	local rc=14 pkp found
 	pkp=$(which privatekeypassword)
-#	found=$?
-	found=1
+	found=$?
 	if [ $found -eq 0 ]; then
 		openssl rsa -in $box_key_name -pubout -passin pass:"$(privatekeypassword)" -out "$tmp/pubkey" 2>/dev/null
 		if [ $? -eq 0 ]; then
