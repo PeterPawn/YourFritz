@@ -78,12 +78,12 @@ at the openssl binary still has to support\nit) with an environment variable USE
 H specifying the name of the\nalgorithm to use.\n"
 	echo -e "A special use case is the signing of a TAR file directly in a FRITZ!OS\
 \nenvironment, if such a signature is surely checked later only on the\nsame device\
-. Than we may use the RSA key from \x1B[1mwebsrv_ssl_key.pem\x1B[0m\ninstead of an \
+. Then we may use the RSA key from \x1B[1mwebsrv_ssl_key.pem\x1B[0m\ninstead of an \
 additional key and we don't need to specify its\npassword, because it may be read w\
-ith  \x1B[1mprivatekeypassword \x1B[0m. To switch\nthis script into this 'internal-\
-only mode', set the environment\nvariable SIGN_ON_BOX to '1' while calling it. Be a\
-ware, that a key\nsize other than 1024 bits would lead to the impossibility to veri\
-fy\nthe signed file with AVM components."
+ith \x1B[1mprivatekeypassword\x1B[0m. To switch\nthis script into this 'internal-\o\
+nly mode', set the environment\nvariable SIGN_ON_BOX to '1' while calling it. Be aw\
+are, that a key\nsize other than 1024 bits would lead to the impossibility to verif\
+y\nthe signed file with AVM components."
 }
 ####################################################################################
 #                                                                                  #
@@ -158,6 +158,7 @@ if [ "${#USEHASH}" -gt 0 ]; then
 	for algo in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
 		if [ "$algo" == "$check_algo" ]; then
 			hash_algo=$algo
+			break
 		fi
 	done
 	if [ "${#hash_algo}" -eq 0 ]; then
@@ -228,8 +229,8 @@ done <"$tmp/image_members"
 file_size="$(stat -c %s "$image_file")"
 file_blocks=$(( file_size / 512 ))
 eoa_blocks=$(( file_blocks - copy_blocks ))
-if [ $eoa_blocks -gt 4 ]; then
-	echo -e "The end of archive markers at the input file are too large: blocks expected=\x1B[1m4\x1B[0m, blocks present=\x1B[1m$eoa_blocks\x1B[0m." 1>&2
+if [ $eoa_blocks -gt 2 ]; then
+	echo -e "The end of archive markers at the input file are too large: blocks expected=\x1B[1m2\x1B[0m, blocks present=\x1B[1m$eoa_blocks\x1B[0m." 1>&2
 	echo -e "The input file will be truncated after the last archive member." 1>&2
 fi
 ####################################################################################
