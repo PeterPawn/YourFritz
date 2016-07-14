@@ -1,0 +1,614 @@
+#! /bin/sh
+#########################################################################################################
+#                                                                                                       #
+# constants                                                                                             #
+#                                                                                                       #
+#########################################################################################################
+TMPBASE="/var"
+INITTAB="/etc/inittab"
+FILESYSTEMNAME="filesystem"
+NANDPREFIX="nand-"
+INACTIVEPREFIX="reserved-"
+CONFIGNAME="config"
+MTDBLOCKNAME="/dev/mtdblock"
+MTDDEVICELIST="/proc/mtd"
+DEVICES="/proc/devices"
+AVMLOGNAME="crash.log"
+AVMLOGMINOR=95
+#########################################################################################################
+#                                                                                                       #
+# changeable settings                                                                                   #
+#                                                                                                       #
+#########################################################################################################
+PROJECT=YourFritz
+DIRECTORIES="bin dev etc lib proc sys var/tmp"
+LINKS="/sbin=>/bin /tmp=>/var/tmp /etc/mtab=>/var/tmp/mtab"
+MOUNTBASEDIR="/media/mtd"
+BUSYBOX="/bin/busybox"
+STARTFILENAME="/init/start"
+PATH="/bin"
+LOGFILE="run_from_memory.log"
+FILESDIR="/files"
+PATCHDIR="/patches"
+SCRIPTDIR="/run"
+ADDITIONALDIRECTORIES="$MOUNTBASEDIR/active $MOUNTBASEDIR/inactive $MOUNTBASEDIR/nand $MOUNTBASEDIR/$CONFIGNAME init $FILESDIR $PATCHDIR $SCRIPTDIR"
+#########################################################################################################
+#                                                                                                       #
+# create a script file, set owner and attributes                                                        #
+#                                                                                                       #
+#########################################################################################################
+create_script()
+{
+	cat - >"$1"
+	setattr 0:0 755 "$1"
+}
+#########################################################################################################
+#                                                                                                       #
+# write the start script for the system, it will be called from /etc/inittab                            #
+#                                                                                                       #
+#########################################################################################################
+create_start_script()
+{
+	create_script "$1" <<EOT	
+#! /bin/sh
+#=========================================================================
+export PATH=$PATH
+#=========================================================================
+#
+# first we have to mount some things
+#
+#=========================================================================
+#
+# the procfs may be mounted multiple times without error, so we
+# can do this without any further checks, it's needed for all further
+# commands
+#
+mount -t proc proc /proc 2>/dev/null
+#
+# next mount the tmpfs and start logging of our steps 
+#
+mount -t tmpfs tmpfs $TMPBASE 2>/dev/null
+#
+# start logging to file or console as early as possible
+#
+[ $? -eq 0 ] && exec 2>$TMPBASE/$LOGFILE || exec 2>/dev/console
+exec 1>&2
+#
+# set debug output
+#
+set -x
+#=========================================================================
+#
+# list MTD partitions
+#
+#=========================================================================
+cat /proc/mtd
+#=========================================================================
+#
+# create some directories in our tmpfs, prepare mtab and mount sysfs               
+#
+#=========================================================================
+mkdir -p $TMPBASE/tmp 
+cat /proc/mounts >/etc/mtab 
+mount -t sysfs sysfs /sys
+#=========================================================================
+#
+# log currently mounted filesystems, before we start to mount the target
+# partitions
+#
+#=========================================================================
+mount
+#=========================================================================
+#
+# mount both filesystem partitions to $MOUNTBASEDIR, the scanner has 
+# set the partition names already and we don't need to look at 
+# linux_fs_start
+#
+#=========================================================================
+active=\$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$FILESYSTEMNAME\"\\\$/\1/p" $MTDDEVICELIST)
+if [ \${#active} -ne 0 ]; then
+	mount -t yaffs2 $MTDBLOCKNAME\$active $MOUNTBASEDIR/active 
+fi
+inactive=\$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$INACTIVEPREFIX$FILESYSTEMNAME\"\\\$/\1/p" $MTDDEVICELIST)
+if [ \${#inactive} -ne 0 ]; then
+	mount -t yaffs2 $MTDBLOCKNAME\$inactive $MOUNTBASEDIR/inactive
+fi
+#=========================================================================
+#
+# let's try to mount the "config" partition
+#
+#=========================================================================
+config=\$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$CONFIGNAME\"\\\$/\1/p" $MTDDEVICELIST)
+mount -t yaffs2 $MTDBLOCKNAME\$config $MOUNTBASEDIR/$CONFIGNAME
+#=========================================================================
+#
+# mount nand-ilesystem partition, if it exists                     
+#
+#=========================================================================
+nand=\$(sed -n -e "s/mtd\([0-9]\{1,2\}\):.*\"$NANDPREFIX$FILESYSTEMNAME\"\\\$/\1/p" $MTDDEVICENAME)
+if [ \${#nand} -ne 0 ]; then
+	mount -t yaffs2 $MTDBLOCKNAME\$nand $MOUNTBASEDIR/nand
+fi
+#=========================================================================
+#
+# finally list all mounted filesystems again
+#
+#=========================================================================
+mount 
+#=========================================================================
+#
+# untar each tarball found in $FILESDIR ... these tarballs have to consider
+# the filesystem structure, where both "$FILESYSTEMNAME" partitions are mounted
+# below $MOUNTBASEDIR/(in)active, the "$NANDPREFIX$FILESYSTEMNAME" partition is mounted
+# as "nand" and the (optional) $CONFIGNAME partition (on some models mounted as
+# /var/flash while FRITZ!OS is running) is mounted as "$CONFIGNAME" - they may
+# contain any file, but they should remember, that the available  space is
+# limited
+#
+#=========================================================================
+for tarball in \$(ls -1 $FILESDIR/*.tar); do
+	tar -x -v -f \$tarball -C $MOUNTBASEDIR
+done
+#=========================================================================
+#
+# untar files from a specific directory on "$NANDPREFIX$FILESYSTEMNAME" (if this 
+# partition exists) to the $MOUNTBASEDIR directory                                
+#
+# copy all files from a specific directory on "$NANDPREFIX$FILESYSTEMNAME" (if this 
+# partition exists) to the $MOUNTBASEDIR directory                                
+#
+# change owner of these files to 0:0 (not root:root, we have no password
+# file in our minimal system), they may have been created with a 
+# boxuser[nn] account via NAS access  
+#
+#=========================================================================
+if grep -q "^[^ ]* $MOUNTBASEDIR/nand.*" /proc/mounts 2>/dev/null; then
+	for tarball in \$(ls -1 $MOUNTBASEDIR/nand/$PROJECT$FILESDIR/*.tar); do
+		tar -x -v -f \$tarball -C $MOUNTBASEDIR
+	done
+	chown -R 0:0 $MOUNTBASEDIR/nand/$PROJECT/copy/*
+	cp -a -f $MOUNTBASEDIR/nand/$PROJECT/copy/* $MOUNTBASEDIR
+fi
+#=========================================================================
+#
+# run each patch file from $PATCHDIR - sometimes an already existing file
+# with unknown content has to be modified                                  
+#
+#=========================================================================
+for patch in \$(ls -1 $PATCHDIR/*.patch); do
+	patch < \$patch 
+done
+#=========================================================================
+#
+# apply each patch file from $PROJECT directory on $NANDPREFIX$FILESYSTEMNAME
+# partition
+#
+#=========================================================================
+if grep -q "^[^ ]* $MOUNTBASEDIR/nand.*" /proc/mounts 2>/dev/null; then
+	for patch in \$(ls -1 $MOUNTBASEDIR/nand/$PROJECT$PATCHDIR/*.patch); do
+		patch <\$patch 
+	done
+fi
+#=========================================================================
+#
+# run each script file from $SCRIPTDIR - sometimes neither a new file nor a
+# patch file may solve a problem ... this is another opportunity                                      
+#
+#=========================================================================
+for script in \$(ls -1 $SCRIPTDIR/*.sh); do
+	sh -x \$script  
+done
+#=========================================================================
+#
+# run each script file from $PROJECT directory on $NANDPREFIX$FILESYSTEMNAME
+# partition                                                                                           
+#
+#=========================================================================
+if grep -q "^[^ ]* $MOUNTBASEDIR/nand.*" /proc/mounts 2>/dev/null; then
+	for script in \$(ls -1 $MOUNTBASEDIR/nand/$PROJECT$SCRIPTDIR/*.sh); do
+		sh -x \$script
+	done
+fi
+#=========================================================================
+#
+# close our log file, save the content written so far to the 
+# $NANDPREFIX$FILESYSTEMNAME partition, if it exists                                                  
+#
+#=========================================================================
+exec 2>&- 1>&-
+if [ -f $TMPBASE/$LOGFILE ]; then
+	if grep -q "^[^ ]* $MOUNTBASEDIR/nand.*" /proc/mounts 2>/dev/null; then
+		cat $TMPBASE/$LOGFILE >$MOUNTBASEDIR/nand/$PROJECT/$LOGFILE
+	fi
+fi
+#=========================================================================
+#
+# save a copy of our log file to TFFS as $AVMLOGNAME, where it may be read
+# even with the stock firmware, because this file is (once only) shown
+# near the end of support data file
+#
+#=========================================================================
+if [ -f $TMPBASE/$LOGFILE ]; then
+	major=\$(sed -n -e "s|^ *\([0-9]*\) tffs\\\$|\1|p" /proc/devices)
+	mknod $TMPBASE/$AVMLOGNAME c \$(sed -n -e "s|^ *\([0-9]*\) tffs\\\$|\1|p" /proc/devices) $AVMLOGMINOR
+	cat $TMPBASE/$LOGFILE >$TMPBASE/$AVMLOGNAME
+fi
+#=========================================================================
+#
+# dismount all yaffs2 partitions below our mount directory
+#
+#=========================================================================
+for dev in \$(sed -n -e "s|^\([^ ]*\) $MOUNTBASEDIR.*|\1|p" /proc/mounts); do
+	umount \$dev
+done
+#=========================================================================
+#
+# reboot the device
+#
+#=========================================================================
+reboot
+#=========================================================================
+#
+# end of script
+#
+#=========================================================================
+EOT
+}
+#########################################################################################################
+#                                                                                                       #
+# create the inittab                                                                                    #
+#                                                                                                       #
+#########################################################################################################
+create_inittab()
+{
+	echo "null::sysinit:$STARTFILENAME"
+}
+#########################################################################################################
+#                                                                                                       #
+# create the BusyBox binary from inline base64 data                                                     #
+#                                                                                                       #
+#########################################################################################################
+create_busybox()
+{
+	base64 -d < busybox.b64
+}
+#########################################################################################################
+#                                                                                                       #
+# create the links for our BusyBox applets (not really necessary, but nobody wants to prefix each                                                               #
+#                                                                                                       #
+#########################################################################################################
+create_busybox_links()
+{
+	base64 -d < busybox.b64
+}
+#########################################################################################################
+#                                                                                                       #
+# output a list of all applets supported by the BusyBox binary above                                    #
+#                                                                                                       #
+#########################################################################################################
+busybox_applets()
+{
+	cat <<'EOT'
+[
+[[
+addgroup
+adduser
+arp
+arping
+ash
+awk
+base64
+basename
+bbconfig
+blkid
+blockdev
+brctl
+bunzip2
+bzcat
+bzip2
+cat
+chat
+chattr
+chgrp
+chmod
+chown
+chpst
+chroot
+cksum
+clear
+cmp
+comm
+conspy
+cp
+cpio
+crond
+crontab
+cryptpw
+cut
+date
+dd
+delgroup
+deluser
+depmod
+devmem
+df
+dhcprelay
+diff
+dirname
+dmesg
+dnsd
+dnsdomainname
+dos2unix
+dpkg
+dpkg-deb
+du
+dumpleases
+echo
+egrep
+env
+envdir
+envuidgid
+ether-wake
+expand
+expr
+false
+fatattr
+fdisk
+fgconsole
+fgrep
+find
+findfs
+flash_eraseall
+flash_lock
+flash_unlock
+flashcp
+flock
+fold
+free
+fstrim
+fsync
+ftpd
+ftpget
+ftpput
+fuser
+getopt
+grep
+groups
+gunzip
+gzip
+halt
+hd
+hdparm
+head
+hexdump
+hostid
+hostname
+httpd
+i2cdetect
+i2cdump
+i2cget
+i2cset
+id
+ifconfig
+ifdown
+ifenslave
+ifup
+inetd
+init
+inotifyd
+insmod
+install
+iostat
+ip
+ipaddr
+ipcalc
+iplink
+iproute
+iprule
+iptunnel
+kill
+killall
+killall5
+klogd
+less
+ln
+logger
+login
+logname
+logread
+losetup
+ls
+lsattr
+lsmod
+lsof
+lspci
+lzcat
+lzma
+makedevs
+makemime
+md5sum
+microcom
+mkdir
+mkfifo
+mknod
+mkpasswd
+mkswap
+mktemp
+modinfo
+modprobe
+more
+mount
+mountpoint
+mpstat
+mv
+nandwrite
+nbd-client
+nc
+netstat
+nice
+nmeter
+nohup
+nslookup
+ntpd
+od
+openvt
+passwd
+patch
+pgrep
+pidof
+ping
+ping6
+pipe_progress
+pivot_root
+pkill
+pmap
+poweroff
+printenv
+printf
+ps
+pscan
+pstree
+pwd
+pwdx
+rdate
+rdev
+readlink
+realpath
+reboot
+reformime
+renice
+reset
+rev
+rfkill
+rm
+rmdir
+rmmod
+route
+rpm
+rpm2cpio
+run-parts
+runsv
+runsvdir
+rx
+sed
+sendmail
+seq
+setconsole
+setlogcons
+setserial
+setsid
+setuidgid
+sh
+sha1sum
+sha256sum
+sha3sum
+sha512sum
+shuf
+slattach
+sleep
+smemcap
+softlimit
+sort
+split
+start-stop-daemon
+stat
+strings
+stty
+stun-ip
+sv
+svlogd
+swapoff
+swapon
+switch_root
+sync
+sysctl
+syslogd
+tac
+tail
+tar
+taskset
+tcpsvd
+tee
+telnet
+telnetd
+test
+tftp
+tftpd
+time
+timeout
+top
+touch
+tr
+traceroute
+traceroute6
+true
+truncate
+tty
+tunctl
+tune2fs
+ubiattach
+ubidetach
+ubimkvol
+ubirmvol
+ubirsvol
+ubiupdatevol
+udhcpc
+udhcpc6
+udhcpd
+udpsvd
+uevent
+umount
+uname
+unexpand
+uniq
+unix2dos
+unlink
+unlzma
+unxz
+unzip
+uptime
+users
+usleep
+uudecode
+uuencode
+vconfig
+vi
+watch
+watchdog
+wc
+wget
+which
+who
+whois
+xargs
+xz
+xzcat
+yes
+zcat
+zcip
+EOT
+}
+#########################################################################################################
+#                                                                                                       #
+# let's start creating a directory for our new filesystem                                               #
+#                                                                                                       #
+#########################################################################################################
+IMAGEDIR="$(mktemp -d)"
+[ $? -ne 0 ] && IMAGEDIR="${TMP:-/tmp}/$(date +%s)_$$"
+mkdir -p "$IMAGEDIR"
+#########################################################################################################
+#                                                                                                       #
+# create BusyBox binary and symlink all contained applets                                               #
+#                                                                                                       #
+#########################################################################################################
+create_busybox >"$BUSYBOX"
+setattr 0:0 555 "$BUSYBOX"
+create_busybox_links "${PATH%%:*}" "$BUSYBOX"
+#########################################################################################################
+#                                                                                                       #
+# create our main script and an inittab calling it                                                      #
+#                                                                                                       #
+#########################################################################################################
+create_start_script "$IMAGEDIR$STARTFILENAME"
+create_inittab >"$IMAGEDIR$INITTAB"
+
