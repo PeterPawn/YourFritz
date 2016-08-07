@@ -9,7 +9,7 @@ mkdir -p $tmpdir
 trap "rm -r $tmpdir" EXIT HUP INT
 cat - >$tmpdir/image.tar
 kernelline=$(tar tvf $tmpdir/image.tar | grep 'kernel\.image')
-filesystemline=$(tar tvf $tmpdir/image.tar | grep 'filesystem.image')
+filesystemline=$(tar tvf $tmpdir/image.tar | grep 'filesystem\.image')
 if [ ${#kernelline} -eq 0 ]; then
 	echo "kernel.image not found" 1>&2
 	exit 1
