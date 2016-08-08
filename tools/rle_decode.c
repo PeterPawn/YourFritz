@@ -4,29 +4,6 @@
 #include <unistd.h>
 #include <inttypes.h>
 
-int usage(const char * errormsg)
-{
-	fprintf(stderr, "Extract data from a binary file (file size has to be lower than 2 GB)\n\n");
-	fprintf(stderr, "Usage:\n");
-	fprintf(stderr, "getvalue <file> <offset> <type>\n\n");
-	fprintf(stderr, "file   - input file name\n");
-	fprintf(stderr, "offset - start offset for extraction\n");
-	fprintf(stderr, "type   - data type to extract (lower case characters for MSB order, upper case for LSB order)\n");
-	fprintf(stderr, "  b    - single signed byte (case doesn't matter)\n");
-	fprintf(stderr, "  c    - single unsigned byte (case doesn't matter)\n");
-	fprintf(stderr, "  i    - double-byte signed integer\n");
-	fprintf(stderr, "  n    - double-byte unsigned integer\n");
-	fprintf(stderr, "  l    - four-byte signed integer\n");
-	fprintf(stderr, "  u    - four-byte unsigned integer\n");
-	fprintf(stderr, "  s    - zero terminated string (uppercase letter adds a newline)\n");
-	fprintf(stderr, "  p    - pascal formatted string - first byte contains length (uppercase letter adds a newline)\n");
-	if (errormsg != NULL)
-	{
-		fprintf(stderr,"\n%s\n", errormsg);
-	}
-	return(1);
-}
-
 int main(int argc, char * argv[])
 {
 	int c;
