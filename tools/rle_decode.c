@@ -132,7 +132,7 @@ int main(int argc, char * argv[])
 
 				if ((chr = getchar()) == EOF)
 				{
-					fprintf(stderr, "Unexpected end of file while reading consecutive unique bytes (0x%x -> %02x -> 0x%d).\n\n", ilog, c, ioffset - ilog);
+					fprintf(stderr, "Unexpected end of file while reading consecutive unique bytes (0x%x -> %02x -> 0x%d).\n\n", ilog, cl, ioffset - ilog);
 					exit(1);
 				}
 				ioffset++;
