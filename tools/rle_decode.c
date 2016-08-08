@@ -6,27 +6,52 @@
 
 int main(int argc, char * argv[])
 {
-	int c;
+	int c, cl;
 	int ioffset = 0;
 	int ooffset = 0;
 	
 	while ((c = getchar()) != EOF)
 	{
 		ioffset++;
+		cl = c;
 		if (c == 0) 
 		{
 			if ((c = getchar()) == EOF)
 			{
-				fprintf(stderr, "Unexpected end of file while reading number of consecutive zero bytes.\n\n");
+				fprintf(stderr, "Unexpected end of file while reading number of consecutive zero bytes (0x%x -> %02x).\n\n", ioffset, cl);
 				exit(1);
 			}
 			ioffset++;
-			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d zero bytes\n", ioffset, ooffset, c);
+			if (c == 0) break; // end of compressed content before end of file
+//			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d zero bytes\n", ioffset, ooffset, c);
 			while (c > 0)
 			{
 				putchar(0);
 				ooffset++;
 				c--;
+			}
+		}
+		else if (c == 128)
+		{
+			int cnt;
+			if ((cnt = getchar()) == EOF)
+			{
+				fprintf(stderr, "Unexpected end of file while reading repetition length (0x%x -> %02x).\n\n", ioffset, cl);
+				exit(1);
+			}
+			ioffset++;
+			if ((c = getchar()) == EOF)
+			{
+				fprintf(stderr, "Unexpected end of file while reading byte value to repeat (0x%x -> %02x %02x).\n\n", ioffset, cl, cnt);
+				exit(1);
+			}
+			ioffset++;
+//			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
+			while (cnt > 0)
+			{
+				putchar(c);
+				ooffset++;
+				cnt--;
 			}
 		}
 		else if (c == 129)
@@ -40,7 +65,7 @@ int main(int argc, char * argv[])
 		
 				if ((b = getchar()) == EOF)
 				{
-					fprintf(stderr, "Unexpected end of file while reading repetition length.\n\n");
+					fprintf(stderr, "Unexpected end of file while reading repetition length (0x%x -> %02x).\n\n", ioffset, cl);
 					exit(1);
 				}
 				ioffset++;
@@ -50,11 +75,11 @@ int main(int argc, char * argv[])
 			}					
 			if ((c = getchar()) == EOF)
 			{
-				fprintf(stderr, "Unexpected end of file while reading byte value to repeat.\n\n");
-				exit(1);
+				fprintf(stderr, "Unexpected end of file while reading byte value to repeat (0x%x -> %02x %04x).\n\n", ioffset, cl, cnt);
+				exit(1); 
 			}
 			ioffset++;
-			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
+//			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
 			while (cnt > 0)
 			{
 				putchar(c);
@@ -62,16 +87,34 @@ int main(int argc, char * argv[])
 				cnt--;
 			}
 		}
-		else if (c > 129)
+		else if (c == 130)
+		{
+			int cnt;
+			if ((cnt = getchar()) == EOF)
+			{
+				fprintf(stderr, "Unexpected end of file while reading repetition length (0x%x -> %02x).\n\n", ioffset, cl);
+				exit(1);
+			}
+			ioffset++;
+			c = 0x20;
+//			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
+			while (cnt > 0)
+			{
+				putchar(c);
+				ooffset++;
+				cnt--;
+			}
+		}
+		else if (c > 130)
 		{
 			int cnt = c - 128;
 			if ((c = getchar()) == EOF)
 			{
-				fprintf(stderr, "Unexpected end of file while reading byte value to repeat.\n\n");
+				fprintf(stderr, "Unexpected end of file while reading byte value to repeat (0x%x -> %02x).\n\n", ioffset, cl);
 				exit(1);
 			}
 			ioffset++;
-			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
+//			fprintf(stderr, "input=0x%08x output=0x%08x repeating %d bytes of %02x\n", ioffset, ooffset, cnt, c);
 			while (cnt > 0)
 			{
 				putchar(c);
@@ -81,28 +124,24 @@ int main(int argc, char * argv[])
 		}
 		else if (c <= 127)
 		{
-			fprintf(stderr, "input=0x%08x output=0x%08x copying %d bytes: ", ioffset, ooffset, c);
+//			fprintf(stderr, "input=0x%08x output=0x%08x copying %d bytes: ", ioffset, ooffset, c);
+			int ilog = ioffset;
 			while (c > 0)
 			{
 				int chr;
 
 				if ((chr = getchar()) == EOF)
 				{
-					fprintf(stderr, "Unexpected end of file while reading consecutive unique bytes.\n\n");
+					fprintf(stderr, "Unexpected end of file while reading consecutive unique bytes (0x%x -> %02x -> 0x%d).\n\n", ilog, c, ioffset - ilog);
 					exit(1);
 				}
 				ioffset++;
-				fprintf(stderr, "%02x", chr);	
+//				fprintf(stderr, "%02x", chr);	
 				putchar(chr);
 				ooffset++;
 				c--;
 			}
-			fprintf(stderr, "\n");
-		}
-		else
-		{
-			fprintf(stderr, "input=0x%08x output=0x%08x unexpected value %02x.\n\n", ioffset, ooffset, c);
-//			exit(1);
+//			fprintf(stderr, "\n");
 		}
 	}
 	exit(0);
