@@ -122,7 +122,7 @@ int main(int argc, char * argv[])
 				cnt--;
 			}
 		}
-		else if (c <= 127)
+		else // (c <= 127) is the last possibility here
 		{
 //			fprintf(stderr, "input=0x%08x output=0x%08x copying %d bytes: ", ioffset, ooffset, c);
 			int ilog = ioffset;
