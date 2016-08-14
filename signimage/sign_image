@@ -121,6 +121,10 @@ if ! [ -f "$image_file" ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m does not exist." 1>&2
 	exit 1
 fi
+if [ -t 1 ]; then
+	echo -e "The output stream is a terminal device, please redirect output to a file." 1>&2
+	exit 1
+fi
 ####################################################################################
 #                                                                                  #
 # check OpenSSL presence and version                                               #
