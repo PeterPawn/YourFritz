@@ -83,7 +83,7 @@ int main(int argc, char * argv[])
 				int b;
 		
 				if ((b = getchar()) == EOF)
-				
+				{	
 					fprintf(stderr, "Unexpected end of file while reading repetition length (0x%x -> %02x).\n\n", ioffset, cl);
 					exit(1);
 				}
