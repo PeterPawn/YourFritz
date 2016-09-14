@@ -1,13 +1,13 @@
 #! /bin/bash
 serial=$1
 version=$2
-oem=${3:-avm}
-lang=${4:-de}
-annex=${5:-B}
-country=${6:-049}
-hw=${7:-185}
-name="${8:-FRITZ\!Box 7490}"
-lab="BETA"
+public=$3
+oem=${4:-avm}
+lang=${5:-de}
+annex=${6:-B}
+country=${7:-049}
+hw=${8:-185}
+name="${9:-FRITZ\!Box 7490}"
 nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 major=${version%%.*}
 version=${version#*.}
@@ -15,7 +15,7 @@ minor=$(( ${version%%.*} ))
 version=${version#*.}
 patch=${version%%-*}
 build=${version#*-}
-type=1000
+type=100${public:-1}
 host=$hw.jws.avm.de
 port=80
 body="$(echo -n -e "\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:e=\"http://juis.avm.de/updateinfo\" xmlns:q=\"http://juis.avm.de/request\">")"
