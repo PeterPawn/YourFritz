@@ -1,0 +1,36 @@
+#! /bin/bash
+serial=$1
+version=$2
+oem=${3:-avm}
+lang=${4:-de}
+annex=${5:-B}
+country=${6:-049}
+hw=${7:-185}
+name="${8:-FRITZ\!Box 7490}"
+lab="BETA"
+nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
+major=${version%%.*}
+version=${version#*.}
+minor=$(( ${version%%.*} ))
+version=${version#*.}
+patch=${version%%-*}
+build=${version#*-}
+type=1000
+host=$hw.jws.avm.de
+port=80
+body="$(echo -n -e "\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:e=\"http://juis.avm.de/updateinfo\" xmlns:q=\"http://juis.avm.de/request\">")"
+body="$body$(echo -n -e "\n<soap:Header/>\n<soap:Body>\n<e:BoxFirmwareUpdateCheck>\n<e:RequestHeader>\n<q:Nonce>$nonce</q:Nonce>\n<q:UserAgent>Box</q:UserAgent>\n<q:ManualRequest>true</q:ManualRequest></e:RequestHeader>\n<e:BoxInfo>")"
+body="$body$(echo -n -e "\n<q:Name>$name</q:Name>\n<q:HW>$hw</q:HW>\n<q:Major>$major</q:Major>\n<q:Minor>$minor</q:Minor>\n<q:Patch>$patch</q:Patch>\n<q:Buildnumber>$build</q:Buildnumber>\n<q:Buildtype>$type</q:Buildtype>\n<q:Serial>$serial</q:Serial>\n<q:OEM>$oem</q:OEM>\n<q:Lang>$lang</q:Lang>\n<q:Country>$country</q:Country>\n<q:Annex>$annex</q:Annex>\n<q:Flag></q:Flag>\n<q:UpdateConfig>1</q:UpdateConfig>\n<q:Provider>oma_lan</q:Provider></e:BoxInfo></e:BoxFirmwareUpdateCheck></soap:Body></soap:Envelope>")"
+len=${#body}
+hdr="$(echo -n -e "POST /Jason/UpdateInfoService HTTP/1.1\r\nHost: $host:$port\r\nContent-Length: $len\r\nContent-Type: text/xml; charset=\"utf-8\"")"
+exec 3<>/dev/tcp/$host/$port
+echo -ne "$hdr\r\n\r\n" >&3
+echo -ne "$hdr\r\n\r\n"
+echo -ne "$body" >&3
+echo -ne "$body\n\n" 
+cat <&3 &
+cat=$!
+sleep 3
+kill $cat
+echo -ne "\n"
+exec 3>&-
