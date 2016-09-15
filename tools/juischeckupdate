@@ -180,8 +180,9 @@ for n in $settings; do
 		Minor=${Version#*.}
 		Patch=${Minor#*.}
 		Build=${Patch#*-}
-		Patch=${Patch%%-*}
+		[ x$Build == x$Patch ] && Build="" || Patch=${Patch%%-*}
 		Minor=$(( ${Minor%%.*} ))
+		[ -z "$Build" -a $detect -eq 1 ] && Build="$(get_jason_boxinfo $jason_boxinfo Revision)"
 	fi
 done
 #######################################################################################################
