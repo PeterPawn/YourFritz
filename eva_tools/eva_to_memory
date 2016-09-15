@@ -6,7 +6,7 @@ filename="$1"
 #
 # some constants to be changed, if needed
 #
-box_ip=${2:-192.168.130.1}
+box_ip=${2:-192.168.178.1}
 box_port=21
 box_user=adam2
 box_pass=adam2
