@@ -9,6 +9,11 @@ box_ip=${2:-192.168.178.1} # EVA_IP may be the second parameter (the 1st is the 
 box_port=21
 box_user=adam2
 box_pass=adam2
+if [ x"$3" != x"0" -a x"$3" != x"1" ]; then # subsystem id may be the third argument
+	subsys_id=""
+else
+	subsys_id="$3"
+fi
 passive_ftp="P@SW"
 [ ${#TMP} -eq 0 ] && TMP=/tmp
 tmpdir=$TMP/tmp_$(date +%s)_$$
@@ -61,7 +66,7 @@ login_to_box()
 }
 get_environment()
 {
-	local instream="$1" outstream="$2" log="$3" lines=0 remote=${4:-env}
+	local instream="$1" outstream="$2" log="$3" lines=0 remote=${4:-env} subsys_id=$5
 	write_ftp_command "TYPE I" $outstream $log
 	line="$(read_ftp_response $instream $log)"
 	ec=${line:0:3}
@@ -73,6 +78,14 @@ get_environment()
 	ec=${line:0:3}
 	if [ x$ec != x200 ]; then
 		return 1
+	fi
+	if ! [ -z $subsys_id ]; then
+		write_ftp_command "SETENV subsys_id $subsys_id" $outstream $log
+		line="$(read_ftp_response $instream $log)"
+		ec=${line:0:3}
+		if [ x$ec != x200 ]; then
+			return 1
+		fi
 	fi
 	write_ftp_command "$passive_ftp" $outstream $log
 	line="$(read_ftp_response $instream $log)"
@@ -200,7 +213,7 @@ if [ x$ec == x220 ]; then
 			syst=$(echo "$line" | sed -n -e "s/.*\(AVM EVA\).*/\1/p")
 			if [ ${#syst} -ne 0 ]; then
 				echo "Found AVM bootloader: ${line:4}" 1>&2
-				environment=$(get_environment $instream $outstream $logstream $1)
+				environment=$(get_environment $instream $outstream $logstream $1 $subsys_id)
 				if [ $? -eq 0 ]; then
 					echo "Environment read from device:" 1>&2
 					cat $environment
