@@ -22,7 +22,7 @@
 #                                                                                                     #
 # calling:                                                                                            #
 #                                                                                                     #
-# juischeckupdate [optional parameters]                                                               #
+# juischeckupdate [-d|--debug] [optional parameters]                                                  #
 #                                                                                                     #
 # The script attempts to read a configuration file with the name "juischeckupdate.conf" from the same #
 # location, where the script itself was found.                                                        #
@@ -74,6 +74,9 @@
 # code is set to 1 and only if a newer version was found, an exit code of 0 is used. In this case     #
 # the URL, where the new version can be loaded from, is written to "stdout" prefixed with "URL=".     #
 #                                                                                                     #
+# If the optional "debug" option is present, the sent request and the received answer will be written #
+# to STDERR.                                                                                          #
+#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -108,6 +111,17 @@ get_jason_boxinfo()
 	local input="$1" tag="$2"
 	xmllint --xpath "string(//*[local-name()='$tag'])" $input
 }
+#######################################################################################################
+#                                                                                                     #
+# check debug option                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ x"$1" == x"-d" -o x"$1" == x"--debug" ]; then
+	debug=1
+	shift
+else
+	debug=0
+fi
 #######################################################################################################
 #                                                                                                     #
 # process configuration file                                                                          #
@@ -234,6 +248,18 @@ hostname=$HW.$hostbase
 nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 #######################################################################################################
 #                                                                                                     #
+# show debug info regarding final variable content                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ $debug -eq 1 ]; then
+	printf "===================================\nVariables set:\n"
+	for n in $variables type hostname nonce; do
+		printf "%s=\"%s\"\n" $n "${!n}" 1>&2
+	done
+	printf "\n" 1>&2
+fi
+#######################################################################################################
+#                                                                                                     #
 # prepare temporary files for the check request                                                       #
 #                                                                                                     #
 #######################################################################################################
@@ -249,20 +275,33 @@ eval echo -ne "$headerline_1" | append $header
 eval echo -ne "$headerline_2" | append $header 
 eval echo -ne "$headerline_3" | append $header 
 eval echo -ne "$headerline_4" | append $header 
+if [ $debug -eq 1 ]; then
+	printf "===================================\nSent request:\n" 1>&2
+	cat $header 1>&2
+	printf "\r\n" 1>&2
+	cat $body 1>&2
+	printf "\n" 1>&2
+fi
 #######################################################################################################
 #                                                                                                     #
 # execute SOAP request                                                                                #
 #                                                                                                     #
 #######################################################################################################
 exec 3<>/dev/tcp/$hostname/$juisport
-cat $header >&3
-printf "\r\n" >&3
-cat $body >&3
-cat <&3 >$response &
+cat $header 1>&3
+printf "\r\n" 1>&3
+cat $body 1>&3
+cat <&3 1>$response &
 cat=$!
 (sleep 3 && [ -d /proc/$cat ] && kill $cat 2>/dev/null) 2>/dev/null &
 wait $cat
 exec 3>&-
+if [ $debug -eq 1 ]; then
+	printf "===================================\nReceived response:\n" 1>&2
+	cat $response 1>&2
+	printf "\n" 1>&2
+	printf "======= end of debug output =======\n" 1>&2
+fi
 #######################################################################################################
 #                                                                                                     #
 # examine the status code                                                                             #
