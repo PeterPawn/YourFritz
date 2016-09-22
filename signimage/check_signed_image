@@ -330,11 +330,24 @@ if ! [ -f "$image_file" ]; then
 fi
 ####################################################################################
 #                                                                                  #
+# prepare a temporary directory and cleanup on exit                                #
+#                                                                                  #
+####################################################################################
+tmp=$(mktemp -d)
+[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
+trap "rm -r \"$tmp\"" EXIT HUP INT
+####################################################################################
+#                                                                                  #
 # check OpenSSL presence and version                                               #
 #                                                                                  #
 ####################################################################################
 show_version
 [ $? -ne 0 ] && exit 32
+cnf="$(openssl version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
+if [ -n "$cnf" ]; then # configuration file missing
+	touch $tmp/openssl.cnf
+	export OPENSSL_CONF=$tmp/openssl.cnf
+fi
 echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
 echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
@@ -353,14 +366,6 @@ else
 	show_error
 	exit 34
 fi
-####################################################################################
-#                                                                                  #
-# prepare a temporary directory and cleanup on exit                                #
-#                                                                                  #
-####################################################################################
-tmp=$(mktemp -d)
-[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
-trap "rm -r \"$tmp\"" EXIT HUP INT
 ####################################################################################
 #                                                                                  #
 # If the signature isn't the last file (we've checked the length already), we have #
