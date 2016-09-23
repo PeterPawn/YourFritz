@@ -372,7 +372,6 @@ fi
 #######################################################################################################
 xmlresp="$(mktmp -p $td)"
 sed -n -e "\$p" "$response" >"$xmlresp"
-cat $xmlresp >result.xml
 found="$(extract_xml "$xmlresp" "Found")"
 if [ x"$found" != x"true" ]; then
 	echo "No newer version found, check was made with source version '$Version'." 1>&2
