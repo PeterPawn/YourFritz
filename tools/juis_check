@@ -96,32 +96,20 @@ headerline_1="Host: \$hostname:\$juisport\\\r\\\n"
 headerline_2="Content-Length: \$len\\\r\\\n"
 headerline_3="Content-Type: \$contenttype\\\r\\\n"
 headerline_4="Connection: close\\\r\\\n"
-bodyline_0="\\\n\<soap:Envelope xmlns:soap=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:soap-enc=\\\"http://schemas.xmlsoap.org/soap/encoding/\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" xmlns:xsd=\\\"http://www.w3.org/2001/XMLSchema\\\" xmlns:e=\\\"http://juis.avm.de/updateinfo\\\" xmlns:q=\\\"http://juis.avm.de/request\\\"\>"
-bodyline_1="\\\n\<soap:Header/\>\\\n\<soap:Body\>\\\n\<e:BoxFirmwareUpdateCheck\>\\\n\<e:RequestHeader\>\\\n\<q:Nonce\>\$nonce\</q:Nonce\>\\\n\<q:UserAgent\>Box\</q:UserAgent\>\\\n\<q:ManualRequest\>true\</q:ManualRequest\>\</e:RequestHeader\>\\\n\<e:BoxInfo\>"
-bodyline_2="\\\n\<q:Name\>\$Name\</q:Name\>\\\n\<q:HW\>\$HW\</q:HW\>\\\n\<q:Major\>\$Major\</q:Major\>\\\n\<q:Minor\>\$Minor\</q:Minor\>\\\n\<q:Patch\>\$Patch\</q:Patch\>\\\n\<q:Buildnumber\>\$Build\</q:Buildnumber\>\\\n\<q:Buildtype\>\$type\</q:Buildtype\>\\\n\<q:Serial\>\$Serial\</q:Serial\>\\\n\<q:OEM\>\$OEM\</q:OEM\>\\\n\<q:Lang\>\$Lang\</q:Lang\>\\\n\<q:Country\>\$Country\</q:Country\>\\\n\<q:Annex\>\$Annex\</q:Annex\>\\\n\<q:Flag\>\</q:Flag\>\\\n\<q:UpdateConfig\>1\</q:UpdateConfig\>\\\n\<q:Provider\>oma_lan\</q:Provider\>\</e:BoxInfo\>\</e:BoxFirmwareUpdateCheck\>\</soap:Body\>\</soap:Envelope\>"
+body_tmpl="\<soap:Envelope xmlns:soap=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:soap-enc=\\\"http://schemas.xmlsoap.org/soap/encoding/\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" xmlns:xsd=\\\"http://www.w3.org/2001/XMLSchema\\\" xmlns:e=\\\"http://juis.avm.de/updateinfo\\\" xmlns:q=\\\"http://juis.avm.de/request\\\"\>\<soap:Header/\>\<soap:Body\>\<e:BoxFirmwareUpdateCheck\>\<e:RequestHeader\>\<q:Nonce\>\$nonce\</q:Nonce\>\<q:UserAgent\>Box\</q:UserAgent\>\<q:ManualRequest\>true\</q:ManualRequest\>\</e:RequestHeader\>\<e:BoxInfo\>\<q:Name\>\$Name\</q:Name\>\<q:HW\>\$HW\</q:HW\>\<q:Major\>\$Major\</q:Major\>\<q:Minor\>\$Minor\</q:Minor\>\<q:Patch\>\$Patch\</q:Patch\>\<q:Buildnumber\>\$Build\</q:Buildnumber\>\<q:Buildtype\>\$type\</q:Buildtype\>\<q:Serial\>\$Serial\</q:Serial\>\<q:OEM\>\$OEM\</q:OEM\>\<q:Lang\>\$Lang\</q:Lang\>\<q:Country\>\$Country\</q:Country\>\<q:Annex\>\$Annex\</q:Annex\>\<q:Flag\>\</q:Flag\>\<q:UpdateConfig\>1\</q:UpdateConfig\>\<q:Provider\>oma_lan\</q:Provider\>\</e:BoxInfo\>\</e:BoxFirmwareUpdateCheck\>\</soap:Body\>\</soap:Envelope\>"
 #######################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# append line to output file                                                                          #
+# extract result variables from JUIS answer                                                           #
 #                                                                                                     #
 #######################################################################################################
-append()
+extract_xml()
 {
-	local target="$1"
-	cat - >>$target
-}
-#######################################################################################################
-#                                                                                                     #
-# extract box variable from xml structure                                                             #
-#                                                                                                     #
-#######################################################################################################
-jason_boxinfo()
-{
-	local input="$1" tag="$2"
-	sed -n -e "s|.*<j:$tag>\(.*\)</j:$tag>.*|\1|p" $input
+	local input="$1" ns="$2" tag="$3"
+	sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input
 }
 #######################################################################################################
 #                                                                                                     #
@@ -131,18 +119,8 @@ jason_boxinfo()
 jason_read()
 {
 	local ip="$1" port="$2"
-	echo -ne "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | nc -q 1 $ip $port
+	echo -ne "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | nc -i 1 $ip $port
 	return $?
-}
-#######################################################################################################
-#                                                                                                     #
-# extract result variables from JUIS answer                                                           #
-#                                                                                                     #
-#######################################################################################################
-extract_xml()
-{
-	local input="$1" tag="$2"
-	sed -n -e "s|.*<ns3:$tag>\(.*\)</ns3:$tag>.*|\1|p" $input
 }
 #######################################################################################################
 #                                                                                                     #
@@ -242,7 +220,7 @@ for n in $settings; do
 			Public=1
 		fi
 	elif [ -z "$var" -o x"$var" == x"detect" ]; then
-		val="$(jason_boxinfo "$jason_boxinfo" $n)"
+		val="$(extract_xml "$jason_boxinfo" "j" $n)"
 	 	eval $n='$val'	
 	else
 		eval $n="$var"
@@ -254,7 +232,7 @@ for n in $settings; do
 		Build="${Patch#*-}"
 		[ x"$Build" == x"$Patch" ] && Build="" || Patch="${Patch%%-*}"
 		Minor=$(( ${Minor%%.*} ))
-		[ -z "$Build" -a $detect -eq 1 ] && Build="$(jason_boxinfo "$jason_boxinfo" Revision)"
+		[ -z "$Build" -a $detect -eq 1 ] && Build="$(extract_xml "$jason_boxinfo" "j" Revision)"
 	fi
 done
 #######################################################################################################
@@ -324,15 +302,13 @@ fi
 body="$(mktmp -p $td)"
 header="$(mktmp -p $td)"
 response="$(mktmp -p $td)"
-eval echo -ne "$bodyline_0" | append "$body"
-eval echo -ne "$bodyline_1" | append "$body"
-eval echo -ne "$bodyline_2" | append "$body"
+eval echo -ne "$body_tmpl" >>"$body"
 len=$(stat -c %s "$body")
-eval echo -ne "$headerline_0" | append "$header"
-eval echo -ne "$headerline_1" | append "$header"
-eval echo -ne "$headerline_2" | append "$header"
-eval echo -ne "$headerline_3" | append "$header"
-eval echo -ne "$headerline_4" | append "$header"
+eval echo -ne "$headerline_0" >>"$header"
+eval echo -ne "$headerline_1" >>"$header"
+eval echo -ne "$headerline_2" >>"$header"
+eval echo -ne "$headerline_3" >>"$header"
+eval echo -ne "$headerline_4" >>"$header"
 if [ $debug -eq 1 ]; then
 	printf "===================================\nSent request:\n" 1>&2
 	cat "$header" 1>&2
@@ -345,7 +321,7 @@ fi
 # execute SOAP request                                                                                #
 #                                                                                                     #
 #######################################################################################################
-(cat "$header"; printf "\r\n"; cat "$body" ) | nc -q 3 $hostname $juisport >"$response"
+(cat "$header"; printf "\r\n"; cat "$body" ) | nc -i 1 $hostname $juisport >"$response"
 if [ $debug -eq 1 ]; then
 	printf "===================================\nReceived response:\n" 1>&2
 	cat $response 1>&2
@@ -372,13 +348,13 @@ fi
 #######################################################################################################
 xmlresp="$(mktmp -p $td)"
 sed -n -e "\$p" "$response" >"$xmlresp"
-found="$(extract_xml "$xmlresp" "Found")"
+found="$(extract_xml "$xmlresp" "ns3" "Found")"
 if [ x"$found" != x"true" ]; then
 	echo "No newer version found, check was made with source version '$Version'." 1>&2
 	exit 1
 fi
-URL="$(extract_xml "$xmlresp" "DownloadURL")"
-Version="$(extract_xml "$xmlresp" "Version")"
+URL="$(extract_xml "$xmlresp" "ns3" "DownloadURL")"
+Version="$(extract_xml "$xmlresp" "ns3" "Version")"
 echo "Found newer version : $Version" 1>&2
 echo "URL=$URL"
 #######################################################################################################
