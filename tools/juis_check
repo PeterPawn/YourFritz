@@ -132,8 +132,8 @@ mktmp()
 	local name="$(mktemp $*)"
 	if [ $? -eq 127 ]; then # mktemp is missing, emulation needed
 		local dir tmp="$TMP"
-		[ x"$1" == "-d" ] && dir=1 || dir=0
-		[ x"$1" == "-p" ] && tmp="$2"
+		[ x"$1" == x"-d" ] && dir=1 || dir=0
+		[ x"$1" == x"-p" ] && tmp="$2"
 		[ x"$tmp" == x ] && tmp="/var/tmp"
 		name="$tmp/$(date +%s)_$$"
 		if [ $dir -eq 1 ]; then
