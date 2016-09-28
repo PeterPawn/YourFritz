@@ -19,7 +19,7 @@ _getvalue()
 	[ ${#input} -eq 0 ] && return 1
 	while [ ${#input} -gt $i ]; do
 		[ ${input:$i:1} != = ] \
-		&& v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHUJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" "${input:$i:1}") - 1 )) ))\
+		&& v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" "${input:$i:1}") - 1 )) ))\
 		|| let f+=1
 		let i+=1
 	done
