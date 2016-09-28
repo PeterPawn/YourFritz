@@ -12,12 +12,6 @@
 #
 # and we'll implement the same to be exchangeable
 #
-# one "pitfall" is the fact, that the original "testvalue" binary uses the
-# endianess of its host ... uncomment the "_swap_endianess" call on LE systems,
-# an automatic test is surely possible, but it's time-consuming during each
-# call and you should better use a changed script file for the right system
-# instead of a detection herein
-#
 _getvalue()
 {
 	local file="$1" type="$2" offset="$3" input i=0 f=0 v=0 c l=0
@@ -65,7 +59,6 @@ offset="$3"
 comp="$4"
 val=$(_getvalue "$file" "$type" "$offset")
 [ $? -ne 0 ] && exit 1
-# uncomment next line on LE machines
-#[ $type -gt 1 ] && val=$(_swap_endianess $val $type)
+[ $type -gt 1 ] && [ "$(dd if=/proc/self/exe bs=1 skip=5 count=1 2>/dev/null | base64)" == "AQ==" ] && val=$(_swap_endianess $val $type)
 [ ${#comp} -eq 0 ] && echo $val && exit
 [ $val -eq $comp ] && exit 0 || exit 1
