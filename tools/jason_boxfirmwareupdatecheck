@@ -12,11 +12,13 @@ annex=${5:-B}
 country=${6:-049}
 hw=${7:-185}
 name="${8:-FRITZ\!Box 7490}"
-lab="${9}"
+lab="${9:-0}"
 host=jws.avm.de
 port=80
-revision="${version#*.-}"
+revision="${version#*-}"
+v="$version"
 version="${version%%-*}"
+[ $v == $version ] && revision=""
 nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 body="$(echo -n -e "\n<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:j=\"http://jason.avm.de/updatecheck/\">\n<soap:Header/>\n<soap:Body>\n<j:BoxFirmwareUpdateCheck>\n<j:RequestHeader>\n<j:Nonce>$nonce</j:Nonce>\n<j:UserAgent>Box</j:UserAgent>\n<j:ManualRequest>true</j:ManualRequest></j:RequestHeader>\n<j:BoxInfo>\n<j:Name>$name</j:Name>\n<j:HW>$hw</j:HW>\n<j:Version>$version</j:Version>\n<j:Revision>$revision</j:Revision>\n<j:Serial>$serial</j:Serial>\n<j:OEM>$oem</j:OEM>\n<j:Lang>$lang</j:Lang>\n<j:Annex>$annex</j:Annex>\n<j:Lab>$lab</j:Lab>\n<j:Country>$country</j:Country>\n<j:UpdateConfig>1</j:UpdateConfig></j:BoxInfo></j:BoxFirmwareUpdateCheck></soap:Body></soap:Envelope>")"
 len=${#body}
