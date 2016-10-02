@@ -1,7 +1,8 @@
+/* vi: set tabstop=4 syntax=asm : */
 #ifndef _AVM_KERNEL_CONFIG_MACROS_H
 #define _AVM_KERNEL_CONFIG_MACROS_H
 
-#define akc		10
+#define akc 	10
 #define	sakc	11	
 
 	.macro	AVM_KERNEL_CONFIG_START

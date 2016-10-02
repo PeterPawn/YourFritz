@@ -1,5 +1,7 @@
 /***********************************************************************
  *                                                                     *
+ * vi: set tabstop=4 syntax=c :                                        *
+ *                                                                     *
  * Copyright (C) 2016 P.Hämmerlein (http://www.yourfritz.de)           *
  *                                                                     *
  * This program is free software; you can redistribute it and/or       *

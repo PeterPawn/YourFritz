@@ -1,3 +1,5 @@
+/* vi: set tabstop=4 syntax=c : */
+
 #ifndef _INCLUDE_AVM_KERNEL_CONFIG_H_
 #define _INCLUDE_AVM_KERNEL_CONFIG_H_
 
