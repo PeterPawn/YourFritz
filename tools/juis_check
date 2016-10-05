@@ -1,13 +1,16 @@
-#! /bin/sh
+#! /bin/dash
 #######################################################################################################
 #                                                                                                     #
 # rewritten JUIS update check to circumvent "bash" and "xmllint" use, avoid "wget" and use "nc" for   #
-# network activities                                                                                  #
+# network activities, now only using POSIX compliant shell constructs - should be usable with 'dash'  #
+# now                                                                                                 #
 #                                                                                                     #
 # prerequisites:                                                                                      #
 # - configuration file                                                                                #
 # - FRITZ!Box router (usually)                                                                        #
 # - a BusyBox with mktemp (opt.), dd, sed, base64, nc                                                 #
+# - it should be possible now to use a more limited shell like 'dash' instead of 'ash', as long as    #
+#   the provided 'nc' command knows the '-i' option to assure there's time for the server to reply    #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -88,15 +91,15 @@
 settings="Serial Version Name HW OEM Lang Annex Country Public"
 variables="Serial Major Minor Patch Build Name HW OEM Lang Annex Country Public"
 hostbase="jws.avm.de"
-juisport="80"
+juisport=80
 juisurl="/Jason/UpdateInfoService"
 contenttype="text/xml; charset=\"utf-8\""
-headerline_0="POST \$juisurl HTTP/1.1\\\r\\\n"
-headerline_1="Host: \$hostname:\$juisport\\\r\\\n"
-headerline_2="Content-Length: \$len\\\r\\\n"
-headerline_3="Content-Type: \$contenttype\\\r\\\n"
-headerline_4="Connection: close\\\r\\\n"
-body_tmpl="\<soap:Envelope xmlns:soap=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:soap-enc=\\\"http://schemas.xmlsoap.org/soap/encoding/\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" xmlns:xsd=\\\"http://www.w3.org/2001/XMLSchema\\\" xmlns:e=\\\"http://juis.avm.de/updateinfo\\\" xmlns:q=\\\"http://juis.avm.de/request\\\"\>\<soap:Header/\>\<soap:Body\>\<e:BoxFirmwareUpdateCheck\>\<e:RequestHeader\>\<q:Nonce\>\$nonce\</q:Nonce\>\<q:UserAgent\>Box\</q:UserAgent\>\<q:ManualRequest\>true\</q:ManualRequest\>\</e:RequestHeader\>\<e:BoxInfo\>\<q:Name\>\$Name\</q:Name\>\<q:HW\>\$HW\</q:HW\>\<q:Major\>\$Major\</q:Major\>\<q:Minor\>\$Minor\</q:Minor\>\<q:Patch\>\$Patch\</q:Patch\>\<q:Buildnumber\>\$Build\</q:Buildnumber\>\<q:Buildtype\>\$type\</q:Buildtype\>\<q:Serial\>\$Serial\</q:Serial\>\<q:OEM\>\$OEM\</q:OEM\>\<q:Lang\>\$Lang\</q:Lang\>\<q:Country\>\$Country\</q:Country\>\<q:Annex\>\$Annex\</q:Annex\>\<q:Flag\>\</q:Flag\>\<q:UpdateConfig\>1\</q:UpdateConfig\>\<q:Provider\>oma_lan\</q:Provider\>\</e:BoxInfo\>\</e:BoxFirmwareUpdateCheck\>\</soap:Body\>\</soap:Envelope\>"
+headerline_0="POST %s HTTP/1.1\r\n"
+headerline_1="Host: %s:%u\r\n"
+headerline_2="Content-Length: %u\r\n"
+headerline_3="Content-Type: %s\r\n"
+headerline_4="Connection: close\r\n"
+body_tmpl="<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:e=\"http://juis.avm.de/updateinfo\" xmlns:q=\"http://juis.avm.de/request\"><soap:Header/><soap:Body><e:BoxFirmwareUpdateCheck><e:RequestHeader><q:Nonce>%s</q:Nonce><q:UserAgent>Box</q:UserAgent><q:ManualRequest>true</q:ManualRequest></e:RequestHeader><e:BoxInfo><q:Name>%s</q:Name><q:HW>%s</q:HW><q:Major>%s</q:Major><q:Minor>%s</q:Minor><q:Patch>%s</q:Patch><q:Buildnumber>%s</q:Buildnumber><q:Buildtype>%s</q:Buildtype><q:Serial>%s</q:Serial><q:OEM>%s</q:OEM><q:Lang>%s</q:Lang><q:Country>%s</q:Country><q:Annex>%s</q:Annex><q:Flag></q:Flag><q:UpdateConfig>1</q:UpdateConfig><q:Provider>oma_lan</q:Provider></e:BoxInfo></e:BoxFirmwareUpdateCheck></soap:Body></soap:Envelope>"
 #######################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
@@ -119,7 +122,7 @@ extract_xml()
 jason_read()
 {
 	local ip="$1" port="$2"
-	echo -ne "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | nc -i 1 $ip $port
+	printf "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | nc -i 1 $ip $port
 	return $?
 }
 #######################################################################################################
@@ -132,9 +135,9 @@ mktmp()
 	local name="$(mktemp $*)"
 	if [ $? -eq 127 ]; then # mktemp is missing, emulation needed
 		local dir tmp="$TMP"
-		[ x"$1" == x"-d" ] && dir=1 || dir=0
-		[ x"$1" == x"-p" ] && tmp="$2"
-		[ x"$tmp" == x ] && tmp="/var/tmp"
+		[ "$1" = "-d" ] && dir=1 || dir=0
+		[ "$1" = "-p" ] && tmp="$2"
+		[ -z "$tmp" ] && tmp="/var/tmp"
 		name="$tmp/$(date +%s)_$$"
 		if [ $dir -eq 1 ]; then
 			if [ -d "$name" ]; then
@@ -145,14 +148,14 @@ mktmp()
 			touch $name 2>/dev/null
 		fi
 	fi
-	echo "$name"
+	printf "$name"
 }
 #######################################################################################################
 #                                                                                                     #
 # check debug option                                                                                  #
 #                                                                                                     #
 #######################################################################################################
-if [ x"$1" == x"-d" -o x"$1" == x"--debug" ]; then
+if [ "$1" = "-d" -o "$1" = "--debug" ]; then
 	debug=1
 	shift
 else
@@ -164,7 +167,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 if ! [ -f "$0.cfg" ]; then
-	echo "Missing configuration file '$0.cfg'." 1>&2
+	printf "Missing configuration file '%s.cfg'.\n" "$0" 1>&2
 	exit 2
 fi
 . $0.cfg
@@ -182,36 +185,36 @@ trap 'rm -rf "$td" 2>/dev/null' EXIT INT HUP
 #######################################################################################################
 detect=0
 for n in $settings; do
-	[ $n == Public ] && continue
+	[ $n = Public ] && continue
 	eval var="\$$n"
-	if [ -z "$var" -o x"$var" == x"detect" ]; then
+	if [ -z "$var" -o "$var" = "detect" ]; then
 		detect=1
 		break
 	fi
 done
 if [ $detect -eq 1 ]; then
 	if [ -z "$Box" ]; then
-		echo "Missing FRITZ!Box IP address." 1>&2
+		printf "Missing FRITZ!Box IP address.\n" 1>&2
 		exit 2
 	fi
 	jason_boxinfo="$(mktmp -p $td)"
 	jason_read "$Box" 80 2>/dev/null >"$jason_boxinfo"
 	if [ $? -ne 0 ]; then
-		echo "Error reading jason info from FRITZ!Box device with address '$Box'." 1>&2
+		printf "Error reading jason info from FRITZ!Box device with address '%s'.\n" "$Box" 1>&2
 		exit 2
 	fi
 fi
 for n in $settings; do
 	eval var="\$$n"
 	# missing definitions will be auto-detected
-	if [ x"$var" == x"empty" ]; then
-		[ $n == Public ] && Public=1 || eval $n=""
-	elif [ x"${var:0:6}" == x"fixed:" ]; then
-		eval $n="${var:6}"
-	elif [ $n == Public ]; then
+	if [ "$var" = "empty" ]; then
+		[ $n = Public ] && Public=1 || eval $n=""
+	elif [ "${var#fixed:}" != "$var" ]; then
+		eval $n="${var#fixed:}"
+	elif [ $n = Public ]; then
 		if ! [ -z "$var" ]; then
-			if [ x"$var" != x"0" -a x"$var" != x"1" ]; then
-				echo "'Public' item may only be empty or set to a fixed value." 1>&2
+			if [ "$var" != "0" -a "$var" != "1" ]; then
+				printf "'Public' item may only be empty or set to a fixed value.\n" 1>&2
 				exit 2
 			else
 				Public=$var
@@ -219,18 +222,18 @@ for n in $settings; do
 		else
 			Public=1
 		fi
-	elif [ -z "$var" -o x"$var" == x"detect" ]; then
+	elif [ -z "$var" -o "$var" = "detect" ]; then
 		val="$(extract_xml "$jason_boxinfo" "j" $n)"
 	 	eval $n='$val'	
 	else
 		eval $n="$var"
 	fi
-	if [ $n == Version ]; then
+	if [ $n = Version ]; then
 		Major="${Version%%.*}"
 		Minor="${Version#*.}"
 		Patch="${Minor#*.}"
 		Build="${Patch#*-}"
-		[ x"$Build" == x"$Patch" ] && Build="" || Patch="${Patch%%-*}"
+		[ "$Build" = "$Patch" ] && Build="" || Patch="${Patch%%-*}"
 		Minor=$(( ${Minor%%.*} ))
 		[ -z "$Build" -a $detect -eq 1 ] && Build="$(extract_xml "$jason_boxinfo" "j" Revision)"
 	fi
@@ -247,8 +250,8 @@ for nv in $*; do
 	value="${nv#*=}"
 	valid=0
 	for n in $settings; do
-		if [ $n == "$name" ]; then
-			if [ x"$value" == x"empty" ]; then
+		if [ $n = "$name" ]; then
+			if [ "$value" = "empty" ]; then
 				eval $n=""
 			else
 				eval $n="$value"
@@ -258,10 +261,10 @@ for nv in $*; do
 		fi
 	done
 	if [ $valid -eq 0 ]; then
-		echo "Unknown setting '$name' found at command line." 1>&2
+		printf "Unknown setting '%s' found at command line.\n" "$name" 1>&2
 		exit 2
 	fi
-	if [ $name == Version ]; then
+	if [ $name = Version ]; then
 		Major="${Version%%.*}"
 		Minor="${Version#*.}"
 		Patch="${Minor#*.}"
@@ -275,8 +278,8 @@ done
 # prepare additional variables                                                                        #
 #                                                                                                     #
 #######################################################################################################
-if [ x"$Public" != x"0" -a x"$Public" != x"1" ]; then
-	echo "The 'Public' item has to be set to '0' for 'inhouse versions' or '1' for others." 1>&2
+if [ "$Public" != "0" -a "$Public" != "1" ]; then
+	printf "The 'Public' item has to be set to '0' for 'inhouse versions' or '1' for others.\n" 1>&2
 	exit 2
 fi
 type="100$Public"
@@ -288,9 +291,10 @@ nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 #                                                                                                     #
 #######################################################################################################
 if [ $debug -eq 1 ]; then
-	printf "===================================\nVariables set:\n"
+	printf "===================================\nVariables set:\n\n" 1>&2
 	for n in $variables type hostname nonce; do
-		printf "%s=\"%s\"\n" $n "${!n}" 1>&2
+		printf "%s=\"" "$n" 1>&2
+		printf "%s\"\n" $(eval printf "%s" \$$n) 1>&2
 	done
 	printf "\n" 1>&2
 fi
@@ -302,13 +306,13 @@ fi
 body="$(mktmp -p $td)"
 header="$(mktmp -p $td)"
 response="$(mktmp -p $td)"
-eval echo -ne "$body_tmpl" >>"$body"
+printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Build" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" >>"$body"
 len=$(stat -c %s "$body")
-eval echo -ne "$headerline_0" >>"$header"
-eval echo -ne "$headerline_1" >>"$header"
-eval echo -ne "$headerline_2" >>"$header"
-eval echo -ne "$headerline_3" >>"$header"
-eval echo -ne "$headerline_4" >>"$header"
+printf "$headerline_0" "$juisurl" >>"$header"
+printf "$headerline_1" "$hostname" $juisport >>"$header"
+printf "$headerline_2" $len >>"$header"
+printf "$headerline_3" "$contenttype" >>"$header"
+printf "$headerline_4" >>"$header"
 if [ $debug -eq 1 ]; then
 	printf "===================================\nSent request:\n" 1>&2
 	cat "$header" 1>&2
@@ -335,10 +339,10 @@ fi
 #######################################################################################################
 status="$(sed -n -e "1p" "$response" | sed -n -e "s|HTTP/1.1 \([0-9]*\) OK.*|\1|p")"
 if [ -z "$status" ]; then
-	echo "Unexpected data received from network." 1>&2
+	printf "Unexpected data received from network.\n" 1>&2
 	exit 2
-elif [ x"$status" != x"200" ]; then
-	echo "Unexpected error code $status returned from jws.avm.de." 1>&2
+elif [ "$status" != "200" ]; then
+	printf "Unexpected error code %s returned from jws.avm.de.\n" "$status" 1>&2
 	exit 2
 fi
 #######################################################################################################
@@ -349,14 +353,14 @@ fi
 xmlresp="$(mktmp -p $td)"
 sed -n -e "\$p" "$response" >"$xmlresp"
 found="$(extract_xml "$xmlresp" "ns3" "Found")"
-if [ x"$found" != x"true" ]; then
-	echo "No newer version found, check was made with source version '$Version'." 1>&2
+if [ "$found" != "true" ]; then
+	printf "No newer version found, check was made with source version '%s'.\n" "$Version" 1>&2
 	exit 1
 fi
 URL="$(extract_xml "$xmlresp" "ns3" "DownloadURL")"
 Version="$(extract_xml "$xmlresp" "ns3" "Version")"
-echo "Found newer version : $Version" 1>&2
-echo "URL=$URL"
+printf "Found newer version : %s\n" "$Version" 1>&2
+printf "URL=$URL\n"
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
