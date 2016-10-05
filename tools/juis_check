@@ -1,4 +1,4 @@
-#! /bin/dash
+#! /bin/sh
 #######################################################################################################
 #                                                                                                     #
 # rewritten JUIS update check to circumvent "bash" and "xmllint" use, avoid "wget" and use "nc" for   #
