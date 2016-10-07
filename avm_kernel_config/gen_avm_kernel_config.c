@@ -328,7 +328,7 @@ int processConfigArea(struct _avm_kernel_config * *configArea)
 		}
 	}
 
-	fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t0\n\t.align\t16\n");
+	fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t0\n\t.align\t4\n");
 
 	if (outputDeviceTrees) processDeviceTrees(configArea);
 	if (outputVersionInfo) processVersionInfo(configArea);
