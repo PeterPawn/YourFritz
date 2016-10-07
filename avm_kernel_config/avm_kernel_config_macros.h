@@ -20,6 +20,7 @@
 		.int		\tag
 		.ifeq		\tag
 			.int	0
+			.align	4
 		.else		
 			.int	.L_avm_\label
 		.endif
