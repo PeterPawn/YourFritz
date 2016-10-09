@@ -60,12 +60,12 @@ all: $(BINARIES)
 #
 # the binaries
 #
-$(BINARIES): $(LIBFDT_LOC)/$(LIBFDT).a $(HELPER_OBJS) $(BIN_OBJS)
+$(BINARIES): $(LIBFDT_LIB) $(HELPER_OBJS) $(BIN_OBJS)
 	$(CC) $(LDFLAGS) -L. -o $@ $@.o $(HELPER_OBJS) $(LIBS)
 #
 # make static library
 #
-$(LIBFDT_LOC)/$(LIBFDT).a: $(LIBFDT_OBJS) 
+$(LIBFDT_LIB): $(LIBFDT_OBJS) 
 	-$(RM) $@ 2>/dev/null || true
 	$(AR) rcu $@ $?
 	$(RANLIB) $@
