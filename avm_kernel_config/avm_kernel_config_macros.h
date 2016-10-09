@@ -58,7 +58,7 @@
 	.macro	AVM_DEVICE_TREE_BLOB subrevision
 	.endm
 
-	.macro	AVM_DEVICE_TREE subrevision, filename
+	.macro	AVM_DEVICE_TREE subrevision
 		.int		avm_kernel_config_tags_device_tree_subrev_\subrevision
 		.int		._L_avm_device_tree_\subrevision
 	.endm
