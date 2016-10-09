@@ -1,6 +1,6 @@
+// vi: set tabstop=4 syntax=c :
 /***********************************************************************
  *                                                                     *
- * vi: set tabstop=4 syntax=c :                                        *
  *                                                                     *
  * Copyright (C) 2016 P.Hämmerlein (http://www.yourfritz.de)           *
  *                                                                     *
@@ -19,32 +19,8 @@
  *                                                                     *
  ***********************************************************************/
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <errno.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/fcntl.h>
-#include <sys/mman.h>
-
-#ifdef FREETZ
-#include <linux/avm_kernel_config.h>
-#else /* FREETZ */
-#include "avm_kernel_config.h"
-#endif /* FREETZ */
-
-struct memoryMappedFile
-{
-	unsigned char *		fileName;
-	unsigned char *		fileDescription;
-	int					fileDescriptor;
-	struct stat			fileStat;
-	void *				fileBuffer;
-	bool				fileMapped;
-};
+#include "avm_kernel_config_helpers.h"
+#include <libfdt.h>
 
 void usage()
 {
@@ -52,73 +28,22 @@ void usage()
 	fprintf(stderr, "(C) 2016 P. Hämmerlein (http://www.yourfritz.de)\n\n");
 	fprintf(stderr, "Licensed under GPLv2, see LICENSE file from source repository.\n\n");
 	fprintf(stderr, "Usage:\n\n");
-	fprintf(stderr, "extract_avm_kernel_config <unpacked_kernel> <dtb_file>\n");
+	fprintf(stderr, "extract_avm_kernel_config <unpacked_kernel> [<dtb_file>]\n");
 	fprintf(stderr, "\nThe specified DTB content (a compiled OF device tree BLOB) is");
 	fprintf(stderr, "\nsearched in the unpacked kernel and the place, where it's found");
 	fprintf(stderr, "\nis assumed to be within the original kernel config area.\n");
+	fprintf(stderr, "\nIf the DTB file is omitted, the kernel will be searched");
+	fprintf(stderr, "\nfor the FDT signature (0xD00DFEED in BE) and some checks");
+	fprintf(stderr, "\nare performed to guess the correct location.\n");
 	fprintf(stderr, "\nThe output is written to STDOUT, so you've to redirect it to the");
 	fprintf(stderr, "\nproper location.\n");
 }
 
-bool openMemoryMappedFile(struct memoryMappedFile *file, unsigned char *fileName, unsigned char *fileDescription, int openFlags, int prot, int flags)
+bool checkConfigArea(struct _avm_kernel_config ** configArea, size_t configSize)
 {
-	bool			result = false;
+	bool			swapNeeded = false;
 
-	file->fileName = fileName;
-	file->fileDescription = fileDescription;
-	if ((file->fileDescriptor = open(file->fileName, openFlags)) != -1)
-	{
-		if (fstat(file->fileDescriptor, &file->fileStat) != -1)
-		{
-			if ((file->fileBuffer = (void *) mmap(NULL, file->fileStat.st_size, prot, flags, file->fileDescriptor, 0)) != MAP_FAILED)
-			{
-				file->fileMapped = true;
-				result = true;
-			}
-			else
-			{
-				fprintf(stderr, "Error %d mapping %u bytes of %s file '%s' to memory.\n", errno, (int) file->fileStat.st_size, file->fileName);
-				close(file->fileDescriptor);
-				file->fileDescriptor = -1;	
-			}
-		}
-		else
-		{
-			fprintf(stderr, "Error %d getting file stats for '%s'.\n", errno, file->fileName);
-			close(file->fileDescriptor);
-			file->fileDescriptor = -1;
-		}
-	}
-	else
-	{
-		fprintf(stderr, "Error %d opening %s file '%s'.\n", errno, file->fileDescription, file->fileName);
-	}
-	return result;
-
-}
-
-void closeMemoryMappedFile(struct memoryMappedFile *file)
-{
-
-	if (file->fileMapped)
-	{
-		munmap(file->fileBuffer, file->fileStat.st_size);
-		file->fileBuffer = NULL;
-		file->fileMapped = false;
-	}
-	if (file->fileDescriptor != -1)
-	{
-		close(file->fileDescriptor);
-		file->fileDescriptor = -1;
-	}
-
-}
-
-bool checkConfigArea(struct _avm_kernel_config ** configArea)
-{
-	/* we could try to check the expected structure of a config area here,
-       but let's do this later
-	*/
+	if (!detectInputEndianess(configArea, configSize, &swapNeeded)) return false;
 	return true;
 }
 
@@ -126,14 +51,15 @@ struct _avm_kernel_config ** findConfigArea(void *dtbLocation)
 {
 	struct _avm_kernel_config **	configArea = NULL;
 
-	/* previous 4K boundary should be the start of the config area 
-	*/
+	// previous 4K boundary should be the start of the config area 
 	configArea = (struct _avm_kernel_config **) (((int) dtbLocation >> 12) << 12);
-	if (checkConfigArea(configArea)) return configArea;
+
+	if (checkConfigArea(configArea, 64 * 1024)) return configArea;
+
 	return NULL;
 }
 
-void * findDTB(void *haystack, size_t haystackSize, void *needle, size_t needleSize)
+void * findDeviceTreeImage(void *haystack, size_t haystackSize, void *needle, size_t needleSize)
 {
 	void *		location = NULL;
 	size_t		toSearch = haystackSize / sizeof(uint32_t);
@@ -155,31 +81,36 @@ void * findDTB(void *haystack, size_t haystackSize, void *needle, size_t needleS
 				sliding++;
 				if (toSearch == 0) break;
 			}
-			if (toSearch > 0) /* match found for first uint32 */
+
+			if (toSearch > 0) // match found for first uint32
 			{	
 				matchedSoFar = true;
 				resetToSearch = --toSearch;
 				resetSliding = ++sliding;
 				offsetMatched = sizeof(uint32_t);
+
 				if ((needleSize - offsetMatched) > sizeof(uint32_t))
 				{
 					while (offsetMatched < needleSize)
 					{
-						if (*(lookFor + (offsetMatched / sizeof(uint32_t))) != *sliding) /* difference found, reset match */
+						if (*(lookFor + (offsetMatched / sizeof(uint32_t))) != *sliding) // difference found, reset match
 						{
 							matchedSoFar = false;
 							sliding = resetSliding;
 							toSearch = resetToSearch;
 							break;
 						}
+
 						offsetMatched += sizeof(uint32_t);
 						sliding++;
 						toSearch--;
-						if (toSearch == 0) break; /* end of kernel reached, DTB isn't expected at the very end */	
+
+						if (toSearch == 0) break; // end of kernel reached, DTB isn't expected at the very end
 						if ((needleSize - offsetMatched) < sizeof(uint32_t)) break;
 					}
 				}
-				if (matchedSoFar) /* compare remaining bytes */
+
+				if (matchedSoFar) // compare remaining bytes
 				{
 					uint8_t *	remHaystack = (uint8_t *) sliding;
 					uint8_t *	remNeedle = (uint8_t *) (needle + offsetMatched);
@@ -187,26 +118,56 @@ void * findDTB(void *haystack, size_t haystackSize, void *needle, size_t needleS
 
 					while (remSize > 0)
 					{
-						if (*remHaystack != *remNeedle) /* difference found */
+						if (*remHaystack != *remNeedle) // difference found
 						{
 							matchedSoFar = false;
 							sliding = resetSliding;
 							toSearch = resetToSearch;
 							break;
 						}
+
 						remHaystack++;
 						remNeedle++;
 						remSize--;
 					}
-					if (remSize == 0) /* match completed */
+
+					if (remSize == 0) // match completed
 					{
-						location = (void *) resetSliding;
+						location = (void *) --resetSliding;
 						break;
 					} 
 				}
 			}
 		}
 	}
+
+	return location;
+}
+
+void * locateDeviceTreeSignature(void *kernelBuffer, size_t kernelSize)
+{
+	void *		location = NULL;
+	uint32_t	signature = 0xD00DFEED;
+	uint32_t *	ptr = (uint32_t *) kernelBuffer;	
+	
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	// the DTB signature is store in 'big endian' => swap needed, if we're running on 'little endian' machine
+	swapEndianess(true, &signature);
+#endif
+
+	while ((void *) ptr < (kernelBuffer + kernelSize))
+	{
+		if (*ptr == signature) // possibly found the tree
+		{
+			if (fdt_check_header((void *) ptr) == 0)
+			{
+				location = ptr;
+				break;
+			}
+		}
+		ptr++;
+	}
+
 	return location;
 }
 
@@ -215,48 +176,67 @@ int main(int argc, char * argv[])
 	int						returnCode = 1;
 	struct memoryMappedFile	kernel;
 	struct memoryMappedFile	dtb;
+	void *					dtbLocation = NULL;
 
-	if (argc < 3)
+	if (argc < 2)
 	{
 		usage();
 		exit(1);
 	}
+
 	if (openMemoryMappedFile(&kernel, argv[1], "unpacked kernel", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
 	{
-		if (openMemoryMappedFile(&dtb, argv[2], "device tree BLOB", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
+		if (argc > 2)
 		{
-			void *	dtbLocation = findDTB(kernel.fileBuffer, kernel.fileStat.st_size, dtb.fileBuffer, dtb.fileStat.st_size);
-		
-			if (dtbLocation != NULL)
+			if (openMemoryMappedFile(&dtb, argv[2], "device tree BLOB", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
 			{
-				struct _avm_kernel_config * *configArea = findConfigArea(dtbLocation);
-				
-				if (configArea != NULL)
+				if (fdt_check_header(dtb.fileBuffer) == 0)
 				{
-					ssize_t	written = write(1, (void *) configArea, 64 * 1024);
-
-					if (written == 64 * 1024)
+					if ((dtbLocation = findDeviceTreeImage(kernel.fileBuffer, kernel.fileStat.st_size, dtb.fileBuffer, dtb.fileStat.st_size)) == NULL)
 					{
-						returnCode = 0;
-					}
-					else
-					{
-						fprintf(stderr, "Error %d writing config area content.\n", errno);
+						fprintf(stderr, "The specified device tree BLOB was not found in the kernel image.\n");
 					}
 				}
 				else
 				{
-					fprintf(stderr, "Unexpected config area content found, extraction aborted.\n");
+					fprintf(stderr, "The specified device tree BLOB file '%s' seems to be invalid.\n", dtb.fileName);
+				}
+			}
+			closeMemoryMappedFile(&dtb);
+		}
+		else
+		{
+			if ((dtbLocation = locateDeviceTreeSignature(kernel.fileBuffer, kernel.fileStat.st_size)) == NULL)
+			{
+				fprintf(stderr, "Unable to locate the config area in the specified kernel image.\n");
+			}
+		}
+		
+		if (dtbLocation != NULL)
+		{
+			struct _avm_kernel_config * *configArea = findConfigArea(dtbLocation);
+			
+			if (configArea != NULL)
+			{
+				ssize_t	written = write(1, (void *) configArea, 64 * 1024);
+
+				if (written == 64 * 1024)
+				{
+					returnCode = 0;
+				}
+				else
+				{
+					fprintf(stderr, "Error %d writing config area content.\n", errno);
 				}
 			}
 			else
 			{
-				fprintf(stderr, "The device tree BLOB was not found in the unpacked kernel image.\n");
+				fprintf(stderr, "Unexpected config area content found, extraction aborted.\n");
 			}
-			closeMemoryMappedFile(&dtb);
 		}
 		closeMemoryMappedFile(&kernel);
 	}
+
 	exit(returnCode);
 }
 
