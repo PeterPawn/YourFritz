@@ -147,7 +147,7 @@ bool detectInputEndianess(struct _avm_kernel_config * *configArea, size_t config
 	}
 	while (entry->config != NULL);
 
-	// new we compute offset in kernel
+	// now we compute offset in kernel
 	ptrValue = *base;
 	swapEndianess(assumeSwapped, &ptrValue);
 	offset = ptrValue & 0xFFFFF000;
