@@ -1,0 +1,216 @@
+#######################################################################################################
+#                                                                                                     #
+# Copyright (C) 2016 P.Hämmerlein (peterpawn@yourfritz.de)                                            #
+#                                                                                                     #
+# This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script is intended to be called from '/var/post_install', look into 'update_firmware' for an   #
+# example, how to call it only once. All error conditions and the regular finish of tasks to do lead  #
+# to a call to another script (using 'exec'), usually the '/var/post_install' script will be run      #
+# again.                                                                                              #
+#                                                                                                     #
+# All files are stored and searched in the base directory of FRITZ!OS NAS service (/var/media/ftp).   #
+#                                                                                                     #
+# First the script looks for a file 'newfirmware.image'. If this cannot be found, the script          #
+# 'check_update' will be used to search for a newer version, which will be loaded, if any is found.   #
+#                                                                                                     #
+# If a firmware image exists, some (rather simple) checks are performed to assure a valid update      #
+# image and the image file is unpacked.                                                               #
+#                                                                                                     #
+# The second action is extracting the supported brandings from the unpacked '/var/install' script and #
+# a check, if the existing branding is supported. If not, the branding (exactly only the environment  #
+# variable OEM) is changed temporarily and a marker is set, to change the real branding after         #
+# successful update.                                                                                  #
+#                                                                                                     #
+# In the third step it's checked, if the content has to be modified. In this case, the specified      #
+# command to modify the firmware files is called, it's in charge to provide valid firmware files as   #
+# needed by the resulting '/var/install' script. Usually here a (batch capable) version of 'modfs' is #
+# used to modify the files to install.                                                                #
+#                                                                                                     #
+# After all, the '/var/install' script is called, it's responsible for changes to the installed       #
+# firmware and has to exit with a return code of 0 or 1 to signal a successful update.                #
+#                                                                                                     #
+# If a changed branding is needed and the installation process was successful, the new branding will  #
+# be set to the bootloader environment in the final step.                                             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# the next script to execute                                                                          #
+#                                                                                                     #
+#######################################################################################################
+exec_to=/var/post_install
+#######################################################################################################
+#                                                                                                     #
+# enable logging to network, if a target IP is specified                                              #
+#                                                                                                     #
+#######################################################################################################
+log_ip="192.168.178.2"
+log_port=514
+#######################################################################################################
+#                                                                                                     #
+# base directory                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+basedir=/var/media/ftp
+#######################################################################################################
+#                                                                                                     #
+# firmware image name                                                                                 #
+#                                                                                                     #
+#######################################################################################################
+imagename=newfirmware.image
+#######################################################################################################
+#                                                                                                     #
+# force firmware update (aka downgrade)                                                               #
+#                                                                                                     #
+#######################################################################################################
+force_update=0
+#######################################################################################################
+#                                                                                                     #
+# force 1st branding from image, if the current one isn't supported                                   #
+#                                                                                                     #
+#######################################################################################################
+force_branding=1
+#######################################################################################################
+#                                                                                                     #
+# modify original firmware                                                                            #
+#                                                                                                     #
+#######################################################################################################
+modify_firmware=0
+modify_command="$SHELL $basedir/modfs/modfs_batch unpacked /"
+#######################################################################################################
+#                                                                                                     #
+# force firmware update (aka downgrade)                                                               #
+#                                                                                                     #
+#######################################################################################################
+force_update=0
+#######################################################################################################
+#                                                                                                     #
+# initialize logging fifo                                                                             #
+#                                                                                                     #
+#######################################################################################################
+logpipe=/var/run/${0##*/}.$$.logpipe
+rm $logpipe 2>/dev/null
+mknod $logpipe p
+exec 6<> $logpipe
+#######################################################################################################
+#                                                                                                     #
+# try logging to network, if a target is given                                                        #
+#                                                                                                     #
+#######################################################################################################
+if [ -n $log_ip ] && type nc >/dev/null; then
+	nc $log_ip $log_port <$logpipe &
+	ncpid=$!
+	sleep 1
+	test -d /proc/$ncpid || exec 6<>/dev/console
+fi
+#######################################################################################################
+#                                                                                                     #
+# enable debug output and redirect STDOUT and STDERR to descriptor 6 (our log target)                 #
+#                                                                                                     #
+#######################################################################################################
+exec 2>&6 1>&6
+set -x
+#######################################################################################################
+#                                                                                                     #
+# check for new version, if no image file exists and download a newer one                             #
+#                                                                                                     #
+#######################################################################################################
+if ! test -f $basedir/$imagename; then
+	test -f $basedir/check_update || exec $exec_to
+	eval $($SHELL $basedir/check_update)
+	( test -z $NewVersion || test -z $DownloadURL ) && exec $exec_to
+	wget -O $basedir/$imagename $DownloadURL
+fi
+#######################################################################################################
+#                                                                                                     #
+# check file integrity - signature check is not always possible                                       #
+#                                                                                                     #
+#######################################################################################################
+! test -f $basedir/$imagename && exec $exec_to
+fsize=$(stat -c %s $basedir/$imagename)
+test $fsize -eq 0 && exec $exec_to
+tarlist=/var/tmp/${0##*/}.$$.list
+tar -t -v -f $basedir/$imagename 2>/dev/null >$tarlist || exec $exec_to
+test -s $tarlist || exec $exec_to
+for n in var/tmp/filesystem.image var/tmp/kernel.image var/install; do
+	test $(sed -n -e "s|.*\($n\).*|\1|p" $tarlist) = $n || exec $exec_to
+done
+if test -f $basedir/check_signed_image; then
+	$SHELL $basedir/check_signed_image $basedir/$imagename -b
+	rc=$?
+	test $rc -eq 64 && printf "Signature verification failed.\n" && exec $exec_to
+fi
+#######################################################################################################
+#                                                                                                     #
+# unpack image file                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+tar -C / -x -f $basedir/$imagename
+#######################################################################################################
+#                                                                                                     #
+# check brandings from image                                                                          #
+#                                                                                                     #
+#######################################################################################################
+brandings=$(echo $(grep -B 5 "^[ \t]*if *\[ *\"\$i\" *= *\"\${OEM}\" *\] *; *then[ \t]*$" /var/install | sed -n -e "s|for *i *in *\(.*\) *; *do|\1|p"))
+found=0
+changebranding=0
+for i in $brandings; do
+	test $i = ${OEM:-avm} && found=1 && break
+done
+test $found -eq 0 && test $force_branding -eq 0 && exec $exec_to
+if test $found -eq 0 && test $force_branding -eq 1; then
+	set -- $brandings
+	export OEM=$1
+	changebranding=1
+fi
+#######################################################################################################
+#                                                                                                     #
+# modify firmware, if requested                                                                       #
+#                                                                                                     #
+#######################################################################################################
+if test $modify_firmware -eq 1 && test -n "$modify_command"; then
+	$modify_command || exec $exec_to
+fi
+#######################################################################################################
+#                                                                                                     #
+# call install script, but change AVM's output to /dev/console to our log target                      #
+#                                                                                                     #
+#######################################################################################################
+sed -e "s|>[ ]*/dev/console|>\&6|g" /var/install >/var/tmp/install.tmp && mv /var/tmp/install.tmp /var/install
+test $force_update -eq 1 && force="-f" || force=""
+opwd=$(pwd)
+cd /
+$SHELL /var/install $force 1>&6 2>&6
+rc=$?
+cd $opwd
+#######################################################################################################
+#                                                                                                     #
+# change branding, if necessary                                                                       #
+#                                                                                                     #
+#######################################################################################################
+test $rc -gt 1 && exec $exec_to
+test $changebranding -eq 1 && printf "firmware_version $OEM\n" >/proc/sys/urlader/environment
+#######################################################################################################
+#                                                                                                     #
+# everything done, close log descriptor, call exit script                                             #
+#                                                                                                     #
+#######################################################################################################
+exec 6>&-
+exec $exec_to
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
