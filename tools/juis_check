@@ -8,7 +8,7 @@
 # prerequisites:                                                                                      #
 # - configuration file                                                                                #
 # - FRITZ!Box router (usually)                                                                        #
-# - a BusyBox with mktemp (opt.), dd, sed, base64, nc                                                 #
+# - a BusyBox with mktemp (opt.), dd, sed, base64, nc, mknod                                          #
 # - it should be possible now to use a more limited shell like 'dash' instead of 'ash', as long as    #
 #   the provided 'nc' command knows the '-i' option to assure there's time for the server to reply    #
 #                                                                                                     #
@@ -100,10 +100,36 @@ headerline_2="Content-Length: %u\r\n"
 headerline_3="Content-Type: %s\r\n"
 headerline_4="Connection: close\r\n"
 body_tmpl="<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:e=\"http://juis.avm.de/updateinfo\" xmlns:q=\"http://juis.avm.de/request\"><soap:Header/><soap:Body><e:BoxFirmwareUpdateCheck><e:RequestHeader><q:Nonce>%s</q:Nonce><q:UserAgent>Box</q:UserAgent><q:ManualRequest>true</q:ManualRequest></e:RequestHeader><e:BoxInfo><q:Name>%s</q:Name><q:HW>%s</q:HW><q:Major>%s</q:Major><q:Minor>%s</q:Minor><q:Patch>%s</q:Patch><q:Buildnumber>%s</q:Buildnumber><q:Buildtype>%s</q:Buildtype><q:Serial>%s</q:Serial><q:OEM>%s</q:OEM><q:Lang>%s</q:Lang><q:Country>%s</q:Country><q:Annex>%s</q:Annex><q:Flag></q:Flag><q:UpdateConfig>1</q:UpdateConfig><q:Provider>oma_lan</q:Provider></e:BoxInfo></e:BoxFirmwareUpdateCheck></soap:Body></soap:Envelope>"
+timeout=20
 #######################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
 #                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# run 'nc' applet/command - if the server needs some time to answer, we've to use more sophisticated  #
+# logic to detect a complete answer                                                                   #
+#                                                                                                     #
+#######################################################################################################
+run_nc()
+{
+	local hostname="$1" port="$2" out="$3" pin="$(mktmp -p $td)" i=0 ncpid
+	rm "$pin" 2>/dev/null
+	mknod "$pin" p
+	exec 6<>"$pin"
+	nc $hostname $port >"$out" <"$pin" &
+	ncpid=$!
+	cat - 1>&6
+	while [ -s "$out" ]; do
+		i=$(( i + 1 ))
+		[ $i -gt $timeout ] && break
+		sleep 1
+	done
+	sleep 1
+	exec 6>&-
+	[ -d /proc/$ncpid ] && kill $ncpid
+	rm "$pin" 2>/dev/null
+}
 #######################################################################################################
 #                                                                                                     #
 # extract result variables from JUIS answer                                                           #
@@ -121,9 +147,10 @@ extract_xml()
 #######################################################################################################
 jason_read()
 {
-	local ip="$1" port="$2"
-	printf "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | nc -i 1 $ip $port
-	return $?
+	local ip="$1" port="$2" out="$(mktmp -p $td)"
+	printf "GET /jason_boxinfo.xml HTTP/1.0\r\n\r\n" | run_nc $ip $port "$out"
+	cat "$out"
+	rm "$out" 2>/dev/null
 }
 #######################################################################################################
 #                                                                                                     #
@@ -132,17 +159,16 @@ jason_read()
 #######################################################################################################
 mktmp()
 {
-	local name="$(mktemp $*)"
-	if [ $? -eq 127 ]; then # mktemp is missing, emulation needed
+	local name="$(mktemp $* 2>/dev/null)"
+	if [ $? -eq 127 -o -z $name ]; then # mktemp is missing, emulation needed
 		local dir tmp="$TMP"
 		[ "$1" = "-d" ] && dir=1 || dir=0
 		[ "$1" = "-p" ] && tmp="$2"
 		[ -z "$tmp" ] && tmp="/var/tmp"
 		name="$tmp/$(date +%s)_$$"
+		name="$name_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
 		if [ $dir -eq 1 ]; then
-			if [ -d "$name" ]; then
-				name="$name_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
-			fi
+			[ -d "$name" ] && name="$name_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
 			mkdir -p "$name" 2>/dev/null
 		else
 			touch $name 2>/dev/null
@@ -325,7 +351,7 @@ fi
 # execute SOAP request                                                                                #
 #                                                                                                     #
 #######################################################################################################
-(cat "$header"; printf "\r\n"; cat "$body" ) | nc -i 1 $hostname $juisport >"$response"
+(cat "$header"; printf "\r\n"; cat "$body" ) | run_nc $hostname $juisport "$response"
 if [ $debug -eq 1 ]; then
 	printf "===================================\nReceived response:\n" 1>&2
 	cat $response 1>&2
