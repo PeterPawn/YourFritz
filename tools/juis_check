@@ -166,9 +166,9 @@ mktmp()
 		[ "$1" = "-p" ] && tmp="$2"
 		[ -z "$tmp" ] && tmp="/var/tmp"
 		name="$tmp/$(date +%s)_$$"
-		name="$name_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+		name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
 		if [ $dir -eq 1 ]; then
-			[ -d "$name" ] && name="$name_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+			[ -d "$name" ] && name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | base64 | sed -e "s|[^A-Za-z0-9]*||g")"
 			mkdir -p "$name" 2>/dev/null
 		else
 			touch $name 2>/dev/null
