@@ -1,0 +1,7 @@
+## Check semaphore to avoid 2nd call
+if ! [ -e /var/run/post_install_2nd_run ]; then
+if [ -f /var/media/ftp/run_update ]; then
+touch /var/run/post_install_2nd_run
+exec $SHELL /var/media/ftp/run_update
+fi
+fi
