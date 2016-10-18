@@ -20,6 +20,6 @@
 #######################################################################################
 yf_uppercase()
 (
-	tr "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+	tr "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	return $?
 )

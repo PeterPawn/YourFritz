@@ -32,8 +32,8 @@ yf_bin2hex()
 	in=$(base64 2>/dev/null | sed -e ':x;$!N;s/\n//;tx' -e 's/+/_/g')
 	[ ${#in} -eq 0 ] && return
 	while [ ${#in} -gt 0 ]; do
-		c=$(yf_substring "$in" 0 2)
-		in=$(yf_substring "$in" 2)
+		c=$(yf_substring "$in" 0 1)
+		in=$(yf_substring "$in" 1)
 		[ $c = = ] \
 			&& f=$(( f + 1 )) \
 			|| v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
