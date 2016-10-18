@@ -64,7 +64,7 @@ yf_pack()
 				[ $? -ne 0 ] && return 1
 				;;
 			IP|IP4)
-				hex="$(yf_ipv4addr $val)"
+				hex="$(yf_ipv4_address $val)"
 				[ $? -ne 0 ] && return 1
 				[ -z $endian ] && endian=B
 				;;
