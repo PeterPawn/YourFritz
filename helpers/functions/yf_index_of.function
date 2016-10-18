@@ -1,0 +1,34 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+#                                                                                     #
+# index_of - return the index of the specified word in the specified list             #
+#                                                                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - word to find                                                                 #
+#   $2 - word list                                                                    #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the index of the word in the list                                                 #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - value found                                                                   #
+#   1 - word not found in list                                                        #
+#                                                                                     #
+#                                                                                     #
+#######################################################################################
+yf_index_of()
+(
+	needle="$1" 
+	haystack="$2"
+	i=0
+	for word in $haystack; do
+		i=$(( i + 1 ))
+		[ $word = $needle ] && echo $i && return 0
+	done
+	return 1
+)

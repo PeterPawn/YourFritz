@@ -1,0 +1,24 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# sysfs - get sysfs mount point from /proc/mounts                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the path, where the sysfs is mounted                                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, sysfs isn't mounted or procfs isn't available                  #
+#                                                                                     #
+#######################################################################################
+yf_sysfs()
+(
+	mp="$(sed -n -e "s|^sysfs \([^ ]*\) .*|\1|p" /proc/mounts | sed -n -e "1p")"
+	[ ${#mp} -eq 0 ] && return 1
+	printf "$mp"
+	return 0
+)

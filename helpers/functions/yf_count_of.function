@@ -1,0 +1,27 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+#                                                                                     #
+# count_of - return the count of words in the specified list                          #
+#                                                                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - word list                                                                    #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the number of (IFS-based) separate entries in $1                                  #
+#                                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   always zero                                                                       #
+#                                                                                     #
+#                                                                                     #
+#######################################################################################
+yf_count_of()
+(
+	set -- $*
+	echo $#
+	return 0
+)

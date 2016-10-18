@@ -1,0 +1,20 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_bridge_member - check, if the specified interface is a bridge member without an  #
+#                    own IP address                                                   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde member                                              #
+#   1 - the interface isn't a bridge member                                           #
+#                                                                                     #
+#######################################################################################
+yf_is_bridge_member()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/devices/virtual/net/$1/brport ] && return 0 || return 1
+)

@@ -1,0 +1,44 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# summarize some often needed helper (shell) functions, which provide replacements    #
+# of missing features in the very limited environment of FRITZ!OS with only a small   #
+# selection of busybox applets and without many "generally available" commands like   #
+# "awk" or "od" and so on ...                                                         #
+#                                                                                     #
+# Surely some functions may be implemented in a more effective manner ... but the     #
+# purpose of this file is to provide a very basic implementation of such functions    #
+# with as few dependencies as possible and the normal shell in a busybox-based        #
+# environment is "ash", which has limited capabilities too.                           #
+#                                                                                     #
+# If possible, additional attention was paid to make the functions POSIX compatible   #
+# so they may be used from a more limited shell like 'dash'.                          #
+#                                                                                     #
+# If nothing else is mentioned for a function, it's designed to run from any platform #
+# supporting BusyBox - it should be possible to use these functions from MIPS, ARMv6  #
+# (Puma6), ARMv7 (Raspberry Pi) and x86 (Puma6/x86).                                  #
+#                                                                                     #
+# Copyright (C) 2014-2016 P.Hämmerlein (http://www.yourfritz.de)                      #
+#                                                                                     #
+# This program is free software; you can redistribute it and/or                       #
+# modify it under the terms of the GNU General Public License                         #
+# as published by the Free Software Foundation; either version 2                      #
+# of the License, or (at your option) any later version.                              #
+#                                                                                     #
+# This program is distributed in the hope that it will be useful,                     #
+# but WITHOUT ANY WARRANTY; without even the implied warranty of                      #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                       #
+# GNU General Public License under                                                    #
+# http://www.gnu.org/licenses/gpl-2.0.html                                            #
+# for more details.                                                                   #
+#                                                                                     #
+#######################################################################################
+for function in $(find $YF_SCRIPT_DIR/functions/ -name "*.function"); do
+	. $function
+done
+#######################################################################################
+#                                                                                     #
+# end of file                                                                         #
+#                                                                                     #
+#######################################################################################

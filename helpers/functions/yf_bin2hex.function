@@ -1,0 +1,49 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# bin2hex - convert binary data its hexadecimal representation (via base64 utility)   #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdio:                                                                              #
+#   binary data to encode                                                             #
+#                                                                                     #
+# stdout:                                                                             #
+#   input data converted to its hexadecimal format (one char per nibble) as string    #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 - no errors possible, empty input results in empty output                #
+#                                                                                     #
+# remarks:                                                                            #
+#   - this version can handle whitespace, newline and NUL characters too              #
+#   - it needs the "base64" utility to encode the binary data to base64 and the       #
+#     output of this applet is translated to hexadecimal in the next step             #
+#   - this "double conversion" is time-consuming and you should use yf_str2hex as     #
+#     often as possible                                                               #
+#                                                                                     #
+#######################################################################################
+yf_bin2hex()
+(
+	f=0 
+	v=0 
+	l=0
+	in=$(base64 2>/dev/null | sed -e ':x;$!N;s/\n//;tx' -e 's/+/_/g')
+	[ ${#in} -eq 0 ] && return
+	while [ ${#in} -gt 0 ]; do
+		c=$(yf_substring "$in" 0 2)
+		in=$(yf_substring "$in" 2)
+		[ $c = = ] \
+			&& f=$(( f + 1 )) \
+			|| v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
+		l=$(( l + 1 ))
+		if [ $l -eq 4 ]; then
+			v=$(( v >> ( f * 2 ) ))
+			printf "%0$(( ( 3 - f ) << 1 ))x" $v
+			l=0
+			v=0
+		fi
+	done
+	return 0
+)

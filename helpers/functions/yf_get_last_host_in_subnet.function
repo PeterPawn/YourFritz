@@ -1,0 +1,39 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_last_host_in_subnet - compute the last usable IPv4 address in the specified     #
+#                           subnet                                                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the subnet to use for computations in dotted decimal notation with mask      #
+#        suffix                                                                       #
+#                                                                                     #
+# stdout:                                                                             #
+#   the last usable host address (as hexadecimal string)                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error                                                               #
+#                                                                                     #
+# remarks:                                                                            #
+#   The really last address (all unmasked bits set to one) is interpreted as the      #
+#   'broadcast' address and is skipped. There's no usable result with a mask greater  #
+#   than 30, because the possible two addresses with a 31-bit mask can't form a valid #
+#   subnet.                                                                           #
+#                                                                                     #
+#######################################################################################
+yf_get_last_host_in_subnet()
+(
+	in="$1" 
+	addr="${in%%/*}"
+	bits="${in#*/}"
+	yf_is_decimal "$bits" || return 1
+	[ $bits -le 1 -o $bits -gt 30 ] && return 1
+	addr="$(yf_ipv4addr "$addr")"
+	inv_mask=$(( ( 1 << ( 32 - bits ) ) - 1 ))
+	addr_dec=$(yf_hex2dec "$addr")
+	res=$(( ( addr_dec | inv_mask ) - 1 ))
+	yf_dec2hex "$res"
+	return 0
+)
