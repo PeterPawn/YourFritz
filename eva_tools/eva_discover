@@ -115,9 +115,10 @@ discovery_interval=1
 #
 ###########################################################################
 #
-# include yourfritz_helpers
+# include YourFritz shell library functions
 #
-source yourfritz_helpers
+YF_SCRIPT_DIR="."
+. yf_helpers
 #
 # debug output
 #

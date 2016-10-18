@@ -1,0 +1,25 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_ip_address - retrieve the IPv4 addresses for the specified interface            #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be used                                                         #
+#                                                                                     #
+# stdout:                                                                             #
+#   a list of IPv4 addresses available at the interface                               #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid and contains at least one entry                               #
+#   1 - the interface name is invalid or the interface has no IPv4 address assigned   #
+#                                                                                     #
+#######################################################################################
+yf_get_ip_address()
+(
+	intf="$1"
+	addrs="$(ip -o -f inet addr show dev $intf 2>/dev/null | sed -n -e "s|^[0-9]*: $intf.*inet \([0-9./]*\).*|\1|p")"
+	[ ${#addrs} -eq 0 ] && return 1
+	printf "$addrs"
+	return 0
+)

@@ -1,0 +1,67 @@
+#! /bin/sh
+#
+# create a jffs2 image, which may be flashed to a NOR partition (not NAND !!!)
+#
+# the new image will be written to stdout, this has to be redirected (no tty)
+#
+[ -t 1 ] && echo "The created image is written to stdout, redirect it to a file." 1>&2 && exit 1
+#
+# first and only parameter is the content file to extract to the jffs2 filesystem
+#
+content="$1"
+[ -z "$1" ] && echo "Missing content file name." 1>&2 && exit 1
+model="$2"
+[ -z "$2" ] && echo "Missing model partition name." 1>&2 && exit 1
+#
+# detect model partition parameters
+#
+eval $(sed -n -e "s|mtd[0-9]*: \([0-9a-f]*\) \([0-9a-f]*\) \"$model\"|total_size=\$(( 0x\1 / 1024 )) erase_size=\$(( 0x\2 / 1024 ))|p" /proc/mtd)
+[ -z "$total_size" -o -z "$erase_size" ] && echo "Model partition '$model' not found." 1>&2 && exit 1
+#
+# create mtdram device with right parameters
+#
+modprobe mtdram total_size=$total_size erase_size=$erase_size
+#
+# find the new mtd entry
+#
+eval $(sed -n -e "s|^mtd\([0-9]*\): \([0-9a-f]*\) \([0-9a-f]*\) \".*mtdram.*\"|devnum=\1 ts=\$(( 0x\2 )) es=\$(( 0x\3 ))|p" /proc/mtd)
+#
+# show device
+#
+echo "Found mtdram device 'mtd$devnum' with total size of $ts and erase size of $es." 1>&2
+echo "Continue?" 1>&2
+read answer
+[ $answer != y ] && exit 1
+#
+# clear partition first
+#
+echo "mtd $devnum erase all" >/proc/mtd
+#
+# get mountpoint 
+#
+mp=/var/tmp/$(date +%s)_$$
+mkdir -p $mp
+#
+# mount the empty partition and format the jffs2 structures
+#
+mount -t jffs2 /dev/mtdblock$devnum $mp
+#
+# unpack content file to image
+#
+tar -x -f $content -C $mp
+#
+# unmount the image
+#
+umount $mp
+#
+# dump the image
+#
+dd if=/dev/mtdblock$devnum bs=$es 2>/dev/null
+#
+# unloading mtdram crashes the system, if running on a box
+#
+#rmmod mtdram 
+#
+# all done
+#
+exit 0

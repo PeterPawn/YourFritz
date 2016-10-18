@@ -36,7 +36,8 @@ cntfile=$tmpdir/counter
 # helper functions
 #
 ##################################################################################
-source yourfritz_helpers
+YF_SCRIPT_DIR="."
+. yf_helpers
 ##################################################################################
 #
 # cleanup at exit

@@ -1,0 +1,24 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# wireless_interfaces - get the name(s) of all wireless interfaces from sysfs         #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the names of wireless interfaces                                                  #
+#                                                                                     #
+# return code:                                                                        #
+#   alwasy 0 - the list will be empty in case of an error                             #
+#                                                                                     #
+#######################################################################################
+yf_wireless_interfaces()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	find $sysfs/devices/virtual/net/*/wireless -maxdepth 1 -type d -print 2>/dev/null \
+		| sed -e "s|^$sysfs/devices/virtual/net/\([^/]*\)/wireless\$|\1|" -e '/^$/d' \
+		| sed -e ':x;$!N;s/\n/ /;tx'
+	return 0
+)

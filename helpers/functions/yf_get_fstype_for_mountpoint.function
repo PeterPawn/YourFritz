@@ -1,0 +1,29 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_fstype_for_mountpoint - retrieve the filesystem type for the specified          #
+#                             mountpoint                                              #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the mountpoint to be used                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   the filesystem type from /proc/mounts                                             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error, e.g. the specified path isn't a mountpoint                   #
+#                                                                                     #
+#######################################################################################
+yf_get_fstype_for_mountpoint()
+(
+	mp="$(realpath $1 2>/dev/null)"
+	[ -z $mp ] && return 1
+	fstype="$(sed -n -e "s|^[^ ]* $mp \([^ ]*\) [^ ]* [0-9] [0-9]|\1|p" /proc/mounts)"
+	if [ ${#fstype} -gt 0 ]; then
+		printf "$fstype"
+		return 0
+	fi
+	return 1
+)

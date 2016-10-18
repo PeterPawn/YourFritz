@@ -1,0 +1,25 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# uppercase - convert string to uppercase letters                                     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   input data to be translated ... only ASCII characters are handled correctly       #
+#                                                                                     #
+# stdout:                                                                             #
+#   input data with each occurence of 'a' to 'z' translated to 'A' to 'Z'             #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors #
+#                                                                                     #
+#######################################################################################
+yf_uppercase()
+(
+	tr "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz"
+	return $?
+)
