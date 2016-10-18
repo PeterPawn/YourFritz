@@ -134,7 +134,7 @@ debug()
 validate_ipv4_address()
 {
 	local ip="$1" hex
-	hex="$(yf_ipv4addr "$ip")"
+	hex="$(yf_ipv4_address "$ip")"
 	[ $? -ne 0 ] && return 1
 	yf_print_ip "$hex"
 	return 0
@@ -208,7 +208,7 @@ compute_eva_address()
 	[ $? -ne 0 ] && return 1
 	last_ip="$(yf_get_last_host_in_subnet "$subnet")"
 	[ $? -ne 0 ] && return 1
-	my_ip="$(yf_print_ip "$(yf_ipv4addr "${subnet%%/*}")")"
+	my_ip="$(yf_print_ip "$(yf_ipv4_address "${subnet%%/*}")")"
 	start=$(yf_hex2dec "$first_ip")
 	end=$(yf_hex2dec "$last_ip")
 	while [ $start -le $end ]; do
