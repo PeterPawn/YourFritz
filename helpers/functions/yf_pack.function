@@ -16,7 +16,7 @@
 #   STR - the value is a character string (don't forget to use proper escapes there)  #
 #   IP  - same as IP4                                                                 #
 #   IP4 - the value is an IPv4 address and is encoded to binary (32 bit value) by     #
-#         yf_ipv4addr (see above) - it's "big endian" unless modified by "L" prefix   #
+#         yf_ipv4_address - it's "big endian" unless modified by "L" prefix           #
 #                                                                                     #
 # modifiers:                                                                          #
 # - values with more than 8 bit size are affected by the "endianess" of the system -  #
