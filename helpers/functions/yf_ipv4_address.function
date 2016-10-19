@@ -2,8 +2,8 @@
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 #######################################################################################
 #                                                                                     #
-# ipv4addr - convert an IPv4 address from dotted-decimal format to hexadecimal        #
-#            string in "network order" (big endian)                                   #
+# ipv4_address - convert an IPv4 address from dotted-decimal format to hexadecimal    #
+#                string in "network order" (big endian)                               #
 #                                                                                     #
 # parameters:                                                                         #
 #   $1 - string representing the IPv4 address, may be any valid decimal value (within #
