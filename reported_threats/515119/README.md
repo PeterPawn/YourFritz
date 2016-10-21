@@ -27,3 +27,5 @@ Timeline:
 2016-09-08 21:54 - CVE number request denied by mitre.org; starting in 2016 only the products listed under http://cve.mitre.org/cve/data_sources_product_coverage.html will be covered by this organization and AVM's products aren't listed there. The recommendation was to publish the vulnerability without a CVE number.
 
 2016-09-14 10:39 - Vendor notified about the decision from mitre.org - the CVE number request was forwarded on 2016-09-08 13:49 to security@avm.de already.
+
+2016-10-21 09:10 - Vendor sent notification, that the problem was fixed in the current "Labor" branch for the 7490 model (probably sub-version 41670, it was not mentioned with a number).
