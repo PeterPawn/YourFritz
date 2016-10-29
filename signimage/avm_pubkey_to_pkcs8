@@ -13,36 +13,38 @@
 #                                                                              #
 ################################################################################
 hex_even()
-{
-	local value=$1 len count rem
+(
+	value=$1 
 	len=$(printf %x $value)
 	count=${#len}
 	rem=$(( count % 2 ))
 	[ $rem -ne 0 ] && len="0$len"
 	echo $len
-}
+)
 ################################################################################
 #                                                                              #
 # convert hexadecimal string to binary content                                 #
 #                                                                              #
 ################################################################################
 hex2bin()
-{
-	local val="$1" out=""
+(
+	val="$1" 
+	out=""
 	while [ ${#val} -gt 0 ]; do
-		out="$out\x${val:0:2}"
+		out="\x${val:0:2}"
 		val="${val:2}"
+		printf "$out"
 	done
-	printf "$out"
-}
+)
 ################################################################################
 #                                                                              #
 # encode ASN.1 length field                                                    #
 #                                                                              #
 ################################################################################
 asn1_length()
-{
-	local len=0 value=$1 res interm
+(
+	len=0 
+	value=$1
 	len=$(( ${#value} / 2 ))
 	if [ $len -gt 127 ]; then
 		interm=$(hex_even $len)
@@ -52,19 +54,19 @@ asn1_length()
 		res=$(hex_even $len)
 	fi
 	echo $res
-}
+)
 ################################################################################
 #                                                                              #
 # usage screen, caller has to redirect output to STDERR if needed              #
 #                                                                              #
 ################################################################################
 usage()
-{
+(
 	echo -e "\x1B[1mConvert a public key file from AVM's firmware image to standard PE\
 M format.\x1B[0m\n"
 	echo -e "The input file is expected on STDIN or you may specify the name of the in\
 put file\nas first argument and the result is written to STDOUT."
-}
+)
 ################################################################################
 #                                                                              #
 # ASN.1 types needed                                                           #
