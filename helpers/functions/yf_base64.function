@@ -1,0 +1,80 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# base64 - convert STDIN to a base64 string, if no 'base64' command exists, try to    #
+#          run an emulation using a (POSIX-compatible) 'cmp -l' command               #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   tbe content to convert                                                            #
+#                                                                                     #
+# stdout:                                                                             #
+#   tbe base64 encoded input                                                          #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, 'base64' or a POSIX compatible 'cmp' command was not found;    #
+#       another possible error is a STDIN descriptor attached to a terminal           #
+#                                                                                     #
+#######################################################################################
+yf_base64()
+(
+	yf_base64_encode()
+	{
+		[ $1 -eq 0 ] && printf "A" || printf "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" | sed -n -e "s|.\{$1\}\(.\).*|\1|p"
+	}
+
+	yf_base64_append()
+	{
+		if ! [ $1 = eof ]; then
+			l=$(( l + 1 ))
+			v=$(( ( v << 8 ) + $1 ))
+		else
+			[ $l -eq 0 ] && return
+			v=$(( v << ( 8 * ( 3 - l ) ) ))
+		fi
+		if [ $l -eq 3 ] || [ $1 = eof ]; then
+			yf_base64_encode $(( v >> 18 ))
+			yf_base64_encode $(( ( v >> 12 ) & 63 ))
+			[ $l -eq 1 ] && printf "==" && return
+			yf_base64_encode $(( ( v >> 6 ) & 63 ))
+			[ $l -eq 2 ] && printf "=" && return
+			yf_base64_encode $(( v & 63 ))
+			l=0
+			v=0
+			k=$(( k + 1 ))
+			[ $k -eq 19 ] && printf "\n" && k=0
+		fi
+	}
+
+	yf_base64_read_octal()
+	{
+		i=1
+		l=0
+		v=0
+		k=0
+		while read pos left right; do
+			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
+				yf_base64_append 0
+				i=$(( i + 1 ))
+			done
+			yf_base64_append 0$right
+			i=$(( pos + 1 ))
+		done
+		yf_base64_append eof
+	}
+
+	[ -t 0 ] && return 1
+	if command -v base64 2>/dev/null 1>&2; then
+		command base64
+		rc=$?
+	else
+		command -v cmp 2>/dev/null 1>&2 || return 1	
+		command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_base64_read_octal
+		printf "\n"
+	fi
+	return $rc
+)
