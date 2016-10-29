@@ -1,0 +1,41 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# mktemp - create a temporary file or directory with a unique name                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   '-d' to create a directory, '-p <directory>' to create a file relative to the     #
+#   specified path.                                                                   #
+#                                                                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the unique name, the file or directory is created to reserve it                   #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, usually the base directory for temporary files was not found   #
+#       or could not be accessed/written to                                           #
+#                                                                                     #
+#######################################################################################
+yf_mktemp()
+(
+	name="$(date +%s)_$$" # it should be unique already, 'cause we're running in a subshell
+	tmp="$TMP"
+	[ "$1" = "-d" ] && dir=1 || dir=0
+	[ "$1" = "-p" ] && tmp="$2"
+	if [ -z "$tmp" ]; then
+		is_fritzos_device && tmp="/var/tmp" || tmp="/tmp"
+		name="$tmp/$name"
+		name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+		if [ $dir -eq 1 ]; then
+			while [ -d "$name" ]; do
+				name="${name%_*}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+			done
+			mkdir -p "$name" 2>/dev/null
+		else
+			touch "$name" 2>/dev/null
+		fi
+	fi
+	printf "$name"
+)

@@ -1,0 +1,31 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_fritzos_device - check, if the environment we're running on looks like a device  #
+#                     running FRITZ!OS (usually a router or a repeater)               #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   none                                                                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - it seems to be a FRITZ!OS environment                                         #
+#   1 - no, it's another platform/system (or an unknown FRITZ!OS version)             #
+#                                                                                     #
+# remarks:                                                                            #
+#                                                                                     #
+# The tests may be extended to cover more points, but the existence of "HWRevision"   #
+# at the beginning of a line in /proc/sys/urlader/environment (and the presence of    #
+# this pseudo-file at all) should be enough input for a decision.                     #
+#                                                                                     #
+#######################################################################################
+yf_is_fritzos_device()
+(
+	[ -d /proc/sys/urlader ] || return 1
+	[ -f /proc/sys/urlader/environment ] || return 1
+	grep -q "^HWRevision" /proc/sys/urlader/environment || return 1
+	return 0
+)
