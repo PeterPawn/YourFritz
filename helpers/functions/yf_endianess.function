@@ -20,6 +20,6 @@
 #######################################################################################
 yf_endianess()
 (
-	[ $(dd if=/proc/self/exe bs=1 count=1 skip=5 2>/dev/null | base64) = AQ== ] && printf "L" || printf "B"
+	[ $(dd if=/proc/self/exe bs=1 count=1 skip=5 2>/dev/null | yf_base64) = AQ== ] && printf "L" || printf "B"
 	return 0
 )
