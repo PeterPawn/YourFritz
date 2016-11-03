@@ -44,6 +44,8 @@ usage()
 	printf "image is limited and that this script will not do a cleanup of obsolete entries),\n"
 	printf "you've to specify the TFFS node number (in decimal) and the name of a file contain-\n"
 	printf "ing the uncompressed data to add.\n\n"
+	printf "The final result is written to STDOUT and it's the responsibility of the caller to\n"
+	printf "redirect it to a proper location.\n\n"
 	printf "Example:\n"
 	printf "$0 \$HOME/support_data.txt -o 5 29 provideradditive.tar\n\n"
 	printf "Remark:\n"
@@ -78,6 +80,7 @@ add_files_count=0
 # check parameters                                                                    #
 #                                                                                     #
 #######################################################################################
+[ -t 1 ] && usage 1>&2 && exit 1
 [ -z "$1" ] && usage 1>&2 && exit 1
 support_data_file="$1"
 first_line="$(sed -n -e 1p "$support_data_file" | sed -e "s|^\($FIRST_SUPPORTDATA_LINE\).*|\1|p" | sed -n -e 1p)"
