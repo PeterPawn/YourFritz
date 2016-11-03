@@ -9,10 +9,10 @@
 #   none                                                                              #
 #                                                                                     #
 # stdin:                                                                              #
-#   tbe content to convert                                                            #
+#   the content to convert                                                            #
 #                                                                                     #
 # stdout:                                                                             #
-#   tbe base64 encoded input                                                          #
+#   the base64 encoded input                                                          #
 #                                                                                     #
 # return code:                                                                        #
 #   0 - stdout value is valid                                                         #
