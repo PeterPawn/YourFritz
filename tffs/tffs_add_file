@@ -89,6 +89,7 @@ if ! [ "$first_line" = "$FIRST_SUPPORTDATA_LINE" ]; then
 	exit 1
 fi
 shift
+remove_nodes=""
 while ! [ -z "$1" ]; do
 	if [ $add_files_count -eq 0 ]; then # maybe offset value
 		if [ "$1" = "-o" ]; then
@@ -119,6 +120,7 @@ while ! [ -z "$1" ]; do
 		add_files_count=$(( add_files_count + 1 ))
 		eval add_file_node_${add_files_count}=$1
 		eval add_file_name_${add_files_count}='$2'
+		remove_nodes="$remove_nodes $1"
 		shift 2
 	else
 		printf "Invalid TFFS node number '%s'.\n" "$1" 1>&2
@@ -211,6 +213,11 @@ while [ $offset -lt $image_size ]; do
 	id=$(yf_hex2dec $(yf_substring $hdr 0 4))
 	len=$(yf_hex2dec $(yf_substring $hdr 4 4))
 	[ $id -eq 65535 ] && break
+	! [ -z "$remove_nodes" ] && \
+		for r_id in $remove_nodes; do
+			[ $r_id -eq $id ] || continue
+			dd if=/dev/zero of="$image" bs=2 seek=$(( offset / 2 )) count=1 conv=notrunc 2>/dev/null 
+		done
 	offset=$(( ( offset + 4 + len + 3 ) & ~3 ))
 done
 rem_size=$(( image_size - 4 - offset ))
