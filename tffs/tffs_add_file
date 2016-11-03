@@ -1,0 +1,244 @@
+#! /bin/sh
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# extract newest TFFS image from support data, add one or more files to it and output # 
+# the resulting TFFS image                                                            #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# include shell library                                                               #
+#                                                                                     #
+#######################################################################################
+YF_SCRIPT_DIR="."
+. yf_helpers
+#######################################################################################
+#                                                                                     #
+# constants                                                                           #
+#                                                                                     #
+#######################################################################################
+FIRST_SUPPORTDATA_LINE="##### TITLE Version"
+FIRST_TFFS_LINE="##### BEGIN SECTION TFFS_DUMP TFFS Dump"
+LAST_TFFS_LINE="##### END SECTION TFFS_DUMP"
+TFFS_DIR_NAME="var/tmp/tffs-dump/"
+DEFAULT_SEGMENTID_OFFSET=16
+#######################################################################################
+#                                                                                     #
+# functions                                                                           #
+#                                                                                     #
+#######################################################################################
+usage()
+(
+	printf "Extract TFFS image from an extended support data file and (optional) add file(s)\n"
+	printf "to the end of the already contained data.\n\n"
+	printf "Usage: $0 support_data [ -o offset ] [ node file [ ... ] ]\n\n"
+	printf "'support_data' is the name of your input file, which may be created, after you've\n"
+	printf "checked the 'extended support data' selector and applied your changes.\n"
+	printf "'offset' is an optional value to be substracted from the TFFS segment ID to ensure,\n"
+	printf "that the created image has the lowest value there - the default offset value is 16.\n"
+	printf "For each file to add to the TFFS image (remember, that the overall length of the\n"
+	printf "image is limited and that this script will not do a cleanup of obsolete entries),\n"
+	printf "you've to specify the TFFS node number (in decimal) and the name of a file contain-\n"
+	printf "ing the uncompressed data to add.\n\n"
+	printf "Example:\n"
+	printf "$0 \$HOME/support_data.txt -o 5 29 provideradditive.tar\n\n"
+	printf "Remark:\n"
+	printf "You should change the original name of the support data file to a more handy one,\n"
+	printf "but this script should be able to handle even a name containing spaces.\n"
+)
+#######################################################################################
+#                                                                                     #
+# initialize default values                                                           #
+#                                                                                     #
+#######################################################################################
+segmentid_offset=$DEFAULT_SEGMENTID_OFFSET
+add_files_count=0
+#######################################################################################
+#                                                                                     #
+# check parameters                                                                    #
+#                                                                                     #
+#######################################################################################
+[ -z "$1" ] && usage 1>&2 && exit 1
+support_data_file="$1"
+first_line="$(sed -n -e 1p "$support_data_file" | sed -e "s|^\($FIRST_SUPPORTDATA_LINE\).*|\1|p" | sed -n -e 1p)"
+if ! [ "$first_line" = "$FIRST_SUPPORTDATA_LINE" ]; then
+	printf "Input file '%s' doesn't look like a file with extended support data.\n" $support_data_file 1>&2
+	exit 1
+fi
+shift
+while ! [ -z "$1" ]; do
+	if [ $add_files_count -eq 0 ]; then # maybe offset value
+		if [ "$1" = "-o" ]; then
+			if [ -z "$2" ]; then
+				printf "Missing offset value after '-o'.\n" 1>&2
+				exit 1
+			else
+				if yf_is_decimal "$2"; then
+					segmentid_offset="$2"
+					shift 2
+					continue
+				else
+					printf "Invalid offset value '%s' after '-o', it has to be a decimal number.\n" "$2" 1>&2
+					exit 1
+				fi
+			fi
+		fi
+	fi
+	if yf_is_decimal "$1"; then
+		if [ -z "$2" ]; then
+			printf "Missing file name for node number '%d'.\n" $1 1>&2
+			exit 1
+		fi
+		if ! [ -f "$2" ]; then
+			printf "The specified file '%s' for node number '%d' does not exist.\n" $1 "$2" 1>&2
+			exit 1
+		fi
+		add_files_count=$(( add_files_count + 1 ))
+		eval add_file_node_${add_files_count}=$1
+		eval add_file_name_${add_files_count}='$2'
+		shift 2
+	else
+		printf "Invalid TFFS node number '%s'.\n" "$1" 1>&2
+		exit 1
+	fi
+done
+#######################################################################################
+#                                                                                     #
+# check openssl utility                                                               #
+#                                                                                     #
+#######################################################################################
+if ! command -v openssl 2>/dev/null 1>&2; then
+	printf "Unable to find an executable called 'openssl'.\n" 1>&2
+	exit 2
+fi
+if ! [ "$(echo | openssl zlib -e | dd bs=2 count=1 2>/dev/null | yf_bin2hex)" = 789c ]; then
+	# 78 - deflate with 32K window (RFC 1950) has to be the first byte
+	# 9c - default level (2), no dictionary preload, check bits
+	printf "Unexpected result checking OpenSSL compression with zlib algorithm.\n" 1>&2
+	exit 1
+fi
+#######################################################################################
+#                                                                                     #
+# check, that the support file contains a TFFS dump                                   #
+#                                                                                     #
+#######################################################################################
+if [ -z "$(sed -n -e "/^$FIRST_TFFS_LINE/=" "$support_data_file")" ]; then
+	printf "The specified support data file '%s' doesn't contain a TFFS dump.\n" "$support_data_file" 1>&2
+	exit 1
+fi
+if [ -z "$(sed -n -e "/^$LAST_TFFS_LINE/=" "$support_data_file")" ]; then
+	printf "The specified support data file '%s' doesn't contain a valid TFFS dump.\n" "$support_data_file" 1>&2
+	exit 1
+fi
+lines="$(sed -e "1,/^$FIRST_TFFS_LINE/d" "$support_data_file" | sed -e "/^$LAST_TFFS_LINE/,\$d" | sed -n -e '$=')"
+if [ -z "$lines" ]; then
+	printf "The TFFS dump section in the specified support data file '%s' is empty.\n" "$support_data_file" 1>&2
+	exit 1
+fi
+#######################################################################################
+#                                                                                     #
+# set up working directory and prepare cleanup on exit                                #
+#                                                                                     #
+#######################################################################################
+tmp="$(yf_mktemp -d)"
+trap "rm -r \"$tmp\"" EXIT HUP INT
+#######################################################################################
+#                                                                                     #
+# extract and decode the tarball with the TFFS dumps                                  #
+#                                                                                     #
+#######################################################################################
+tarball=$(yf_mktemp -p "$tmp")
+sed -e "1,/^$FIRST_TFFS_LINE/d" "$support_data_file" | sed -e "/^$LAST_TFFS_LINE/,\$d" | \
+	sed -e "s|\r||g" | yf_base64_decode >"$tarball"
+if ! [ -s "$tarball" ]; then
+	printf "Error while decoding the TFFS dump content from base64 presentation.\n" 1>&2
+	exit 1
+fi
+#######################################################################################
+#                                                                                     #
+# extract TFFS images from tarball and get their segment id values                    #
+#                                                                                     #
+#######################################################################################
+segmentid=$(( 0xFFFFFFFF ))
+use_file=""
+for file in $(tar -t -f "$tarball"); do
+	[ -z "${file##$TFFS_DIR_NAME}" ] && continue
+	id=$(tar -x -f "$tarball" -O "$file" | gunzip -c | dd bs=4 count=1 skip=1 2>/dev/null | yf_bin2dec B)
+	if [ $id -lt $segmentid ]; then
+		use_file="$file"
+		segmentid=$id
+	fi
+done
+if [ -z "$use_file" ]; then
+	printf "Unable to detect the newer image file.\n" 1>&2
+	exit 1
+fi
+image="$(yf_mktemp -p "$tmp")"
+tar -x -f "$tarball" -O "$use_file" | gunzip -c >"$image"
+#######################################################################################
+#                                                                                     #
+# change segment id value                                                             #
+#                                                                                     #
+#######################################################################################
+segmentid=$(dd if="$image" bs=4 skip=1 count=1 2>/dev/null | yf_bin2dec B)
+new_segmentid="$(yf_mktemp -p "$tmp")"
+yf_pack B32 $(( segmentid - segmentid_offset )) >"$new_segmentid"
+dd if="$new_segmentid" of="$image" bs=4 seek=1 count=1 conv=notrunc 2>/dev/null
+#######################################################################################
+#                                                                                     #
+# output image and exit, if there're no files to add - there's no reason to look for  #
+# the first free entry                                                                #
+#                                                                                     #
+#######################################################################################
+[ $add_files_count -eq 0 ] && cat "$image" && exit 0
+#######################################################################################
+#                                                                                     #
+# locate first free entry and compute remaining space available                       #
+#                                                                                     #
+#######################################################################################
+image_size=$(stat -c %s "$image")
+offset=0
+while [ $offset -lt $image_size ]; do
+	hdr=$(dd if="$image" bs=4 skip=$(( offset / 4 )) count=1 2>/dev/null | yf_bin2hex)
+	id=$(yf_hex2dec $(yf_substring $hdr 0 4))
+	len=$(yf_hex2dec $(yf_substring $hdr 4 4))
+	[ $id -eq 65535 ] && break
+	offset=$(( ( offset + 4 + len + 3 ) & ~3 ))
+done
+rem_size=$(( image_size - 4 - offset ))
+#######################################################################################
+#                                                                                     #
+# add specified files                                                                 #
+#                                                                                     #
+#######################################################################################
+i=0
+payload="$(yf_mktemp -p "$tmp")"
+header="$(yf_mktemp -p "$tmp")"
+while [ $i -lt $add_files_count ]; do
+	i=$(( i + 1 ))
+	eval fn=\"\${add_file_name_$i}\"
+	eval id=\${add_file_node_$i}
+	openssl zlib -e <"$fn" >"$payload"
+	packed_size=$(stat -c %s "$payload")
+	needed_size=$(( ( packed_size + 4 + 3 ) & ~3 ))
+	if [ $needed_size -gt $rem_size ]; then
+		printf "Not enough free space to add file '%s' as node '%d'.\n" $fn $id
+		exit 1
+	fi
+	yf_pack B16 $id B16 $packed_size >"$header" 
+	cat "$header" "$payload" | dd bs=4 conv=sync 2>/dev/null | dd bs=4 of="$image" seek=$(( offset / 4 )) count=$(( needed_size / 4 )) conv=notrunc 2>/dev/null
+	offset=$(( offset + needed_size ))
+	rem_size=$(( rem_size - needed_size ))
+done
+#######################################################################################
+#                                                                                     #
+# output image and exit                                                               #
+#                                                                                     #
+#######################################################################################
+cat "$image" 
+exit 0
+#######################################################################################
+#                                                                                     #
+# end of script                                                                       #
+#                                                                                     #
+#######################################################################################
