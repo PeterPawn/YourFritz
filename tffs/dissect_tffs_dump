@@ -80,6 +80,7 @@ while true; do
 			if [ $dec_id -lt 256 -a $dec_id -gt 1 ]; then
 				printf "\x1f\x8b\x08\x00\x00\x00\x00\x00" | cat - $tmpdir/$id.bin | gzip -dc 2>/dev/null >$tmpdir/$id.inflated
 			fi
+			printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
 		fi
 	fi
 	offset=$(( offset + 4 + $(( ( len + 3 ) & ~3 )) ))
