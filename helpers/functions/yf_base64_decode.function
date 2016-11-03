@@ -1,0 +1,32 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# base64_decode - convert STDIN from base64 format to the encoded content, if no      #
+#                 'base64' command exists, try to run an emulation                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   the content to decode                                                             #
+#                                                                                     #
+# stdout:                                                                             #
+#   the decoded data                                                                  #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, 'base64' command was not found or input data is invalid        #
+#                                                                                     #
+#######################################################################################
+yf_base64_decode()
+(
+	[ -t 0 ] && return 1
+	if command -v base64 2>/dev/null 1>&2; then
+		command base64 -d
+		rc=$?
+	else
+		rc=1
+	fi
+	return $rc
+)
