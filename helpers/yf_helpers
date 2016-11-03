@@ -34,7 +34,7 @@
 # for more details.                                                                   #
 #                                                                                     #
 #######################################################################################
-for function in $(find $YF_SCRIPT_DIR/functions/ -name "*.function"); do
+for function in $(find ${YF_SCRIPT_DIR:-.}/functions/ -name "*.function"); do
 	. $function
 done
 #######################################################################################

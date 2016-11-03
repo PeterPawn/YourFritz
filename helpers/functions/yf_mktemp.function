@@ -26,16 +26,16 @@ yf_mktemp()
 	[ "$1" = "-p" ] && tmp="$2"
 	if [ -z "$tmp" ]; then
 		yf_is_fritzos_device && tmp="/var/tmp" || tmp="/tmp"
-		name="$tmp/$name"
-		name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
-		if [ $dir -eq 1 ]; then
-			while [ -d "$name" ]; do
-				name="${name%_*}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
-			done
-			mkdir -p "$name" 2>/dev/null
-		else
-			touch "$name" 2>/dev/null
-		fi
+	fi
+	name="$tmp/$name"
+	name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+	if [ $dir -eq 1 ]; then
+		while [ -d "$name" ]; do
+			name="${name%_*}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+		done
+		mkdir -p "$name" 2>/dev/null
+	else
+		touch "$name" 2>/dev/null
 	fi
 	printf "$name"
 )
