@@ -27,6 +27,10 @@ DEFAULT_SEGMENTID_OFFSET=16
 # functions                                                                           #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# display usage info                                                                  #
+#                                                                                     #
+#######################################################################################
 usage()
 (
 	printf "Extract TFFS image from an extended support data file and (optional) add file(s)\n"
@@ -45,6 +49,22 @@ usage()
 	printf "Remark:\n"
 	printf "You should change the original name of the support data file to a more handy one,\n"
 	printf "but this script should be able to handle even a name containing spaces.\n"
+)
+#######################################################################################
+#                                                                                     #
+# emulate zlib deflate using gzip utility                                             #
+#                                                                                     #
+#######################################################################################
+zlib_deflate()
+(
+	deflated="$(yf_mktemp -p "$tmp")"
+	gzip -c >"$deflated"
+	size=$(stat -c %s "$deflated")
+	start=10 # header size, if no filename is present (RFC 1952)
+	end=8 # CRC32 and original size at the end of a member
+	count=$(( size - end - start ))
+	printf "%b" "\0170\234" # CMF/FLG (RFC 1950)
+	dd if="$deflated" bs=1 skip=$start count=$count 2>/dev/null
 )
 #######################################################################################
 #                                                                                     #
@@ -102,21 +122,6 @@ while ! [ -z "$1" ]; do
 		exit 1
 	fi
 done
-#######################################################################################
-#                                                                                     #
-# check openssl utility                                                               #
-#                                                                                     #
-#######################################################################################
-if ! command -v openssl 2>/dev/null 1>&2; then
-	printf "Unable to find an executable called 'openssl'.\n" 1>&2
-	exit 2
-fi
-if ! [ "$(echo | openssl zlib -e | dd bs=2 count=1 2>/dev/null | yf_bin2hex)" = 789c ]; then
-	# 78 - deflate with 32K window (RFC 1950) has to be the first byte
-	# 9c - default level (2), no dictionary preload, check bits
-	printf "Unexpected result checking OpenSSL compression with zlib algorithm.\n" 1>&2
-	exit 1
-fi
 #######################################################################################
 #                                                                                     #
 # check, that the support file contains a TFFS dump                                   #
@@ -218,7 +223,7 @@ while [ $i -lt $add_files_count ]; do
 	i=$(( i + 1 ))
 	eval fn=\"\${add_file_name_$i}\"
 	eval id=\${add_file_node_$i}
-	openssl zlib -e <"$fn" >"$payload"
+	zlib_deflate <"$fn" >"$payload"
 	packed_size=$(stat -c %s "$payload")
 	needed_size=$(( ( packed_size + 4 + 3 ) & ~3 ))
 	if [ $needed_size -gt $rem_size ]; then
