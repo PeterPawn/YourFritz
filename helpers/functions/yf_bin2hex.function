@@ -30,21 +30,22 @@ yf_bin2hex()
 	f=0 
 	v=0 
 	l=0
-	in=$(yf_base64 2>/dev/null | sed -e ':x;$!N;s/\n//;tx' -e 's/+/_/g')
+	in=$(yf_base64 2>/dev/null | sed -e ':x;$!N;s/\n//;tx' -e 's/\r//g' -e 's/+/_/g')
 	[ ${#in} -eq 0 ] && return
-	while [ ${#in} -gt 0 ]; do
-		c=$(yf_substring "$in" 0 1)
-		in=$(yf_substring "$in" 1)
-		[ $c = = ] \
-			&& f=$(( f + 1 )) \
-			|| v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
-		l=$(( l + 1 ))
-		if [ $l -eq 4 ]; then
-			v=$(( v >> ( f * 2 ) ))
-			printf "%0$(( ( 3 - f ) << 1 ))x" $v
-			l=0
-			v=0
-		fi
+	i=0
+	f=0
+	while [ $i -lt ${#in} ]; do
+		part="$(printf "%s" $(yf_substring "$in" $i 4) | sed -e 's/./& /g')"
+		i=$(( i + 4 ))
+		for c in $part; do
+			[ $c = = ] \
+				&& f=$(( f + 1 )) \
+				|| v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
+		done
+		v=$(( v >> ( f * 2 ) ))
+		printf "%0$(( ( 3 - f ) << 1 ))x" $v
+		l=0
+		v=0
 	done
 	return 0
 )
