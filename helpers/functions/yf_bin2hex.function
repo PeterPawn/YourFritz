@@ -27,7 +27,6 @@
 yf_bin2hex()
 (
 	[ -t 0 ] && return 0
-	f=0 
 	v=0 
 	l=0
 	in=$(yf_base64 2>/dev/null | sed -e ':x;$!N;s/\n//;tx' -e 's/\r//g' -e 's/+/_/g')
