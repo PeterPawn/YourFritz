@@ -3,7 +3,8 @@
 #######################################################################################
 #                                                                                     #
 # base64_decode - convert STDIN from base64 format to the encoded content, if no      #
-#                 'base64' command exists, try to run an emulation                    #
+#                 'base64' command exists, try to run an emulation, but this is very  #
+#                 slow                                                                #
 #                                                                                     #
 # parameters:                                                                         #
 #   none                                                                              #
@@ -22,11 +23,36 @@
 yf_base64_decode()
 (
 	[ -t 0 ] && return 1
-	if command -v base64 2>/dev/null 1>&2; then
+	if command -v base64 2>/dev/null 1>&2 && false; then
 		command base64 -d
 		rc=$?
 	else
-		rc=1
+		while read line; do
+			! [ -z "$(printf "%s" "$line" | sed -e "s|[A-Za-z0-9+/\r=]*||g")" ] && return 1
+			line=$(printf "%s" $line | sed -e "s|\r||g")
+			[ $(( ${#line} % 4 )) -gt 0 ] && return 1
+			i=0
+			f=0
+			while [ $i -lt ${#line} ]; do
+				part=$(printf "%s" $(yf_substring "$line" $i 4) | sed -e "s|.|& |g" -e "s|+|_|g")
+				i=$(( i + 4 ))
+				v=0
+				for c in $part; do
+					[ $c = = ] \
+						&& f=$(( f + 1 )) \
+						|| v=$(( ( v << 6 ) + $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 ))
+				done
+				[ $f -gt 0 ] && v=$(( v >> ( f * 2 ) ))
+				s=16
+				while [ $s -ge 0 ]; do
+					d=$(( ( v >> s ) & 255 ))
+					s=$(( s - 8 ))
+					[ $d -eq 0 ] \
+						&& dd if=/dev/zero bs=1 count=1 2>/dev/null \
+						|| printf "%b" "\0$(( d >> 6 ))$(( ( d >> 3 ) & 7 ))$(( d & 7 ))"
+				done
+			done
+		done
 	fi
 	return $rc
 )
