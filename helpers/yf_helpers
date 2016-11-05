@@ -35,8 +35,10 @@
 #                                                                                     #
 #######################################################################################
 for function in $(find ${YF_SCRIPT_DIR:-.}/functions/ -name "*.function"); do
+	[ ${function##*/} = yf_fritzos_model_settings.function ] && continue
 	. $function
 done
+yf_is_fritzos_device && [ -f ${YF_SCRIPT_DIR:-.}/functions/yf_fritzos_model_settings.function ] && . ${YF_SCRIPT_DIR:-.}/functions/yf_fritzos_model_settings.function
 #######################################################################################
 #                                                                                     #
 # end of file                                                                         #

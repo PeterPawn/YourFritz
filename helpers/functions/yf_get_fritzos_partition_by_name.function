@@ -1,0 +1,48 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_fritzos_partition_by_name                                                       #
+# - return the partition number for the specified name                                #
+# - covers only "kernel" and "filesystem" partition, with or without the "reserved"   #
+#   prefix or suffix                                                                  #
+# - on a Puma6 device, the ARM partitions are searched                                #
+# - works on (most) models, as far as I could check                                   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - partition name                                                               #
+#   $2 - (optional) reserved prefix/suffix                                            #
+#                                                                                     #
+# stdout:                                                                             #
+#   the number (only the number, combine it with "yf_fritzos_partition_device_name"   #
+#   output to get the final device name) of the requested partition                   #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - output is valid                                                               #
+#   1 - no FRITZ!OS device or invalid name                                            #
+#                                                                                     #
+# remarks:                                                                            #
+#                                                                                     #
+# There are model specific settings, these values are imported from the function      #
+# "yf_fritzos_model_settings". Some values are preset (constants) and may need to be  #
+# adjusted, if vendor changes anything, other values are determined at runtime.       #
+#                                                                                     #
+# If you include the library functions with "yf_helpers", the model specific settings #
+# are exported automatically.                                                         #
+#                                                                                     #
+#######################################################################################
+yf_get_fritzos_partition_by_name()
+(
+	yf_is_fritzos_device || return 1
+	[ -z $1 ] && return 1
+	! [ $1 = $YF_FOS_KERNEL_NAME ] && ! [ $1 = $YF_FOS_FILESYSTEM_NAME ] && return 1
+	! [ -z $2 ] && ! [ $2 = $YF_FOS_RESERVED_PARTITION ] && return 1
+	if [ $YF_FOS_IS_PUMA6 -eq 1 ]; then
+		name="$1${2:+_}${2}_ARM"
+		sed -n -e "s|^${name}=$YF_FOS_PARTITION_DEVICE\([0-9]\{1,2\}\)\$|\1|p" $YF_FOS_PARTITIONS_FILE
+	else
+		name=$2${2:+-}$1
+		sed -n -e "s|$YF_FOS_PARTITION_DEVICE_PARTNAME_PREFIX\([0-9]\{1,2\}\): [0-9a-f]\{8\} [0-9a-f]\{8\} \"$name\"|\1|p" $YF_FOS_PARTITIONS_FILE 
+	fi
+	return 0
+)
