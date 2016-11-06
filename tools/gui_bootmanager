@@ -1,0 +1,540 @@
+#! /bin/sh
+##############################################################################
+#                                                                            #
+# GUI Boot Manager extension for AVM's FRITZ!Box routers with "hot flash"    #
+# capabilities                                                               #
+#                                                                            #
+# Copyright (C) 2014-2016 P.Hämmerlein (http://www.yourfritz.de)             #
+#                                                                            #
+# This program is free software; you can redistribute it and/or              #
+# modify it under the terms of the GNU General Public License                # 
+# as published by the Free Software Foundation; either version 2             #
+# of the License, or (at your option) any later version.                     #
+#                                                                            #
+# This program is distributed in the hope that it will be useful,            #
+# but WITHOUT ANY WARRANTY; without even the implied warranty of             #
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              #
+# GNU General Public License under                                           #
+# http://www.gnu.org/licenses/gpl-2.0.html                                   #
+# for more details.                                                          #
+#                                                                            #
+# "FRITZ!Box" is a registered word mark and "AVM" is a registered            #
+# word and figurative mark of:                                               #
+# AVM Computersysteme Vertriebs GmbH, 10559, Berlin, DE.                     #
+#                                                                            #
+##############################################################################
+#                                                                            #
+# pooled variables here for easy changes                                     #
+#                                                                            #
+##############################################################################
+envpathname="/proc/sys/urlader/environment"
+procmtd="/proc/mtd"
+mtdprefix="mtd"
+mtdblockprefix="/dev/mtdblock"
+mmcdevice="mmcblk0"
+mmcprefix="/dev/${mmcdevice}p"
+pumaparts="/proc/avm_partitions"
+kernelname="kernel"
+filesystemname="filesystem"
+reservedprefix="reserved"
+fsvarname="linux_fs_start"
+brandingvarname="firmware_version"
+wrapper="/wrapper"
+statfile="/var.tar"
+rootfsimage="filesystem_core.squashfs"
+versionfilename="etc/version"
+defaultspath="etc/default.$CONFIG_PRODUKT"
+tmpdirbase="/var/tmp"
+altfs="altfs"
+altroot="altroot"
+##############################################################################
+#                                                                            #
+# include FRITZ!Box 6490/6590 detection helpers from AVM                     #
+#                                                                            #
+##############################################################################
+. /etc/puma6_helper.sh
+##############################################################################
+#                                                                            #
+# subfunctions                                                               #
+#                                                                            #
+##############################################################################
+#                                                                            #
+# check, if a list contains an item and return its index (based on 1)        #
+# $1 - the item to look for (needle)                                         #
+# $2 - the haystack                                                          #
+#                                                                            #
+##############################################################################
+index_of_item()
+(
+	i=0
+	for item in $2; do
+		i=$(( i + 1 ))
+		[ $1 = $item ] && printf $i && return 0
+	done
+	return 1
+)
+##############################################################################
+#                                                                            #
+# get the count of words in the specified string                             #
+#                                                                            #
+##############################################################################
+count_of_items()
+(
+	set -- $*
+	printf $# 
+)
+##############################################################################
+#                                                                            #
+# get branding from environment                                              #
+#                                                                            #
+##############################################################################
+get_system_branding() 
+(
+	sed -n -e "s/^$brandingvarname\t\(.*\)\$/\1/p" $envpathname
+)
+##############################################################################
+#                                                                            #
+# get next system index from environment                                     #
+#                                                                            #
+##############################################################################
+get_system_switch()
+(
+	sed -n -e "s/^$fsvarname\t\([01]\)/\1/p" $envpathname
+)
+##############################################################################
+#                                                                            #
+# get partition number by name                                               #
+# $1 - requested partition name                                              #
+#                                                                            #
+##############################################################################
+get_partition_by_name() 
+(
+	if is_puma6; then
+		name="$1${2:+_}${2}_ARM"
+		sed -n -e "s|^${name}=$mmcprefix\([0-9]\{1,2\}\)\$|\1|p" $pumaparts
+	else
+		name=$2${2:+-}$1
+		sed -n -e "s|$mtdprefix\([0-9]\{1,2\}\): [0-9a-f]\{8\} [0-9a-f]\{8\} \"$name\"|\1|p" $procmtd
+	fi
+)
+##############################################################################
+#                                                                            #
+# get partition name by number                                               #
+# $1 - requested partition number                                            #
+#                                                                            #
+##############################################################################
+get_partition_by_number() 
+(
+	if is_puma6; then
+		sed -e "/_SIZE=/d" -e "s|_|-|g" $pumaparts | sed -n -e "s|^\([a-z]*\)\(-$reservedprefix\)\?-ARM=$mmcprefix$1|\1\2|p" | sed -e "s|\(.*\)-\(.*\)|\2-\1|"
+	else
+		sed -n -e "s|$mtdprefix$1: [0-9a-f]\{8\} [0-9a-f]\{8\} \"\(.*\)\"|\1|p" $procmtd 
+	fi
+)
+##############################################################################
+#                                                                            #
+# build partition groups                                                     #
+#                                                                            #
+##############################################################################
+build_partitions()
+(
+	k1=$(get_partition_by_name $kernelname)
+	f1=$(get_partition_by_name $filesystemname)
+	g1=${k1}:${f1}
+	k2=$(get_partition_by_name $kernelname $reservedprefix)
+	f2=$(get_partition_by_name $filesystemname $reservedprefix)
+	g2=${k2}:${f2}
+	[ $k1 -lt $k2 ] && printf '%s %s' $g1 $g2 || printf '%s %s' $g2 $g1
+)
+##############################################################################
+#                                                                            #
+# check next system against running                                          #
+#                                                                            #
+##############################################################################
+is_switched()
+(
+	switched=0
+	set -- $(build_partitions)
+	[ $(get_system_switch) -gt 0 ] && shift
+	kernel=${1%:*}
+	kname="$(get_partition_by_number $kernel)"
+	[ "${kname##$reservedprefix}" = "$kname" ] && switched=1
+	return $switched
+)
+##############################################################################
+#                                                                            #
+# extract firmware variables from $versionfilename                           #
+# $1 - system root                                                           #
+#                                                                            #
+##############################################################################
+get_version_values() 
+(
+	sed -n -e 's|^export FIRMWARE_\(.*\)=\"\?\([^\"]*\)\"\?$|\1=\"\2\"|p' $1/$versionfilename | sed -e 's| |\ |g'
+)
+##############################################################################
+#                                                                            #
+# get system version                                                         #
+# $1 - system root                                                           #
+#                                                                            #
+##############################################################################
+get_system_version() 
+(
+	eval $(get_version_values $1)
+	printf '%s%s' $VERSION $SUBVERSION
+)
+##############################################################################
+#                                                                            #
+# get system date                                                            #
+# $1 - system root                                                           #
+#                                                                            #
+##############################################################################
+get_system_date()
+(
+	eval $(get_version_values $1)
+	printf '%s' "$DATE"
+)
+##############################################################################
+#                                                                            #
+# switch system selection variable to other value                            #
+#                                                                            #
+##############################################################################
+switch_system()
+(
+	printf '%s\t%d\n' $fsvarname $(( ( $(get_system_switch) + 1 ) % 2 )) >$envpathname
+)
+##############################################################################
+#                                                                            #
+# replace branding, if necessary                                             #
+#                                                                            #
+##############################################################################
+change_branding()
+(
+	[ $1 = $(get_system_branding) ] || printf '%s\t%s' $brandingvarname $1 >$envpathname
+)
+##############################################################################
+#                                                                            #
+# switch next boot time selection to specified system, if action is really   #
+# needed                                                                     #
+# $1 - 'running' / 'alternative' to switch to the specified system based on  #
+#      the running version                                                   #
+#                                                                            #
+##############################################################################
+switch_system_to()
+(
+	is_switched && ( [ $1 = running ] && switch_system ) || ( [ $1 = alternative ] && switch_system )
+	[ -z $2 ] || change_branding $2
+)
+##############################################################################
+#                                                                            #
+# mount alternative system                                                   #
+# $1 - source partition index                                                #
+# $2 - temporary directory as mount point                                    #
+#                                                                            #
+##############################################################################
+mount_alternative_system()
+(
+	mkdir -p $2/$altfs 2>/dev/null || return 1
+	if is_puma6; then
+		mount -t squashfs -o ro $mmcprefix$1 $2/$altfs 2>/dev/null || return 1
+		printf '%s/%s' $2 $altfs
+	else
+		blkid=$(command -v blkid 2>/dev/null)
+		[ -z $blkid ] && fstype=squashfs
+		[ -z $fstype ] && fstype=$(blkid $1 | sed -n -e 's|.*TYPE="\(.*\)"|\1|p')
+		[ -z $fstype ] && fstype=yaffs2
+		mount -t $fstype $mtdblockprefix$1 $2/$altfs 2>/dev/null || return 1
+		! [ $fstype = yaffs2 ] && printf '%s/%s' $2 $altfs && return 0
+		mkdir -p $2/altroot 2>/dev/null || return 1
+		mount -t squashfs -o ro $2/$altfs/$rootfsimage $2/$altroot 2>/dev/null || return 1
+		printf '%s/%s' $2 $altroot
+	fi
+	return 0
+)
+##############################################################################
+#                                                                            #
+# dismount the mounted alternative system                                    #
+# $1 - mount point                                                           #
+#                                                                            #
+##############################################################################
+dismount_alternative_system()
+(
+	umount $1 2>/dev/null || return 1
+	rmdir $1 2>/dev/null
+	is_puma6 && return 0
+	mp=$(sed -n -e "s|[^ ]* \(${1%/*}/[^ ]*\) .*|\1|p" /proc/mounts)
+	[ -z $mp ] && return 0
+	umount $mp 2>/dev/null || return 1
+	rmdir $mp 2>/dev/null
+	return 0
+)
+##############################################################################
+#                                                                            #
+# get possible brandings from firmware directories                           #
+# $1 - mount point                                                           #
+#                                                                            #
+##############################################################################
+get_brandings()
+(
+	path=${1:-/}${1:+/}$defaultspath
+	find $path -type d -maxdepth 1 | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
+)
+##############################################################################
+#                                                                            #
+# get name of loop device backing file                                       #
+# $1 - loop device number                                                    #
+#                                                                            #
+##############################################################################
+get_loop_device_file()
+(
+	[ -d /sys/block/loop$1/loop ] || return 1
+	cat /sys/block/loop$1/loop/backing_file
+)
+##############################################################################
+#                                                                            #
+# get loop device for mount point                                            #
+# $1 - mount point                                                           #
+#                                                                            #
+##############################################################################
+get_loop_device()
+(
+	sed -n -e "s|^\(/dev/loop[0-9]\{1,2\}\) $1 .*|\1|p" /proc/mounts
+)
+##############################################################################
+#                                                                            #
+# get image file for loop device mounted SquashFS image                      #
+# $1 - mount point                                                           #
+#                                                                            #
+##############################################################################
+get_image_name()
+(
+	loop=$(get_loop_device $1)
+	[ -z $loop ] && return 1
+	get_loop_device_file ${loop##*[^0-9]}
+)
+##############################################################################
+#                                                                            #
+# cleanup any mounted images and remove the temporary directory              #
+#                                                                            #
+##############################################################################
+cleanup()
+(
+	[ -z $tempdir ] && return
+	mp=$(sed -n -e "s|[^ ]* \($tempdir/$altroot\) .*|\1|p" /proc/mounts)
+	[ -z $mp ] || umount $mp 2>/dev/null
+	mp=$(sed -n -e "s|[^ ]* \($tempdir/$altfs\) .*|\1|p" /proc/mounts)
+	[ -z $mp ] || umount $mp 2>/dev/null
+	rm -r "$tempdir" 2>/dev/null
+)
+##############################################################################
+#                                                                            #
+# prepare a temporary directory and a clean exit routine                     #
+#                                                                            #
+##############################################################################
+tempdir=$tmpdirbase/$$_$(date +%s)
+mkdir -p $tempdir 2>/dev/null 
+trap cleanup HUP EXIT INT TERM
+rc=127
+##############################################################################
+#                                                                            #
+# output a SELECT control                                                    #
+#                                                                            #
+##############################################################################
+selectbox()
+(
+	printf '<select id="%s" name="%s">\n' $1 $2
+	for value in $3; do
+		printf '<option value="%s"' $value
+		[ $value = $4 ] && printf ' selected="selected"'
+		printf '>%s</option>\n' $value
+	done
+	printf '</select>\n'
+)
+##############################################################################
+#                                                                            #
+# create HTML output                                                         #
+#                                                                            #
+##############################################################################
+html_display()
+(
+	switchvalue=$(get_system_switch)
+	running_kernel=$(get_partition_by_name $kernelname)
+	alternative_kernel=$(get_partition_by_name $kernelname $reservedprefix)
+	running_filesystem=$(get_partition_by_name $filesystemname)
+	alternative_filesystem=$(get_partition_by_name $filesystemname $reservedprefix)
+	current_branding=$(get_system_branding)
+	if [ ${#switchvalue} -eq 0 ] || [ ${#running_kernel} -eq 0 ] || [ ${#alternative_kernel} -eq 0 ] || [ ${#running_filesystem} -eq 0 ] || [ ${#alternative_filesystem} -eq 0 ]; then
+		[ $Language = de ] \
+			&& printf '<h4>Die Umschaltung zwischen zwei installierten Systemen ist auf dieser FRITZ!Box nicht verf&uuml;gbar.</h4>\n' \
+			|| printf '<h4>Switching between alternative systems is not supported on this device.</h4>\n'
+		return 1
+	else
+		mp=$(mount_alternative_system $alternative_filesystem $tempdir)
+		if [ -z $mp ]; then
+			alternative_version="unknown"
+			alternative_date="unknown"
+			alternative_fsdate="unknown"
+			alternative_brandings="$current_branding"
+		else
+			alternative_version=$(get_system_version $mp)
+			alternative_date=$(get_system_date $mp)
+			[ -d $wrapper ] \
+				&& alternative_fsdate=$(stat -c %Y $(get_image_name $mp) 2>/dev/null) \
+				|| alternative_fsdate=$(stat -c %Y $mp$statfile 2>/dev/null)
+			alternative_brandings="$current_branding"
+			if [ -z $alternative_fsdate ]; then
+				alternative_fsdate="unknown"
+			else
+				alternative_fsdate="$(date -d @$alternative_fsdate +'%d.%m.%y %H:%M')"
+				alternative_brandings="$(get_brandings $mp)"
+			fi
+			dismount_alternative_system $mp
+		fi
+		running_version=$(get_system_version)
+		running_date=$(get_system_date)
+		[ -d $wrapper ] \
+			&& running_fsdate="$(date -d @$(stat -c %Y $(get_image_name /)) +"%d.%m.%y %H:%M")" \
+			|| running_fsdate="$(date -d @$(stat -c %Y $statfile) +"%d.%m.%y %H:%M")"
+		running_brandings="$(get_brandings)"
+		if is_switched; then
+			running_checked=""
+			alternative_checked=" checked=\"checked\""
+			show_running=0
+		else
+			running_checked=" checked=\"checked\""
+			alternative_checked=""
+			show_running=1
+		fi
+		[ $(count_of_items "$running_brandings") -gt 1 ] && chg_running_branding=1 || chg_running_branding=0
+		[ $(count_of_items "$alternative_brandings") -gt 1 ] && chg_alternative_branding=1 || chg_alternative_branding=0
+		[ $alternative_version = unknown ] && chg_alternative_branding=0
+		if [ $Language = de ]; then
+			printf '<br /><h3>Folgende Systeme stehen auf dieser FRITZ!Box zur Auswahl bei einem Neustart:</h3><br />\n'
+			printf '<input type="radio" id="radioRunning" name="%s" value="running"%s />\n' $fsvarname "$running_checked"
+			printf '<label for="radioRunning">das aktuell laufende System</label><br /><br />\n'
+			printf 'Version %s vom %s (linux_fs_start=%d), das System wurde am %s zuletzt modifiziert<br /><br />\n' \
+				$running_version "$running_date" $(get_system_switch) "$running_fsdate"
+			printf '<input type="radio" id="radioAlternative" name="%s" value="alternative"%s />\n' $fsvarname "$alternative_checked"
+			printf '<label for="radioAlternative">das derzeit inaktive System</label><br /><br />\n'
+			if [ $alternative_version = unknown ]; then
+				printf 'Das System in den alternativen Partitionen kann nicht identifiziert werden, es k&ouml;nnte besch&auml;digt oder nicht vorhanden bzw. gel&ouml;scht sein.<br />\n'
+				printf 'Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.<br /><br />\n' 
+			else
+				printf 'Version %s vom %s (linux_fs_start=%d), das System wurde am %s zuletzt modifiziert<br /><br />\n' \
+					$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+			fi
+			printf '<span id="running_branding">\n'
+			if [ $chg_running_branding -eq 1 ]; then
+				printf '<h4>Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen (Brandings), im Moment ist "%s" eingestellt.</h4>\n' $current_branding
+				printf '<label for="idRunningBranding">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet: </label>\n'
+				selectbox idRunningBranding running_branding "$running_brandings" $current_branding
+			else
+				printf '<h4>Das oben ausgew&auml;hlte System unterst&uuml;tzt nur das Branding "%s", dieses ist im Moment auch eingestellt.</h4>\n' $current_branding
+				printf '<input type="hidden" name="running_branding" value="%s" />\n' $current_branding
+			fi
+			printf '</span>\n'
+			printf '<span id="alternative_branding">\n'
+			if [ $chg_alternative_branding -eq 1 ]; then
+				printf '<h4>Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen (Brandings), im Moment ist "%s" eingestellt.</h4>\n' $current_branding
+				printf '<label for="idAlternativeBranding">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet: </label>\n'
+				selectbox idAlternativeBranding alternative_branding "$alternative_brandings" $current_branding
+			else
+				if [ $alternative_version = unknown ];then
+					printf '<h4>Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Brandings verf&uuml;gbar.</h4>\n'
+					printf '<input type="hidden" name="alternative_branding" value="%s" />\n' $current_branding
+				else
+					printf '<h4>Das oben ausgew&auml;hlte System unterst&uuml;tzt nur das Branding "%s", ' $alternative_brandings
+					if [ $alternative_brandings = $current_branding ]; then
+						printf 'dieses ist im Moment auch eingestellt.</h4>\n'
+					else
+						printf 'im Moment ist jedoch "%s" eingestellt.</h4>\n' $current_branding
+						printf 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig das Branding auf "%s" ge&auml;ndert.\n' $alternative_brandings	
+					fi
+					printf '<input type="hidden" name="alternative_branding" value="$alternative_brandings" />\n'
+				fi
+			fi
+			printf '</span>\n'
+		else
+			printf '<br /><h3>The following systems are available to be booted on this device next time:</h3><br />\n'
+			printf '<input type="radio" id="radioRunning" name="%s" value="running"%s />\n' $fsvarname "$running_checked"
+			printf '<label for="radioRunning">the currently running system</label><br /><br />\n'
+			printf 'version %s - originally built on %s (linux_fs_start=%d), this system was last modified on %s<br /><br />\n' \
+				$running_version "$running_date" $(get_system_switch) "$running_fsdate"
+			printf '<input type="radio" id="radioAlternative" name="%s" value="alternative"%s />\n' $fsvarname "$alternative_checked"
+			printf '<label for="radioAlternative">the alternative system</label><br /><br />\n'
+			if [ $alternative_version = unknown ]; then
+				printf 'Unable to identify the installed system in the alternative partitions, it could have been damaged or was missing/deleted.<br />\n'
+				printf 'Switching to this system may prevent your device from starting correctly - you should be really sure, what you are doing in this case.<br /><br />\n' 
+			else
+				printf 'version %s - originally built on %s (linux_fs_start=%d), this system was last modified on %s<br /><br />\n' \
+					$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+			fi
+			printf '<span id="running_branding">\n'
+			if [ $chg_running_branding -eq 1 ]; then
+				printf '<h4>The system selected above supports different provider/OEM names (aka "brandings"), currently the value "%s" is set.</h4>\n' $current_branding
+				printf '<label for="idRunningBranding">Restarting the device will set this entry to the following value (until it is changed again later): </label>\n'
+				selectbox idRunningBranding running_branding "$running_brandings" $current_branding
+			else
+				printf '<h4>The system selected above supports only a single provider/OEM name "%s", it is already the current value.</h4>\n' $current_branding
+				printf '<input type="hidden" name="running_branding" value="%s" />\n' $current_branding
+			fi
+			printf '</span>\n'
+			printf '<span id="alternative_branding">\n'
+			if [ $chg_alternative_branding -eq 1 ]; then
+				printf '<h4>The system selected above supports different provider/OEM names (aka "brandings"), currently the value "%s" is set.</h4>\n' $current_branding
+				printf '<label for="idAlternativeBranding">Restarting the device will set this entry to the following value (until it is changed again later): </label>\n'
+				selectbox idAlternativeBranding alternative_branding "$alternative_brandings" $current_branding
+			else
+				if [ $alternative_version = unknown ];then
+					printf '<h4>Due to problems identifying the installed alternative system, there is no possibility to change the provider/OEM name for this one.</h4>\n'
+					printf '<input type="hidden" name="alternative_branding" value="%s" />\n' $current_branding
+				else
+					printf '<h4>The system selected above supports only a single provider/OEM name "%s", ' $alternative_brandings
+					if [ $alternative_brandings = $current_branding ]; then
+						printf 'this value is already the current.</h4>\n'
+					else
+						printf 'but currently "%s" is in use.</h4>\n' $current_branding
+						printf 'Switching the system to the alternative partitions will also set the provider/OEM name to "%s" without further questions.\n' $alternative_brandings	
+					fi
+					printf '<input type="hidden" name="alternative_branding" value="$alternative_brandings" />\n'
+				fi
+			fi
+			printf '</span>\n'
+		fi
+		printf '<script type="text/javascript">\n'
+		printf 'function onBootManagerClick(evt) {\n'
+		printf 'var radioButton = jxl.evtTarget(evt);\n'
+		printf 'if ( radioButton.id == "radioRunning" ) {\n'
+		printf 'jxl.show("running_branding");\n'
+		printf 'jxl.hide("alternative_branding");\n'
+		printf '} else {\n'
+		printf 'jxl.hide("running_branding");\n'
+		printf 'jxl.show("alternative_branding");\n'
+		printf '}\n'
+		printf '}\n'
+		printf 'function initBootManager() {\n'
+		printf 'jxl.addEventHandler("radioRunning","click",onBootManagerClick);\n'
+		printf 'jxl.addEventHandler("radioAlternative","click",onBootManagerClick);\n'
+		printf 'jxl.display("running_branding", %s);\n' $( [ $show_running -eq 1 ] && printf true || printf false )
+		printf 'jxl.display("alternative_branding", %s);\n' $( [ $show_running -eq 0 ] && printf true || printf false )
+		printf '}\n'
+		printf 'ready.onReady(initBootManager);\n'
+		printf '</script>\n'
+		return 0
+	fi
+)
+##############################################################################
+#                                                                            #
+# check parameters and call requested function                               #
+#                                                                            #
+##############################################################################
+case $1 in
+	(html_display)
+		html_display
+		rc=$?
+		;;
+	(switch_to)
+		switch_system_to $2 $3
+		rc=$?
+		;;
+esac
+exit $rc
