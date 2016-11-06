@@ -17,13 +17,6 @@
 #                                                                                     #
 # return code:                                                                        #
 #   none                                                                              #
-#   1 - no, it's another platform/system (or an unknown FRITZ!OS version)             #
-#                                                                                     #
-# remarks:                                                                            #
-#                                                                                     #
-# The tests may be extended to cover more points, but the existence of "HWRevision"   #
-# at the beginning of a line in /proc/sys/urlader/environment (and the presence of    #
-# this pseudo-file at all) should be enough input for a decision.                     #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
@@ -67,7 +60,7 @@ yf_fritzos_model_settings_internal()
 )
 #######################################################################################
 #                                                                                     #
-# call the subfunction and export each line from their STDOUT content                 #
+# call the subfunction and source it's output via a temporary file                    #
 #                                                                                     #
 #######################################################################################
 if yf_is_fritzos_device; then
