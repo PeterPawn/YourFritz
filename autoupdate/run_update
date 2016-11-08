@@ -160,6 +160,7 @@ tar -C / -x -f $basedir/$imagename
 brandings=$(echo $(grep -B 5 "^[ \t]*if *\[ *\"\$i\" *= *\"\${OEM}\" *\] *; *then[ \t]*$" /var/install | sed -n -e "s|for *i *in *\(.*\) *; *do|\1|p"))
 found=0
 changebranding=0
+test -z $OEM && OEM=$(sed -n -e 's|^firmware_version\t\(.*\)$|\1|p' /proc/sys/urlader/environment)
 for i in $brandings; do
 	test $i = ${OEM:-avm} && found=1 && break
 done
