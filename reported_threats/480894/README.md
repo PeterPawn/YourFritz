@@ -61,7 +61,7 @@ to "inetd.conf", opens a "rexec" shell on demand, after "inetd" was started usin
 
 If the attacker needs an opportunity to run own commands immediately on the device (only writing files will not execute any command itself), he may add a line to "inetd.conf", which makes "inetd" listening on a frequently used TCP or UDP port, if no other daemon is using the port (UDP ports may be shared).
 
-Any incoming request there starts - only an example - another shell script (using "/bin/sh sh <scriptname>") and this script could be contained in the same tarball as our template "inetd.conf". Abusing "inetd" in this manner provides an attacker with a recurring RCE opportunity and these files are recreated after each system restart.
+Any incoming request there starts - only an example - another shell script (using `/bin/sh sh <scriptname>`) and this script could be contained in the same tarball as our template "inetd.conf". Abusing "inetd" in this manner provides an attacker with a recurring RCE opportunity and these files are recreated after each system restart.
 
 Another file, which may be overwritten, is "/var/env.cache". This file contains the output of an earlier executed command
 
@@ -93,7 +93,7 @@ first one).
 
 2016-10-08 --:-- - First details mentioned on IPPF (http://www.ip-phone-forum.de/showthread.php?t=286994&p=2184758), after 114 days (> 16 weeks, counted from 2016-06-14) without any real response from vendor
 
-2016-10-18 --:-- - The flaw was a first time used to update a FRITZ!Box Cable 6490 (with OEM branding) with retail firmware - this was an intentional action by the owner of the device and no an attack from a stranger.
+2016-10-18 --:-- - The flaw was a first time used to update a FRITZ!Box Cable 6490 (with OEM branding) with retail firmware - this was an intentional action by the owner of the device and not an attack from a stranger.
 
 2016-11-13 02:06 - Still no message/further response from vendor, last contact regarding this case on 2016-06-16
 
