@@ -1,0 +1,5 @@
+$SHELL /var/media/ftp/save_system.sh
+rpc $SHELL /var/media/ftp/save_system.sh
+led-ctrl filesystem_mount_failure
+tar -c -v -f /var/media/ftp/saved_firmware.tar /var/media/ftp/ARM /var/media/ftp/ATOM
+led-ctrl filesystem_done
