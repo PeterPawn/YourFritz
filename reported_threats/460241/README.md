@@ -2,9 +2,9 @@
 
 ## Synopsis
 
-An authorized user with write access to the NAS base directory may overwrite the hash database used for the outbound firewall of the integrated childi lock feature.
+An authorized user with write access to the NAS base directory may overwrite the hash database used for the outbound firewall of the integrated child lock feature.
 
-## Affected version
+## Affected versions
 
 - unspecified/unknown first version, obviously every version storing the database in a location, which is reachable using NAS functions
 - up to currently released beta version(s), latest version tested was 113.06.69-41896 for FRITZ!Box 7490, built on 2016-11-10
@@ -37,17 +37,17 @@ Some times ago AVM's FRITZ!OS started storing the database for the BPjM blacklis
 
 The BPjM database is a simple list of hash values for URIs, known to provide unsuitable HTTP content for children and teenagers. It's maintained by a German governmental institution and usually updated once per month. 
 
-The FRITZ!OS firmware contains the database available at date of its release (or at least the previous one). If the router may access the internet, it tries to download an update for the database and merges the present database and this update. The result is stored using the path /var/InternerSpeicher/FRITZ/bpjm.data, but this place is below the NAS base directory /var/media/ftp - /var/InternerSpeicher is only a symbolic link pointing to it. If no BPjM based limitations for internet access are set, the list will not be updated.
+The FRITZ!OS firmware contains the database available at date of its release (or at least the previous one). If the router may access the internet, it tries to download an update for the database and merges the present database and this update. The result is stored using the path `/var/InternerSpeicher/FRITZ/bpjm.data`, but this place is below the NAS base directory `/var/media/ftp` - `/var/InternerSpeicher` is only a symbolic link pointing to it. If no BPjM based limitations for internet access are set, the list will not be updated.
 
 Each database entry has a fixed length and the whole file is protected against changes by a CRC32 value stored in front of the hash entries. A closed-source daemon (contfiltd) is used to check each URI received from a limited client, whether it matches an entry in the blocked list. The exact match algorithm doesn't matter here. This daemon keeps the database file opened, while he's running.
 
-If an attacker tries to modify the database file using FTP or FRITZ!NAS (a GUI base file manager) service, this usually creates an new file first, removes the old one and renames the new file to the original name. Such an attempt will be noticed by "contfiltd" and the modified file will not be used anymore and sooner or later replaced with a fresh and valid copy.
+If an attacker tries to modify the database file using FTP or FRITZ!NAS (a GUI base file manager) service, this usually creates an new file first, removes the old one and renames the new file to the original name. Such an attempt will be noticed by `contfiltd` and the modified file will not be used anymore and sooner or later replaced with a fresh and valid copy.
 
 But Samba access provides a way to change a file "in place". If a file is opened read/write, the write pointer may be set to any position within the file and the next output data is written there. The inode number of the file will not get changed and this way a modification isn't detected anymore, as long as a valid file is the result - this means especially, the attacker has to compute a new CRC32 value for the hash entries.
 
 Changing the stored hash in any entry will render the whole entry useless, because it will not match the hashed address anymore.
 
-A Windows-based proof-of-concept (using PowerShell) exploiting this vulnerability is available as "FakeBPjMList.ps1". It fills the whole database with empty entries (all zeroes) and computes and stores a new CRC32 value. After this changes, sites may accessed with unsuitable content originally blocked by the list.
+A Windows-based proof-of-concept (using PowerShell) exploiting this vulnerability is available as `FakeBPjMList.ps1`. It fills the whole database with empty entries (all zeroes) and computes and stores a new CRC32 value. After this changes, sites may accessed with unsuitable content originally blocked by the list.
 
 The obviously causes for this possibility to attack the integrity of the outbound firewall are the unnecessary write access to the database and the very weak protection of its integrity with a CRC32 checksum. This checksum is taken from the original file and not an idea of the FRITZ!Box vendor.
 
