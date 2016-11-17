@@ -23,7 +23,7 @@ Do not grant write access rights for the NAS base directory or even all volumes 
 
 Not fixed until the time of this writing. 
 
-The vendor committed the vulnerability (see timeline below) and announced a fix for the next major release, expected in Q3 2016. 
+The vendor confirmed the vulnerability (see timeline below) and announced a fix for the next major release, expected in Q3 2016. 
 
 No attempt to fix it really is visible so far.
 
@@ -41,7 +41,7 @@ The FRITZ!OS firmware contains the database available at date of its release (or
 
 Each database entry has a fixed length and the whole file is protected against changes by a CRC32 value stored in front of the hash entries. A closed-source daemon (contfiltd) is used to check each URI received from a limited client, whether it matches an entry in the blocked list. The exact match algorithm doesn't matter here. This daemon keeps the database file opened, while he's running.
 
-If an attacker tries to modify the database file using FTP or FRITZ!NAS (a GUI base file manager) service, this usually creates an new file first, removes the old one and renames the new file to the original name. Such an attempt will be noticed by `contfiltd` and the modified file will not be used anymore and sooner or later replaced with a fresh and valid copy.
+If an attacker tries to modify the database file using FTP or FRITZ!NAS (a GUI based file-manager) service, this usually creates an new file first, removes the old one and renames the new file to the original name. Such an attempt will be noticed by `contfiltd` and the modified file will not be used anymore and sooner or later replaced with a fresh and valid copy.
 
 But Samba access provides a way to change a file "in place". If a file is opened read/write, the write pointer may be set to any position within the file and the next output data is written there. The inode number of the file will not get changed and this way a modification isn't detected anymore, as long as a valid file is the result - this means especially, the attacker has to compute a new CRC32 value for the hash entries.
 
