@@ -117,8 +117,7 @@ discovery_interval=1
 #
 # include YourFritz shell library functions
 #
-YF_SCRIPT_DIR="."
-. yf_helpers
+. ${YF_SCRIPT_DIR:-.}/yf_helpers
 #
 # debug output
 #

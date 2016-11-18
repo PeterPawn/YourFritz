@@ -34,7 +34,7 @@ yf_pack B16 1 B16 4 8 255 8 255 8 255 8 254
 #
 # add name table
 #
-nametable_to_tffs <"$1"
+cat $4 
 #
 # add environment
 #
@@ -46,7 +46,7 @@ counter_to_tffs <"$3"
 #
 # add optional files
 #
-shift 3
+shift 4
 for name in $*; do
 	id="${name##*/}"
 	id="${id%%.*}"

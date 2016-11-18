@@ -39,8 +39,7 @@ envfile=$tmpdir/environment
 # helper functions
 #
 ##################################################################################
-YF_SCRIPT_DIR="."
-. yf_helpers
+. ${YF_SCRIPT_DIR:-.}/yf_helpers
 ##################################################################################
 #
 # check, if our name table is present
