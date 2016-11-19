@@ -44,9 +44,10 @@ usage()
 	printf "you've to specify the TFFS node number (in decimal) and the name of a file contain-\n"
 	printf "ing the uncompressed data to add.\n\n"
 	printf "The final result is written to STDOUT and it's the responsibility of the caller to\n"
-	printf "redirect it to a proper location.\n\n"
+	printf "redirect it to a proper location. Execution will be stopped immediately, if STDOUT\n"
+	printf "is a terminal device.\n\n"
 	printf "Example:\n"
-	printf "$0 \$HOME/support_data.txt -o 5 29 provideradditive.tar\n\n"
+	printf "$0 \$HOME/support_data.txt 29 provideradditive.tar\n\n"
 	printf "Remark:\n"
 	printf "You should change the original name of the support data file to a more handy one,\n"
 	printf "but this script should be able to handle even a name containing spaces.\n"
@@ -79,7 +80,7 @@ add_files_count=0
 # check parameters                                                                    #
 #                                                                                     #
 #######################################################################################
-[ -t 1 ] && usage 1>&2 && exit 1
+[ -t 1 ] && usage 1>&2 && printf "\n\n%bSTDOUT isn't redirected - would you really like to see binary data on your terminal?\nDo you prefer the output in binary, octal or hexadecimal presentation?\n\nPLEASE READ THE USAGE INFORMATION ABOVE THIS TEXT CAREFULLY AGAIN AND AGAIN, UNTIL YOU'VE FOUND YOUR MISTAKE!%b\n\n" "\033[91m\033[1m" "\033[21m\033[0m" 1>&2 && exit 1
 [ -z "$1" ] && usage 1>&2 && exit 1
 support_data_file="$1"
 first_line="$(sed -n -e 1p "$support_data_file" | sed -e "s|^\($FIRST_SUPPORTDATA_LINE\).*|\1|p" | sed -n -e 1p)"
@@ -217,6 +218,7 @@ while [ $offset -lt $image_size ]; do
 			[ $r_id -eq $id ] || continue
 			dd if=/dev/zero of="$image" bs=2 seek=$(( offset / 2 )) count=1 conv=notrunc 2>/dev/null 
 		done
+	printf "." 1>&2
 	offset=$(( ( offset + 4 + len + 3 ) & ~3 ))
 done
 rem_size=$(( image_size - 4 - offset ))
