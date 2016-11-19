@@ -23,7 +23,7 @@
 yf_base64_decode()
 (
 	[ -t 0 ] && return 1
-	if command -v base64 2>/dev/null 1>&2 && false; then
+	if command -v base64 2>/dev/null 1>&2 ; then
 		command base64 -d
 		rc=$?
 	else
