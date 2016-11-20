@@ -98,3 +98,5 @@ first one).
 2016-11-13 02:06 - Still no message/further response from vendor, last contact regarding this case on 2016-06-16
 
 2016-11-13 02:25 - Description published
+
+2016-11-20 04:30 - Problem was probably already fixed with version 113.06.69-41875, released as public beta version at 2016-11-04 (less than 4 weeks after first details were available on IPPF and in less than five months after my first message to vendor)
