@@ -15,5 +15,5 @@
 yf_is_wireless_interface()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"
-	[ -d $sysfs/devices/virtual/net/$1/wireless ] && return 0 || return 1
+	[ -d $sysfs/class/net/$1/wireless ] && return 0 || return 1
 )

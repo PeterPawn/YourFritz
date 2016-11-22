@@ -15,5 +15,5 @@
 yf_is_bridge_interface()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"
-	[ -d $sysfs/devices/virtual/net/$1/bridge ] && return 0 || return 1
+	[ -d $sysfs/class/net/$1/bridge ] && return 0 || return 1
 )

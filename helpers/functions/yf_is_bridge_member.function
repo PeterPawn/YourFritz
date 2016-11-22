@@ -16,5 +16,5 @@
 yf_is_bridge_member()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"
-	[ -d $sysfs/devices/virtual/net/$1/brport ] && return 0 || return 1
+	[ -d $sysfs/class/net/$1/brport ] && return 0 || return 1
 )
