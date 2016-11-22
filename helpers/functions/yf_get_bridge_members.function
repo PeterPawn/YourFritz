@@ -18,9 +18,9 @@
 yf_get_bridge_members()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"
-	[ -d $sysfs/devices/virtual/net/$1/brif ] || return 1
-	find $sysfs/devices/virtual/net/$1/brif -maxdepth 1 -type l -print \
-		| sed -e "s|^$sysfs/devices/virtual/net/$1/brif/\(.*\)\$|\1|" \
+	[ -d $sysfs/class/net/$1/brif ] || return 1
+	find $sysfs/class/net/$1/brif -maxdepth 1 -type l -print \
+		| sed -e "s|^$sysfs/class/net/$1/brif/\(.*\)\$|\1|" \
 		| sed -e ':x;$!N;s/\n/ /;tx'
 	return 0
 )

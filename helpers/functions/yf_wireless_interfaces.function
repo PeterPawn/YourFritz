@@ -17,8 +17,8 @@
 yf_wireless_interfaces()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"
-	find $sysfs/devices/virtual/net/*/wireless -maxdepth 1 -type d -print 2>/dev/null \
-		| sed -e "s|^$sysfs/devices/virtual/net/\([^/]*\)/wireless\$|\1|" -e '/^$/d' \
+	find $sysfs/class/net/*/wireless -maxdepth 1 -type d -print 2>/dev/null \
+		| sed -e "s|^$sysfs/class/net/\([^/]*\)/wireless\$|\1|" -e '/^$/d' \
 		| sed -e ':x;$!N;s/\n/ /;tx'
 	return 0
 )
