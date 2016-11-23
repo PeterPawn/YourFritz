@@ -23,7 +23,7 @@ yf_storage_devices()
 	sysfs="$(yf_sysfs || printf "/sys")"
 	for device in /sys/block/sd*; do
 		printf "DEVICE='%s' VENDOR='%s' MODEL='%s' SIZE='%s' PARTITIONS='%d'\n" \
-			"${device##*/}" "$(cat $device/device/vendor)" "$(cat $device/device/model)" \
+			"${device##*/}" "$(cat $device/device/vendor | yf_trim)" "$(cat $device/device/model | yf_trim)" \
 			$(( $(cat $device/size) * $(cat $device/queue/logical_block_size) )) \
 			$(find ${device}/ -type d -name "${device##*/}[0-9]*" | sed -n -e '$=')
 	done
