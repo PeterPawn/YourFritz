@@ -253,7 +253,8 @@ done
 # output image and exit                                                               #
 #                                                                                     #
 #######################################################################################
-cat "$image" 
+offset=$(( offset + 4 )) # add header for first free entry and limit output image size to the next 4K boundary (SPI erase size)
+dd if="$image" bs=4096 count=$(( ( offset / 4096 ) + 1 )) 2>/dev/null
 exit 0
 #######################################################################################
 #                                                                                     #
