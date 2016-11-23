@@ -95,7 +95,7 @@ upload_image()
 		nc -w 60 $data_ip $data_port <&$upstream 2>/dev/null 1>&2 &
 		data_connection=$!
 		sleep 1
-		write_ftp_command "STOR $mtd" $outstream $logstream
+		write_ftp_command "STOR $mtd" $outstream $log
 		line="$(read_ftp_response $instream $log)"
 		ec=${line:0:3}
 		if [ x$ec == x150 ]; then
