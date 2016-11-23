@@ -17,11 +17,18 @@ An unauthenticated attacker may add a malformed tarball to persisted device sett
 
 ## Mitigations
 
-Unknown - I don't have any good idea beside a fix from vendor, because the problem is located in a closed source component of the firmware.
+None - the problem has to be fixed. This was done already in the public beta branch, see timeline below.
+~~Unknown - I don't have any good idea beside a fix from vendor, because the problem is located in a closed source component of the firmware.~~
 
 ## Available fixes / solutions
 
-Not fixed yet, at least as far as I know. 
+Update 2016-11-23: 
+
+The issue was fixed in version 113.06.69.41756 (2016-11-01). The "tar x" call was changed, now the files to extract from the tarball are specified with their name(s) and arbitrary content will not be extracted any longer.
+
+End of updated section. The following text is somewhat older.
+
+~~Not fixed yet, at least as far as I know.~~
 
 The vendor did not commit the vulnerability within 6 weeks after he was notified. 
 
@@ -100,3 +107,5 @@ first one).
 2016-11-13 02:25 - Description published
 
 2016-11-20 04:30 - Problem was probably already fixed with version 113.06.69-41875, released as public beta version at 2016-11-04 (less than 4 weeks after first details were available on IPPF and in less than five months after my first message to vendor)
+
+2016-11-23 08:43 - A delayed response from vendor arrived today in the morning - the problem was fixed with version 113.06.69-41756, released at 2016-11-01 (three weeks ago). Mitigations to protect the owner and the description of available fixes were updated again (see above).
