@@ -407,7 +407,7 @@ if [ ${#response} -gt 0 -a x${response:8:8} == x02000000 ]; then
 	echo "EVA_FOUND=1"
 	echo "EVA_IP=$ip"
 	if [ $default_hold -eq 1 ]; then
-	 	echo "QUIT" | socat TCP4:$ip:21 STDOUT 2>/dev/null 1>&2
+	 	echo | socat TCP4:$ip:21 STDOUT 2>/dev/null 1>&2
 		echo "boot sequence interrupted" 1>&2
 	fi
 	rc=0
