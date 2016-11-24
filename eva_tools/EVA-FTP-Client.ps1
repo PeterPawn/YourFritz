@@ -345,7 +345,10 @@ function WriteFile {
     }
     try {
         SendCommand "STOR $target"
-        $answer = ReadAnswer
+        $answer = [String]::Empty
+        while ($answer.Length -eq 0) {
+            $answer = ReadAnswer
+        }
         if (ParseAnswer $answer "150") {
             $sending = $True
             # CopyToAsync is .NET 4.5 and above (as stated by MSDN), but it seems to be available in 4.0 (W7/PS3/CLR4.0)
@@ -372,7 +375,10 @@ function WriteFile {
                     # very late during my tests
                     Start-Sleep -Milliseconds 5000
                 }
-                $answer = ReadAnswer
+                $answer = [String]::Empty
+                while ($answer.Length -eq 0) {
+                    $answer = ReadAnswer
+                }
                 if (ParseAnswer $answer "226") {
                     $sending = $False
                     $result = $True
