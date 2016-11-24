@@ -252,7 +252,7 @@ function BootDeviceFromImage {
         Throw $ex
     }
     $memsize = GetEnvironmentValue "memsize"
-    # check, if memsize is a multiple of 32 MB, else it's already change by an earlier attempt
+    # check, if memsize is a multiple of 32 MB, else it's already changed by an earlier attempt
     $rem = $memsize % (1024 * 1024 * 32)
     if ($rem -ne 0) {
         $ex = New-Object System.Management.Automation.MethodInvocationException "The memory size was already reduced by an earlier upload, restart the device first."
