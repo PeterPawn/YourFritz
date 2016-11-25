@@ -51,7 +51,7 @@ An input in the GUI seems to be un-checked in this place, at least I was able to
 
 An unauthorized attacker may read the TFFS content (using an own firmware image to start the router from memory), change the (encrypted) value in the file "ar7.cfg" to the new (unencrypted) value and store the result ... simply using the TFFS driver or even while writing a whole new TFFS image with the malicious content.
 
-If I haven't missed important changes, this vulnerability was added not so far ago ... as long as the password was displayed again for a manual file-based update or it had to be entered there (and wasn't already stored), a changed value could get noticed very early.
+If I haven't missed important changes, this vulnerability was added not so long ago ... as long as the password was displayed again for a manual file-based update or it had to be entered there (and wasn't already stored), a changed value could get noticed very early.
 
 But the internal call to `tr069fwupdate` is present much longer (if I search in my archive of original firmware versions) - maybe the input was checked more restrictive in earlier versions. The (hidden) attack is now possible due to additional changes, where the user defines the password one time and in one place (where he usually never looks in again) and therefore a change cannot get noticed.
 
