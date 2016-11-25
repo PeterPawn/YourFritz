@@ -22,7 +22,7 @@ yf_trim()
 	dir=${1:-0}
 	[ $dir -lt -1 ] || [ $dir -gt 1 ] && return 1
 	char="${2:-[ \t\r]}"
-	[ ${#char} -gt 1 ] && ( [ "${char#[}" = "$char" ] || [ "${char%]}" = "$char" ] ) && return 1
+	[ ${#char} -gt 1 ] && ( [ "${char#[[]}" = "$char" ] || [ "${char%[]]}" = "$char" ] ) && return 1
 	[ $dir -eq -1 ] && sed -e "s!^${char}*!!g"
 	[ $dir -eq 1 ] && sed -e "s!${char}*\$!!g"
 	[ $dir -eq 0 ] && yf_trim -1 "$char" | yf_trim 1 "$char"
