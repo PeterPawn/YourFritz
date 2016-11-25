@@ -35,15 +35,15 @@ function ParseAnswer {
 
     if ($answer.GetType().ToString() -eq "System.Object[]") {
         for ($i = 0; $i -lt $answer.Count; $i++) {
-            $line = $answer[$i] 
-            if ($line.GetType().ToString() -eq "System.String" -and $line.Length -gt 0 -and $line.StartsWith($expected)) { 
+            $line = $answer[$i]
+            if ($line.GetType().ToString() -eq "System.String" -and $line.Length -gt 0 -and $line.StartsWith($expected)) {
                 return $True
-            } 
+            }
         }
     }
     else {
-        if ($answer.GetType().ToString() -eq "System.String" -and $answer.Length -gt 0 -and $answer.StartsWith($expected)) { 
-            return $True 
+        if ($answer.GetType().ToString() -eq "System.String" -and $answer.Length -gt 0 -and $answer.StartsWith($expected)) {
+            return $True
         }
     }
     return $False
@@ -56,7 +56,7 @@ function ParseAnswer {
 #                                                                                     #
 #######################################################################################
 function ReadAnswer {
-    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     # a large buffer to hold potential answers ... they should never reach 4 KB in one single read from the FTP control channel
     $inputBuffer = New-Object System.Byte[] 4096
     # the whole conversation is ASCII based here
@@ -85,7 +85,7 @@ function SendCommand {
     Param([ValidateNotNullOrEmpty()][Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the command string to be sent to the server')][string]$command
     )
 
-    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     # simple as possible, write and flush - could be done without the function call
     $Global:EVAWriter.WriteLine($command)
     $Global:EVAWriter.Flush()
@@ -100,7 +100,7 @@ function SendCommand {
 function GetEnvironmentValue {
     Param([ValidateNotNullOrEmpty()][Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the requested variable')][String]$name
     )
-    
+
     SendCommand "GETENV $name"
     $answer = ReadAnswer
     if (ParseAnswer $answer "200") {
@@ -117,7 +117,7 @@ function SetEnvironmentValue {
     Param([ValidateNotNullOrEmpty()][Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the variable name')][String]$name,
           [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'the value to set, a missing value leads to an UNSETENV command issued')][String]$value
     )
-    
+
     if ($value -eq $null -or $value.Length -eq 0) { $cmd = "UNSETENV $name" }
     else { $cmd = "SETENV $name $value" }
     SendCommand $cmd
@@ -151,11 +151,11 @@ function SwitchSystem {
     Write-Verbose "new setting     - linux_fs_start=$new"
     # set the new value
     if (SetEnvironmentValue "linux_fs_start" $new) {
-        Write-Verbose "new value set successfully" 
+        Write-Verbose "new value set successfully"
         return $True
-    } 
-    else { 
-        Write-Output "Error setting new value for 'linux_fs_start' to '$new'." 
+    }
+    else {
+        Write-Output "Error setting new value for 'linux_fs_start' to '$new'."
         Write-Output $Error
         return $False
     }
@@ -191,7 +191,7 @@ function GetEnvironmentFile {
     catch {
         $fname = [System.IO.Path]::GetTempFileName()
     }
-    if (ReadFile $fname $name) { 
+    if (ReadFile $fname $name) {
         if (-not ($file)) {
             $file = Get-Item -Path $fname
         }
@@ -238,11 +238,11 @@ function UploadFlashFile {
 #######################################################################################
 function BootDeviceFromImage {
     Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the file containing the image to be loaded')][String]$filename
-    )    
+    )
 
-    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     if (-not (Test-Path $filename)) {
-        $ex = New-Object System.Management.Automation.MethodInvocationException "The specified file cannot be found or accessed." 
+        $ex = New-Object System.Management.Automation.MethodInvocationException "The specified file cannot be found or accessed."
         Throw $ex
     }
     $fileattr = Get-Item "$filename"
@@ -314,7 +314,7 @@ function WriteFile {
           [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the command to be used for passive data transfers, defaults to "P@SW"')][String]$passive_cmd = "P@SW"
     )
 
-    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     Write-Debug "Uploading file '$filename' to '$target' ..."
     # set passive mode
     SendCommand $passive_cmd
@@ -325,7 +325,7 @@ function WriteFile {
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
     if ($answer[0] -match "^227 Entering Passive Mode \((?'a1'[0-9]{1,3}),(?'a2'[0-9]{1,3}),(?'a3'[0-9]{1,3}),(?'a4'[0-9]{1,3}),(?'p1'[0-9]{1,3}),(?'p2'[0-9]{1,3})\).*$") {
-        $data_addr = [System.Net.IPAddress]::Parse($($Matches["a1"]+'.'+$Matches["a2"]+'.'+$Matches["a3"]+'.'+$Matches["a4"])) 
+        $data_addr = [System.Net.IPAddress]::Parse($($Matches["a1"]+'.'+$Matches["a2"]+'.'+$Matches["a3"]+'.'+$Matches["a4"]))
         $data_port = ( [System.Int32]::Parse($Matches["p1"]) * 256 ) + [System.Int32]::Parse($Matches["p2"])
     }
     # open connection and stream
@@ -376,9 +376,7 @@ function WriteFile {
                     Start-Sleep -Milliseconds 5000
                 }
                 $answer = [String]::Empty
-                while ($answer.Length -eq 0) {
-                    $answer = ReadAnswer
-                }
+                $answer = ReadAnswer
                 if (ParseAnswer $answer "226") {
                     $sending = $False
                     $result = $True
@@ -417,7 +415,7 @@ function ReadFile {
           [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the command to be used for passive data transfers, defaults to "P@SW"')][String]$passive_cmd = "P@SW"
     )
 
-    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" } 
+    if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     # set passive mode
     SendCommand $passive_cmd
     $answer = ReadAnswer
@@ -427,7 +425,7 @@ function ReadFile {
     }
     # parse passive mode answer: 227 Entering Passive Mode (192,168,178,1,12,10) into named capture groups
     if ($answer[0] -match "^227 Entering Passive Mode \((?'a1'[0-9]{1,3}),(?'a2'[0-9]{1,3}),(?'a3'[0-9]{1,3}),(?'a4'[0-9]{1,3}),(?'p1'[0-9]{1,3}),(?'p2'[0-9]{1,3})\).*$") {
-        $data_addr = [System.Net.IPAddress]::Parse($($Matches["a1"]+'.'+$Matches["a2"]+'.'+$Matches["a3"]+'.'+$Matches["a4"])) 
+        $data_addr = [System.Net.IPAddress]::Parse($($Matches["a1"]+'.'+$Matches["a2"]+'.'+$Matches["a3"]+'.'+$Matches["a4"]))
         $data_port = ( [System.Int32]::Parse($Matches["p1"]) * 256 ) + [System.Int32]::Parse($Matches["p2"])
     }
     # if no file name was specified, we'll use a temporary file and write its content to the pipeline later
@@ -501,7 +499,7 @@ function ReadFile {
             }
         }
         else {
-            # short data transfer only, already done 
+            # short data transfer only, already done
             try {
                 $stream.CopyTo($file)
             }
@@ -542,7 +540,7 @@ function ReadFile {
 function Login {
     Param([Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the user name to be used to login')][String]$username = "adam2",
           [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the needed password')][String]$password = "adam2"
-    )          
+    )
 
     $loggedIn = $False
     $loopRead = $True
@@ -610,7 +608,7 @@ if (ParseAnswer $answer "220") {
 # command chain                                                                     #
 #                                                                                   #
 #####################################################################################
-# 
+#
 # Possible actions are:
 #
 #            GetEnvironmentFile [ "env" | "count" ]
@@ -620,7 +618,7 @@ if (ParseAnswer $answer "220") {
 #            SwitchSystem
 #            BootDeviceFromImage <image_file>
 #            UploadFlashFile <flash_file> <target_partition>
-# 
+#
 # or you use some lower-level functions (some aren't useful here, it's simply too
 # late to login - e.g.) like these:
 #
