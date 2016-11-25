@@ -62,3 +62,5 @@ Because the router usually has an active connection to the internet while the co
 ## Timeline
 
 2016-11-25 10:45 - First version published - vendor will be notified by e-mail, pointing to this description.
+
+2016-11-25 15:00 - Vendor assigned incident number #796851 to the report, folder name changed to this number.
