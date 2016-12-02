@@ -26,7 +26,7 @@ An attack can only be started from someone with local administrative access or -
 ## Available fixes
 
 - As far as I know, there's no fix available at the time of this writing.
-~~- If an update for this vulnerability becomes available, this description could(!) be updated (or still may be left unchanged - it's only my discretion), to reflect any changes by the vendor.~~
+- ~~If an update for this vulnerability becomes available, this description could(!) be updated (or still may be left unchanged - it's only my discretion), to reflect any changes by the vendor.~~
 - An updated beta version was published on 2016-12-02 (for 7490), therefore the fix should be contained in each future version.
 
 ## CVE
