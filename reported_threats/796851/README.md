@@ -32,7 +32,7 @@ An attack can only be started from someone with local administrative access or -
 
 No CVE ID requested, mitre.org will even not provide IDs for AVM's products any longer.
 
-## Description / Exploitation if the vulnerability
+## Description / Exploitation of the vulnerability
 
 In newer versions AVM has invented one more opportunity to send unattended e-mails (they're using the good genuine-german term "Push Services" for this - but I've no idea, who's the "pusher" and if he really could have an interrelation to drug trafficking here) and one condition triggering such a message is an upcoming firmware update (automatically and unattended or manually from a online source or a provided file).
 
