@@ -64,3 +64,5 @@ Because the router usually has an active connection to the internet while the co
 2016-11-25 10:45 - First version published - vendor will be notified by e-mail, pointing to this description.
 
 2016-11-25 15:00 - Vendor assigned incident number #796851 to the report, folder name changed to this number.
+
+2016-12-02 16:41 - I've received another mail from vendor ... the leak has been closed in 113.06.69-42372, which was published today and built yesterday (16:50).
