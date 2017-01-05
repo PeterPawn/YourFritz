@@ -55,12 +55,6 @@
 # is only needed, if decompression is done to a memory buffer, but we provide it anyway to prevent an #
 # 'unexpected end of input' from 'lzma -d'.                                                           #
 #                                                                                                     #
-# This script needs the 'testvalue' script from here:                                                 #
-#                                                                                                     #
-# https://github.com/PeterPawn/YourFritz/blob/master/export/testvalue                                 #
-#                                                                                                     #
-# , if it's not called from a FRITZ!OS installation.                                                  #
-#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
