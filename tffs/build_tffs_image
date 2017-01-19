@@ -60,7 +60,7 @@ for name in $*; do
 	done
 	yf_hex2bin "$out"
 done
-[ $# -gt 0 ] && yf_hex2bin FFFF
+yf_hex2bin FFFF
 ##################################################################################
 #
 # regular end of script reached
