@@ -26,13 +26,14 @@ An attack can only be started from someone with local administrative access or -
 ## Available fixes
 
 - As far as I know, there's no fix available at the time of this writing.
-- If an update for this vulnerability becomes available, this description could(!) be updated (or still may be left unchanged - it's only my discretion), to reflect any changes by the vendor.
+- ~~If an update for this vulnerability becomes available, this description could(!) be updated (or still may be left unchanged - it's only my discretion), to reflect any changes by the vendor.~~
+- An updated beta version was published on 2016-12-02 (for 7490), therefore the fix should be contained in each future version.
 
 ## CVE
 
 No CVE ID requested, mitre.org will even not provide IDs for AVM's products any longer.
 
-## Description / Exploitation if the vulnerability
+## Description / Exploitation of the vulnerability
 
 In newer versions AVM has invented one more opportunity to send unattended e-mails (they're using the good genuine-german term "Push Services" for this - but I've no idea, who's the "pusher" and if he really could have an interrelation to drug trafficking here) and one condition triggering such a message is an upcoming firmware update (automatically and unattended or manually from a online source or a provided file).
 
@@ -64,3 +65,5 @@ Because the router usually has an active connection to the internet while the co
 2016-11-25 10:45 - First version published - vendor will be notified by e-mail, pointing to this description.
 
 2016-11-25 15:00 - Vendor assigned incident number #796851 to the report, folder name changed to this number.
+
+2016-12-02 16:41 - I've received another mail from vendor ... the leak has been closed in 113.06.69-42372, which was published today and built yesterday (16:50).
