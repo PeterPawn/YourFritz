@@ -66,6 +66,7 @@ complen_offset=16
 complen_size=4
 lzmahdr_offset=28
 lzmahdr_size=5 # usually 0x5D followed by 32 KB dictionary size (0x00008000), both in LE encoding
+lzmahdr_content_base64="XQAAgAA="
 comp_stream_offset=36
 #######################################################################################################
 #                                                                                                     #
@@ -142,6 +143,32 @@ tf=/tmp/$(date +%s)_$$.kernel
 rm $tf 2>/dev/null
 trap "rm $tf 2>/dev/null" EXIT HUP INT
 cat - >$tf
+#######################################################################################################
+#                                                                                                     #
+# - try to locate the LZMA header within the next 128 byte from the known offset to accommodate to    #
+#   the different offsets for 7580 and 7560 models                                                    #
+# - if no appropriate header can be found, the offsets will remain unchanged                          #
+# - we assume, that there's a LZMA header with an unexpected content and we'll try to unpack anyhow   #
+#                                                                                                     #
+#######################################################################################################
+start=$lzmahdr_offset
+stop=$(( lzmahdr_offset + 128 ))
+found=0
+while [ $found -eq 0 ]; do
+	if [ $start -gt $stop ]; then
+		break
+	fi
+	chk=$(dd if=$tf bs=1 skip=$start count=$lzmahdr_size | base64)
+	if [ $chk = $lzmahdr_content_base64 ]; then
+		offset=$(( start - lzmahdr_offset ))
+		found=1
+		uncomplen_offset=$(( uncomplen_offset + offset ))
+		complen_offset=$(( complen_offset + offset ))
+		lzmahdr_offset=$(( lzmahdr_offset + offset ))
+		comp_stream_offset=$(( comp_stream_offset + offset ))
+	fi
+	start=$(( start + 4 )) # we'll take 32-bit steps, 'cause MIPS instructions should be aligned
+done
 #######################################################################################################
 #                                                                                                     #
 # get length from compressed kernel image                                                             #
