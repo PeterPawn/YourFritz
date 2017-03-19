@@ -1,7 +1,7 @@
 ﻿Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the username to login to TR-064')][string]$Username,
       [Parameter(Mandatory = $True, Position = 1, HelpMessage = 'the password to login to TR-064')][string]$Password,
       [Parameter(Mandatory = $True, Position = 2, HelpMessage = 'the command to inject')][string]$Command,
-      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the external SSL port of the FRITZ!Box, defaults to 443')][string]$GUISSLPort = 49443,
+      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the TR-064 SSL port of the FRITZ!Box, defaults to 49443')][string]$SSLPort = 49443,
       [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the IP address of the FRITZ!Box, defaults to 192.168.178.1')][string]$Address = "192.168.178.1")
 
 $WebClient = New-Object System.Net.WebClient
@@ -14,6 +14,6 @@ $WebClient.Credentials = New-Object System.Net.NetworkCredential($Username, $Pas
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
 $WebClient.Headers.Set("Content-Type", 'text/xml; charset="utf-8"')
 $WebClient.Headers.Set("SOAPACTION", 'urn:dslforum-org:service:UserInterface:1#X_AVM-DE_DoManualUpdate')
-$response = [xml]$WebClient.UploadString("https://" + $Address + ":" + $GUISSLPort + "/upnp/control/userif", $getinfo_query)
+$response = [xml]$WebClient.UploadString("https://" + $Address + ":" + $SSLPort + "/upnp/control/userif", $getinfo_query)
 
 $response.Envelope.Body.InnerXml
