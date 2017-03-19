@@ -158,7 +158,7 @@ while [ $found -eq 0 ]; do
 	if [ $start -gt $stop ]; then
 		break
 	fi
-	chk=$(dd if=$tf bs=1 skip=$start count=$lzmahdr_size | base64)
+	chk=$(dd if=$tf bs=1 skip=$start count=$lzmahdr_size 2>/dev/null | base64)
 	if [ $chk = $lzmahdr_content_base64 ]; then
 		offset=$(( start - lzmahdr_offset ))
 		found=1
