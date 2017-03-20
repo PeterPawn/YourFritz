@@ -15,7 +15,7 @@ BIN_SRCS = gen_$(BASENAME).c extract_$(BASENAME).c
 # header files
 #
 HELPER_HDRS = $(BASENAME)_helpers.h 
-BIN_HDRS = $(BASENAME).h $(BASENAME)_macros.h
+BIN_HDRS = ./linux/include/uapi/linux/$(BASENAME).h $(BASENAME)_macros.h
 #
 # object files
 #
@@ -32,7 +32,7 @@ RANLIB = ranlib
 # libfdt (from kernel sources, subdir 'scripts/dtc/libfdt')
 #
 LIBFDT = libfdt
-LIBFDT_LOC = ./$(LIBFDT)
+LIBFDT_LOC = ./linux/scripts/dtc/$(LIBFDT)
 LIBFDT_LIB = $(LIBFDT_LOC)/$(LIBFDT).a
 LIBS += $(LIBFDT_LIB)
 include $(LIBFDT_LOC)/Makefile.$(LIBFDT)

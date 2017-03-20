@@ -16,7 +16,7 @@
 #ifdef FREETZ
 #include <linux/avm_kernel_config.h>
 #else // FREETZ
-#include "avm_kernel_config.h"
+#include "linux/include/uapi/linux/avm_kernel_config.h"
 #endif // FREETZ
 
 struct memoryMappedFile
