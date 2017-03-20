@@ -10,3 +10,7 @@ approach to take this way.
 You can find further information in an IPPF thread (but it's in German only):
 
 http://www.ip-phone-forum.de/showthread.php?t=287995
+
+If you want to compile the contained sources for a specific model, you have to provide a symlink named "linux" to the root of the
+correct kernel sources. The files "include/uapi/linux/avm_kernel_config.h" and the whole directory "scripts/dtc/libfdt" (from the
+OpenFirmware device-tree compiler) are the parts needed from current kernel sources.

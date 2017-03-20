@@ -2,7 +2,7 @@
 /***********************************************************************
  *                                                                     *
  *                                                                     *
- * Copyright (C) 2016 P.Hämmerlein (http://www.yourfritz.de)           *
+ * Copyright (C) 2016-2017 P.Hämmerlein (http://www.yourfritz.de)      *
  *                                                                     *
  * This program is free software; you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -25,10 +25,10 @@
 void usage()
 {
 	fprintf(stderr, "extract_avm_kernel_config - extract (binary copy of) kernel config area from AVM's kernel\n\n");
-	fprintf(stderr, "(C) 2016 P. Hämmerlein (http://www.yourfritz.de)\n\n");
+	fprintf(stderr, "(C) 2016-2017 P. Hämmerlein (http://www.yourfritz.de)\n\n");
 	fprintf(stderr, "Licensed under GPLv2, see LICENSE file from source repository.\n\n");
 	fprintf(stderr, "Usage:\n\n");
-	fprintf(stderr, "extract_avm_kernel_config <unpacked_kernel> [<dtb_file>]\n");
+	fprintf(stderr, "extract_avm_kernel_config [ -s <size in KByte> ] <unpacked_kernel> [<dtb_file>]\n");
 	fprintf(stderr, "\nThe specified DTB content (a compiled OF device tree BLOB) is");
 	fprintf(stderr, "\nsearched in the unpacked kernel and the place, where it's found");
 	fprintf(stderr, "\nis assumed to be within the original kernel config area.\n");
@@ -37,6 +37,9 @@ void usage()
 	fprintf(stderr, "\nare performed to guess the correct location.\n");
 	fprintf(stderr, "\nThe output is written to STDOUT, so you've to redirect it to the");
 	fprintf(stderr, "\nproper location.\n");
+	fprintf(stderr, "\nTo support different models with changing sizes of the embedded");
+	fprintf(stderr, "\nconfiguration area, a default size of 64 KB for this area is used,");
+	fprintf(stderr, "\nwhich may be overwritten with the -s option.\n");
 }
 
 bool checkConfigArea(struct _avm_kernel_config ** configArea, size_t configSize)
@@ -47,14 +50,14 @@ bool checkConfigArea(struct _avm_kernel_config ** configArea, size_t configSize)
 	return true;
 }
 
-struct _avm_kernel_config ** findConfigArea(void *dtbLocation)
+struct _avm_kernel_config ** findConfigArea(void *dtbLocation, size_t size)
 {
 	struct _avm_kernel_config **	configArea = NULL;
 
 	// previous 4K boundary should be the start of the config area 
 	configArea = (struct _avm_kernel_config **) (((int) dtbLocation >> 12) << 12);
 
-	if (checkConfigArea(configArea, 64 * 1024)) return configArea;
+	if (checkConfigArea(configArea, size)) return configArea;
 
 	return NULL;
 }
@@ -177,18 +180,72 @@ int main(int argc, char * argv[])
 	struct memoryMappedFile	kernel;
 	struct memoryMappedFile	dtb;
 	void *					dtbLocation = NULL;
+	ssize_t					size = 64 * 1024;
+	int						i = 1;
+	int						paramCount = argc;
 
-	if (argc < 2)
+	/* no reason to use a getopt implementation for our simple calling convention */
+	if (paramCount > i)
+	{
+		char *				sizeString = NULL;
+
+		if (strcmp(argv[i], "-s") == 0)
+		{
+			if (paramCount > i + 1)
+			{
+				sizeString = argv[i + 1];
+				i += 2;
+				paramCount -= 2;
+			}
+			else
+			{
+				fprintf(stderr, "Missing numeric value after option '-s'.\n");
+				exit(2);
+			}
+		}
+		else if (strncmp(argv[i], "--size=", 7) == 0)
+		{
+			sizeString = strchr(argv[i], '=');
+			sizeString++; /* skip equal sign */
+			i += 1;
+			paramCount -= 1;
+		}
+
+		if (sizeString != NULL)
+		{
+			int				newSize;
+
+			newSize = atoi(sizeString);
+			if (newSize == 0)
+			{
+				fprintf(stderr, "Missing or invalid numeric value for size option.\n");
+				exit(2);
+			}
+			if (newSize < 16 || newSize > 1024)
+			{
+				fprintf(stderr, "Size value should be between 16 and 1024 - change source files, if your size is really valid.\n");
+				exit(2);
+			}
+			if ((newSize & 0x0F) > 0)
+			{
+				fprintf(stderr, "Size value should be a multiple of 16 - change source files, if your size is really valid.\n");
+				exit(2);
+			}
+			size = newSize * 1024;
+		}
+	}
+
+	if (paramCount < 2)
 	{
 		usage();
 		exit(1);
 	}
 
-	if (openMemoryMappedFile(&kernel, argv[1], "unpacked kernel", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
+	if (openMemoryMappedFile(&kernel, argv[i], "unpacked kernel", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
 	{
-		if (argc > 2)
+		if (paramCount > 2)
 		{
-			if (openMemoryMappedFile(&dtb, argv[2], "device tree BLOB", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
+			if (openMemoryMappedFile(&dtb, argv[i + 1], "device tree BLOB", O_RDONLY | O_SYNC, PROT_READ, MAP_SHARED))
 			{
 				if (fdt_check_header(dtb.fileBuffer) == 0)
 				{
@@ -214,13 +271,13 @@ int main(int argc, char * argv[])
 		
 		if (dtbLocation != NULL)
 		{
-			struct _avm_kernel_config * *configArea = findConfigArea(dtbLocation);
+			struct _avm_kernel_config * *configArea = findConfigArea(dtbLocation, size);
 			
 			if (configArea != NULL)
 			{
-				ssize_t	written = write(1, (void *) configArea, 64 * 1024);
+				ssize_t	written = write(1, (void *) configArea, size);
 
-				if (written == 64 * 1024)
+				if (written == size)
 				{
 					returnCode = 0;
 				}

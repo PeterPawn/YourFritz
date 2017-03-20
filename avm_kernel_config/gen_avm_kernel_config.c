@@ -252,10 +252,13 @@ int processConfigArea(struct _avm_kernel_config * *configArea)
 
 	// device tree for subrevision 0 is the fallback entry and may be expected 
 	// as 'always present', if FDTs exist at all
-	if (hasDeviceTree(configArea, 0))
+	for (int i = 0; i <= avm_kernel_config_tags_device_tree_subrev_last; i++)
 	{
-		outputDeviceTrees = true;
-		fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t%u, \"device_tree_subrev_0\"\n", avm_kernel_config_tags_device_tree_subrev_0);
+		if (hasDeviceTree(configArea, i))
+		{
+			outputDeviceTrees = true;
+			fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t%u, \"device_tree_subrev_%u\"\n", avm_kernel_config_tags_device_tree_subrev_0 + i, i);
+		}
 	}
 
 	fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t0\n");
