@@ -151,7 +151,7 @@ fi
 #                                                                                     #
 #######################################################################################
 tmp="$(yf_mktemp -d)"
-trap "rm -r \"$tmp\"" EXIT HUP INT
+trap "rm -r \"$tmp\";exit 127" EXIT HUP INT
 #######################################################################################
 #                                                                                     #
 # extract and decode the tarball with the TFFS dumps                                  #
