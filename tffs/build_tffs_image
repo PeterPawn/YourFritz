@@ -34,15 +34,15 @@ yf_pack B16 1 B16 4 8 255 8 255 8 255 8 254
 #
 # add name table
 #
-nametable_to_tffs <"$1"
+${0%/*}/nametable_to_tffs <"$1"
 #
 # add environment
 #
-environment_to_tffs "$1" <"$2"
+${0%/*}/environment_to_tffs "$1" <"$2"
 #
 # add counters
 #
-counter_to_tffs <"$3"
+${0%/*}/counter_to_tffs <"$3"
 #
 # add optional files
 #
