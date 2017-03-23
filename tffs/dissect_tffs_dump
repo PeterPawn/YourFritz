@@ -56,6 +56,7 @@ cat - >$tffsdump
 #
 ##################################################################################
 offset=0
+[ "$1" = "-d" ] && debug=1 || debug=0
 while true; do
 	header="$(dd if=$tffsdump bs=4 skip=$(( offset / 4 )) count=1 2>/dev/null | yf_bin2hex)"
 	if [ ${#header} -eq 0 ]; then
@@ -80,6 +81,7 @@ while true; do
 				printf "\x1f\x8b\x08\x00\x00\x00\x00\x00" | cat - $tmpdir/$id.bin | gzip -dc 2>/dev/null >$tmpdir/$id.inflated
 			fi
 			printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
+			[ $debug -eq 1 ] && printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len 1>&2
 		fi
 	fi
 	offset=$(( offset + 4 + $(( ( len + 3 ) & ~3 )) ))
