@@ -313,62 +313,79 @@ trap "rm -r $tmpdir" EXIT HUP
 #
 # first we try to find an usable interface and a local IP address
 #
-if [ $bind_to_interface -eq 0 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
-	# no parameter was set, try to use the interface to our default gateway
-	default_interface="$(yf_get_default_gateway_interface)"
-	if [ $? -ne 0 ]; then
-		# no default gateway, check number of interfaces
-		debug "No default gateway found"
-		intfs="$(yf_network_interfaces)"
-		if [ $(yf_count_of "$intfs") -gt 1 ]; then
-			echo "More than one network interface found and none of them has a default route." 1>&2
-			echo "Use the INTERFACE parameter to select a single one." 1>&2
-			exit 1
-		fi
-		addrs="$(yf_get_ip_address "$intf")"
-		if [ $(yf_count_of "$addrs") -gt 0 ]; then
-			# interface has an IPv4 address, we will use this one to
-			# send our packets
-			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
-			default_local_ip="${local_ip_with_mask%%/*}"
-			default_interface="$intf"
-			bind_to_address="detected"		
-			debug "Set interface to '$intf'"
-			debug "Set local IP address to '$local_ip_with_mask'"
-		fi
-		if [ x$bind_to_address != xdetected ]; then
-			echo "No suitable interface with an IPv4 address found." 1>&2
-			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
-			exit 1
-		fi
-	else
-		debug "Using interface to default gateway"
-		addrs="$(yf_get_ip_address "$default_interface")"
-		if [ $(yf_count_of "$addrs") -gt 0 ]; then
-			# interface has an IPv4 address, we will use this one to
-			# send our packets
-			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
-			default_local_ip="${local_ip_with_mask%%/*}"
-			bind_to_address="detected"		
-			debug "Set interface to '$default_interface'"
-			debug "Set local IP address to '$local_ip_with_mask'"
-		else
-			echo "Something's wrong ... the interface to the default gateway has no IPv4 address." 1>&2
-			echo "This is expected as long as we're running on a FRITZ!Box device, because there" 1>&2
-			echo "the default gateway is behind 'dev dsl' and the address translation is made" 1>&2
-			echo "in a different manner by the FRITZ!OS IP stack. The 'dsl' device gets no IPv4" 1>&2
-			echo "address assigned in this case."
-			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
-			exit 1
-		fi
-	fi
-	default_eva_ip="$(compute_eva_address "$local_ip_with_mask")"
-	[ $? -ne 0 ] && exit 1
-	debug "Set EVA IP address to '$default_eva_ip'"
-elif [ $bind_to_interface -eq 1 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
-	# only an interface name was given, use the first address from this interface
-	addrs="$(yf_get_ip_address $default_interface)"
+#if [ $bind_to_interface -eq 0 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
+#	# no parameter was set, try to use the interface to our default gateway
+#	default_interface="$(yf_get_default_gateway_interface)"
+#	if [ $? -ne 0 ]; then
+#		# no default gateway, check number of interfaces
+#		debug "No default gateway found"
+#		intfs="$(yf_network_interfaces)"
+#		if [ $(yf_count_of "$intfs") -gt 1 ]; then
+#			echo "More than one network interface found and none of them has a default route." 1>&2
+#			echo "Use the INTERFACE parameter to select a single one." 1>&2
+#			exit 1
+#		fi
+#		addrs="$(yf_get_ip_address "$intf")"
+#		if [ $(yf_count_of "$addrs") -gt 0 ]; then
+#			# interface has an IPv4 address, we will use this one to
+#			# send our packets
+#			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
+#			default_local_ip="${local_ip_with_mask%%/*}"
+#			default_interface="$intf"
+#			bind_to_address="detected"		
+#			debug "Set interface to '$intf'"
+#			debug "Set local IP address to '$local_ip_with_mask'"
+#		fi
+#		if [ x$bind_to_address != xdetected ]; then
+#			echo "No suitable interface with an IPv4 address found." 1>&2
+#			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
+#			exit 1
+#		fi
+#	else
+#		debug "Using interface to default gateway"
+#		addrs="$(yf_get_ip_address "$default_interface")"
+#		if [ $(yf_count_of "$addrs") -gt 0 ]; then
+#			# interface has an IPv4 address, we will use this one to
+#			# send our packets
+#			local_ip_with_mask="$(yf_word_of 1 "$addrs")"
+#			default_local_ip="${local_ip_with_mask%%/*}"
+#			bind_to_address="detected"		
+#			debug "Set interface to '$default_interface'"
+#			debug "Set local IP address to '$local_ip_with_mask'"
+#		else
+#			echo "Something's wrong ... the interface to the default gateway has no IPv4 address." 1>&2
+#			echo "This is expected as long as we're running on a FRITZ!Box device, because there" 1>&2
+#			echo "the default gateway is behind 'dev dsl' and the address translation is made" 1>&2
+#			echo "in a different manner by the FRITZ!OS IP stack. The 'dsl' device gets no IPv4" 1>&2
+#			echo "address assigned in this case."
+#			echo "Use the parameters to specify the interface and/or local address to be used." 1>&2
+#			exit 1
+#		fi
+#	fi
+#	default_eva_ip="$(compute_eva_address "$local_ip_with_mask")"
+#	[ $? -ne 0 ] && exit 1
+#	debug "Set EVA IP address to '$default_eva_ip'"
+#elif [ $bind_to_interface -eq 1 -a x$bind_to_address == xunused -a $change_eva_ip -eq 0 ]; then
+#	# only an interface name was given, use the first address from this interface
+#	addrs="$(yf_get_ip_address $default_interface)"
+#fi
+#
+# enforce a call with needed settings, detection trials above are incomplete and now unused
+#
+err=0
+if [ $bind_to_interface -eq 0 ]; then
+	echo "Please specify the network interface name with 'INTERFACE=<name>' parameter." 1>&2
+	err=2
 fi
+if [ "$bind_to_address" = "unused" ]; then
+	echo "Please specify the IP address of this computer with 'FROM=<ipv4>' parameter." 1>&2
+	err=2
+fi
+if [ $change_eva_ip -eq 0 ]; then
+	echo "Please specify the IP address to assign to the FRITZ!Box device with 'TO=<ipv4>' parameter." 1>&2
+	err=2
+fi
+[ $err -ne 0 ] && exit $err
 #
 # prepare the packet to be sent as broadcast
 #
