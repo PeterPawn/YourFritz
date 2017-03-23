@@ -1,4 +1,5 @@
 ## Files in this folder
+### (this is something like a "grocery store" of scripts for different purposes)
 
 `alive_start.sh`
 
