@@ -557,9 +557,9 @@ function Login {
             $loggedIn = $True
             $loopRead = $False
         }
-		elseif (ParseAnswer $answer "530") {
-			$loopRead = $False
-		}
+        elseif (ParseAnswer $answer "530") {
+            $loopRead = $False
+        }
     }
     return $loggedIn
 }
