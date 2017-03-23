@@ -61,6 +61,8 @@ login_to_box()
 		else
 			if [ x"$ec" == x"230" ]; then
 				return 0
+			elif [ x"$ec" == x"530" ]; then
+				return 1
 			fi
 		fi
 		lines=$(( lines++ ))
