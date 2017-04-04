@@ -117,13 +117,17 @@ for ($i = 0; $i -lt $maxWait; $i++) {
                 if (-not $nohold) {
                     Write-Verbose "Trying to connect to the FTP port to hold up the device in bootloader ..."
                     try {
-                        $ftpconn = New-Object System.Net.Sockets.TcpClient $EVA_IP, 21
-                        $ftpstream = $ftpconn.GetStream()
-                        $ftpstream.Close()
-                        $ftpconn.Close()
+                        [string]$ftpuri = 'ftp://'+$EVA_IP
+                        [System.Net.FtpWebRequest]$ftpreq = [System.Net.WebRequest]::Create($ftpuri)
+                        $ftpreq.Credentials = New-Object System.Net.NetworkCredential('adam2', 'adam2')
+                        $ftpreq.Method = [System.Net.WebRequestMethods+Ftp]::ListDirectory
+                        $ftpresp = $ftpreq.GetResponse()
+                        $ftpresp.Close()
                     }
                     catch {
-                        Write-Debug "Error during FTP connection attempt ..."
+                        if (-not $_.Exception.Message.Contains('(502) Command not implemented.')) {
+                            Write-Debug "Error during FTP connection attempt ..."
+                        }
                     }
                 }
             }
