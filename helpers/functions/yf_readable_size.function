@@ -61,8 +61,8 @@ yf_readable_size()
 		iu=1
 	fi
 	f=0
-	[ $(expr index $v .) -gt 0 ] && [ $iu -eq 1 ] && return 1
-	if [ $(expr index $v .) -gt 0 ]; then
+	[ $(yf_index $v .) -gt 0 ] && [ $iu -eq 1 ] && return 1
+	if [ $(yf_index $v .) -gt 0 ]; then
 		l=$(printf "$v" | sed -e "s|[^\.]||g")
 		[ ${#l} -gt 1 ] && return 1
 		f=$(printf "${v##*.}000" | sed -n -e "s|^\([0-9]\{3\}\).*\$|\1|p" | sed -e "s|^0*||")
