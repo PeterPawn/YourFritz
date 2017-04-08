@@ -2,34 +2,28 @@
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 #######################################################################################
 #                                                                                     #
-# substring - extract substring                                                       #
+# index - return first position of a character in a string                            #
 #                                                                                     #
 # parameters:                                                                         #
-#   $1 - original string                                                              #
-#   $2 - start position of string to extract (zero based)                             #
-#   $3 - optional length of string to extract                                         #
+#   $1 - string to search for the character                                           #
+#   $2 - character to be found                                                        #
 #                                                                                     #
 # stdout:                                                                             #
-#   the extracted string                                                              #
+#   the position of the first occurence of $2 in $1 (like 'expr index' would do it)   #
 #                                                                                     #
 # return code:                                                                        #
 #   0 - stdout value is valid                                                         #
 #   1 - error occured, one or more parameters are invald                              #
 #                                                                                     #
 #######################################################################################
-yf_substring()
+yf_index()
 (
-	in="$1"
-	start="$2"
-	len="$3"
-	[ ${#in} -eq 0 ] && return 1
-	[ -z $start ] && return 1
-	yf_is_decimal $start || return 1
-	[ ${#in} -lt $start ] && return 0
-	[ -n $len ] && ! yf_is_decimal $len && return 1
-	[ -z $len ] || [ $len -gt $(( ${#in} - start )) ] && len=$(( ${#in} - start ))
-	len="\{$len\}"
-	[ $start -gt 0 ] && mask=".\{$start\}\(.$len\).*" || mask="\(.$len\).*"
-	expr "$in" : "$mask"
+	string="$1"
+	char="$2"
+	[ ${#string} -eq 0 ] && return 1
+	[ ${#char} -ne 1 ] && return 1
+	tv="${string%${char}*}"
+	[ "$tv" = "$string" ] && l=0 || l=$(( ${#tv} + 1 ))
+	printf "%d" $l
 	return 0
 )

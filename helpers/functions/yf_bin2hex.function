@@ -39,7 +39,7 @@ yf_bin2hex()
 		for c in $part; do
 			[ $c = = ] \
 				&& f=$(( f + 1 )) \
-				|| v=$(( ( v << 6 ) + $(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
+				|| v=$(( ( v << 6 ) + $(( $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 )) ))
 		done
 		v=$(( v >> ( f * 2 ) ))
 		printf "%0$(( ( 3 - f ) << 1 ))x" $v
