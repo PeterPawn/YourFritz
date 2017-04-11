@@ -21,16 +21,24 @@ EOT
 }
 #####################################################################################
 #                                                                                   #
-# take firmwarecfg on the specified FRITZ!Box router down for a while               #
+# parameters and defaults                                                           #
 #                                                                                   #
 #####################################################################################
+# IP address of FRITZ!Box
 host="${1:-192.168.178.1}"
+# port to use (change it, if you're using TLS)
 port="${2:-80}"
+# 0 - without TLS (nc needed), 1 - use OpenSSL as TLS client
 ssl="${3:-0}"
+# number of consecutive requests, each will block 'firmwarecfg' for about 40 minutes
+#
+# 15 requests with TLS will render the device unusable for further TLS connections
+# and ~180 requests without TLS will block any further TCP connection to the router;
+# but the routing process is still functioning
 requests="${4:-3}"
 #####################################################################################
 #                                                                                   #
-# take firmwarecfg on the specified FRITZ!Box router down for a while               #
+# take 'firmwarecfg' on the specified FRITZ!Box router down for a while             #
 #                                                                                   #
 #####################################################################################
 count=0
