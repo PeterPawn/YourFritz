@@ -91,8 +91,7 @@ multipart_form()
 	int_mktmp()
 	{
 		command -v mktemp 2>/dev/null 1>&2 && name="$(mktemp $* 2>/dev/null)"
-		#if [ $? -eq 127 -o -z $name ]; then # mktemp is missing, emulation needed
-		if true; then
+		if [ $? -eq 127 -o -z $name ]; then # mktemp is missing, emulation needed
 			tmp="$TMP"
 			[ ${#tmp} -eq 0 ] && tmp="$TMPDIR"
 			[ ${#tmp} -eq 0 ] && tmp="/tmp"
