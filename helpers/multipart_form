@@ -1,0 +1,282 @@
+#! /bin/true
+##############################################################################################
+#                                                                                            #
+# Create a 'multipart/form-data' payload for HTTP communications                             #
+#                                                                                            #
+##############################################################################################
+#                                                                                            #
+# Copyright (C) 2014-2017 P.Haemmerlein (admin@yourfritz.de)                                 #
+#                                                                                            #
+# This program is free software; you can redistribute it and/or modify it under the terms of #
+# the GNU General Public License as published by the Free Software Foundation; either        #
+# version 2 of the License, or (at your option) any later version.                           #
+#                                                                                            #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;  #
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  #
+# See the GNU General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more #
+# details.                                                                                   #
+#                                                                                            #
+##############################################################################################
+#                                                                                            #
+# This is a POSIX compatible implementation, which uses the filesystem to store data         #
+# to be included into the final request.                                                     #
+#                                                                                            #
+# To use this file, include it into your own shell script with the dot (.) command           #
+# and initialize a new form with a call to the 'new' function of the included code.          # 
+#                                                                                            #
+# >> . <filename_of_this_script>                                                             #
+# >> temporary_directory="$(multipart_form new)"                                             #
+#                                                                                            #
+# After a new form has been initialized, you may add single fields or files to it.           #
+# The example assumes, that the directory name was stored in a value 'td'.                   #
+#                                                                                            #
+# >> multipart_form addfield "$td" "sid" "1234567890"                                        #
+# >> multipart_form addfile "$td" "ConfigImportFile" "<filename>" "application/octet-stream" #
+# >> multipart_form addfield "$td" "ImportExportPassword"                                    #
+#                                                                                            #
+# This adds two fields to the form data ('sid' with a text value and 'ImportExportPassword'  #
+# as an empty field) and one file '<filename>' containing unknown binary data.               #
+# After you've added all needed data, you have to get the resulting request body for the     #
+# form with:                                                                                 #
+#                                                                                            #
+# >> form="$(multipart_form postfile "$td")"                                                 #
+#                                                                                            #
+# which returns the name of a file with the body, starting with a 'Content-Type' and the     #
+# computed 'Content-Length' header, followed by the encoded content. You could copy this     #
+# file into a pipe to a HTTP server. After you've finished with a request, you should do     #
+# the housekeeping tasks and call the function to cleanup the temporary data (otherwise it   #
+# will remain somewhere in the system and this could lead to 'information disclosure', if    #
+# other users may read these files.                                                          #
+#                                                                                            #
+# >> multipart_form cleanup "$td"                                                            #
+#                                                                                            #
+# If you need to know the value in the 'Content-Length' header for other purposes, you may   #
+# get it with the 'length' operation and if you don't want to handle the request as a file   #
+# with the 'postfile' operation, you can get the request string as a shell value with the    #
+# 'postdata' operation (it's returned on STDOUT).                                            #
+#                                                                                            #
+##############################################################################################
+#                                                                                            #
+# This script uses only well-known commands from the POSIX standard, even file sizes are     #
+# read with a 'stat' command instead of 'wc' or any other command.                           #
+# The 'mktemp' command is emulated, if needed (it's not always present in each BusyBox       #
+# installation) and a fixed path of '/tmp' is used as the temporary (base) directory, if the #
+# environment value 'TMP' or 'TMPDIR' is not set.                                            #
+#                                                                                            #
+##############################################################################################
+multipart_form()
+(
+	errmsg()
+	{
+		printf "%s\n" "$*" 1>&2
+	}
+
+	read_octals()
+	{
+		while read index value zero; do
+			v=0
+			while [ ${#value} -gt 0 ]; do
+				v=$(( ( v << 3 ) + $(expr "$value" : "\([0-9]\).*") ))
+				value="$(expr "$value" : "[0-9]\([0-9]*\)")"
+			done
+			printf "%02x" "$v"
+		done
+	}
+
+	random_value()
+	{
+		dd if=/dev/urandom bs=${1:-8} count=1 2>/dev/null | cmp -l - /dev/zero 2>/dev/null | read_octals
+	}
+
+	int_mktmp()
+	{
+		command -v mktemp 2>/dev/null 1>&2 && name="$(mktemp $* 2>/dev/null)"
+		#if [ $? -eq 127 -o -z $name ]; then # mktemp is missing, emulation needed
+		if true; then
+			tmp="$TMP"
+			[ ${#tmp} -eq 0 ] && tmp="$TMPDIR"
+			[ ${#tmp} -eq 0 ] && tmp="/tmp"
+			[ "$1" = "-d" ] && dir=1 || dir=0
+			[ "$1" = "-p" ] && tmp="$2"
+			[ -z "$tmp" ] && tmp="/var/tmp"
+			name="$tmp/$(date +%s)_$$_$(random_value)"
+			if [ $dir -eq 1 ]; then
+				[ -d "$name" ] && name="${name}_$(random_value)"
+					mkdir -p "$name" 2>/dev/null
+			else
+				touch "$name" 2>/dev/null
+			fi
+		fi
+		printf "$name"
+	}
+
+	check_form()
+	{
+		rc=0
+		[ -d $1 ] || rc=1
+		[ -f $1/content ] || rc=2
+		[ -w $1/content ] || rc=2 
+		[ $rc -eq 0 ] && return $rc
+		[ $rc -eq 1 ] && \
+			msg="The specified form directory '$1' is invalid." || \
+			msg="The specified form directory '$1' does not contain a valid multipart form-data structure."
+		errmsg $msg
+		return $rc
+	}
+
+	file_size()
+	{
+		stat -c %s $1 2>/dev/null || printf 0
+	}
+
+	field_header()
+	{
+		printf "Content-Disposition: form-data; name=\"%s\"" "$1"
+		[ ${#2} -gt 0 ] && printf "\r\nContent-Type: %s" "$2"
+	}
+
+	get_field()
+	(
+		i=$1
+		shift
+		IFS=:
+		set -- $*
+		while [ $i -gt 1 ]; do
+			[ $# -gt 0 ] || return
+			shift
+			i=$(( i - 1 ))
+		done
+		printf "%s" "$1"
+	)
+
+	compute_length()
+	{
+		len=0
+		while read line; do
+			part="$(get_field 1 "$line")"
+			name="$(get_field 2 "$line")"
+			type="$(get_field 3 "$line")"
+			hdr="$(field_header "$name" "$type")"
+			len=$(( len + 2 + 2 + $2 + 2 + ${#hdr} + 4 + $(file_size $1/$part) ))
+		done
+		printf "%d" "$len"
+	}
+
+	content_length()
+	{
+		boundary="$(cat $1/boundary)"
+		len=$(cat $1/content | compute_length $1 ${#boundary})
+		printf "%d" $(( len + 2 + 2 + ${#boundary} ))
+	}
+
+	post_data()
+	{
+		tf=$(int_mktmp)
+		boundary="$(cat $1/boundary)"
+		i=0
+		cat $1/content | \
+		while read line; do
+			part="$(get_field 1 "$line")"
+			name="$(get_field 2 "$line")"
+			type="$(get_field 3 "$line")"
+			[ $i -eq 0 ] || printf "\r\n" >>$tf
+			printf -- "--%s\r\n%s\r\n\r\n" "$boundary" "$(field_header "$name" "$type")" >>$tf
+			[ -s $1/$part ] && cat $1/$part >>$tf
+			i=$(( i + 1 ))
+		done
+		printf "\r\n--%s--" "$boundary" >>$tf
+		printf "Content-Type: multipart/form-data; boundary=%s\r\n" "$boundary" >$1/formdata
+		printf "Content-Length: %d\r\n\r\n" $(file_size $tf) >>$1/formdata
+		cat $tf >>$1/formdata
+		rm $tf 2>/dev/null
+		printf "%s/formdata" "$1"	
+	}
+
+	case "$1" in
+		("new")
+			if [ ${#2} -gt 0 ]; then
+				errmsg "No parameters allowed for new form creation."
+				rc=3
+			else
+				td=$(int_mktmp -d)
+				touch $td/content
+				printf "%s" "$(random_value 16)" >$td/boundary
+				printf "%s" "$td"
+				rc=0
+			fi
+			;;
+
+		("cleanup")
+			if check_form "$2"; then
+				rm -r $2 2>/dev/null
+				rc=0
+			else
+				rc=3
+			fi
+			;;
+
+		("addfield")
+			if check_form "$2"; then
+				if [ ${#3} -eq 0 ]; then
+					errmsg "Missing field name for 'addfield' operation."
+					rc=3
+				else
+					part="$3$(date +%s)"
+					[ ${#4} -gt 0 ] && printf "%s" "$4" >$2/$part || rm -f $2/$part 2>/dev/null
+					printf "%s:%s\n" "$part" "$3" >>$2/content
+					rc=0
+				fi
+			else
+				rc=3
+			fi
+			;;
+		("addfile")
+			if check_form "$2"; then
+				if [ ${#3} -eq 0 ]; then
+					errmsg "Missing field name for 'addfile' operation."
+					rc=3
+				else
+					part="$3$(date +%s)"
+					cat "$4" >$2/$part
+					printf "%s:%s:%s\n" "$part" "$4" "$5" >>$2/content
+					rc=0
+				fi
+			else
+				rc=3
+			fi
+			;;
+
+		("length")
+			if check_form "$2"; then
+				content_length "$2"
+				rc=0
+			else
+				rc=3
+			fi
+			;;
+
+		("postdata")
+			if check_form "$2"; then
+				cat $(post_data "$2")
+				rc=0
+			else
+				rc=3
+			fi
+			;;
+
+		("postfile")
+			if check_form "$2"; then
+				post_data "$2"
+				rc=0
+			else
+				rc=3
+			fi
+			;;
+
+		*)
+			errmsg "Unknown operation '$1'."
+			rc=4
+			;;
+	esac
+	return $rc
+)
