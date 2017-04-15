@@ -46,7 +46,7 @@
 # file into a pipe to a HTTP server. After you've finished with a request, you should do     #
 # the housekeeping tasks and call the function to cleanup the temporary data (otherwise it   #
 # will remain somewhere in the system and this could lead to 'information disclosure', if    #
-# other users may read these files.                                                          #
+# other users may read these files).                                                         #
 #                                                                                            #
 # >> multipart_form cleanup "$td"                                                            #
 #                                                                                            #
@@ -59,6 +59,7 @@
 #                                                                                            #
 # This script uses only well-known commands from the POSIX standard, even file sizes are     #
 # read with a 'stat' command instead of 'wc' or any other command.                           #
+# The script needs the ability to read some random data from '/dev/urandom'.                 #
 # The 'mktemp' command is emulated, if needed (it's not always present in each BusyBox       #
 # installation) and a fixed path of '/tmp' is used as the temporary (base) directory, if the #
 # environment value 'TMP' or 'TMPDIR' is not set.                                            #
@@ -112,9 +113,15 @@ multipart_form()
 	check_form()
 	{
 		rc=0
-		[ -d $1 ] || rc=1
-		[ -f $1/content ] || rc=2
-		[ -w $1/content ] || rc=2 
+		if [ -d $1 ]; then
+			if [ -f $1/content ]; then
+				rc=2
+			else
+				[ -w $1/content ] || rc=2
+			fi
+		else
+			rc=1
+		fi
 		[ $rc -eq 0 ] && return $rc
 		[ $rc -eq 1 ] && \
 			msg="The specified form directory '$1' is invalid." || \
