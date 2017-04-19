@@ -7,7 +7,7 @@ An authorized user with write access to the NAS base directory may overwrite the
 ## Affected versions
 
 - unspecified/unknown first version, obviously every version storing the database in a location, which is reachable using NAS functions
-~~- up to currently released beta version(s), latest version tested was 113.06.69-41896 for FRITZ!Box 7490, built on 2016-11-10~~
+- ~~up to currently released beta version(s), latest version tested was 113.06.69-41896 for FRITZ!Box 7490, built on 2016-11-10~~
 - partially fixed in 06.8x versions; but the file is still accessible, may be changed/destroyed and the filter daemon uses the (usually outdated) version from the original firmware image instead of an updated database
  
 ## Attack vectors
