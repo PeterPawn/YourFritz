@@ -1,4 +1,4 @@
-## One more weak spot in AVM's FRITZ!OS
+# One more weak spot in AVM's FRITZ!OS
 
 Again a security flaw was found, which may be used to inject arbitrary commands into the running OS.
 
@@ -10,7 +10,7 @@ The flaw was found while analyzing 141.06.63 for "FRITZ!Box Cable 6490", but oth
 
 The vendor was not notified yet. If the threat is still present in the next final release, it will be reported to the vendor.
 
-Timeline
+## Timeline
 
 2017-02-10 03:49 - Vendor notified by e-mail, the flaw wasn't fixed in the newly released version 113.06.80
 
@@ -23,3 +23,5 @@ Timeline
                    PowerShell, but it could be easily adapted to any other language or platform) to show this vulnerability ...
                    look for the file in the directory, where this README.md resides.
                    A comprehensive description regarding this (fixed) vulnerability will be given later.
+
+2017-04-19 16:55 - Case closed - the problem was solved and the provided URL will be better checked now by the firmware. Look into the supplied Powershell script to get an idea, what was the problem and how it could be used in an exploit - I will give no further explanation (it's simple enough).
