@@ -1,4 +1,4 @@
-#Security flaw in "AVM FRITZ!OS" 
+# Security flaw in "AVM FRITZ!OS" 
 
 ## Synopsis
 
@@ -17,7 +17,10 @@ An unauthenticated attacker may add a malformed tarball to persisted device sett
 
 ## Mitigations
 
-None - the problem has to be fixed. This was done already in the public beta branch, see timeline below.
+The problem was fixed in FRITZ!OS version 06.80 (or any later version).
+
+~~None - the problem has to be fixed. This was done already in the public beta branch, see timeline below.~~
+
 ~~Unknown - I don't have any good idea beside a fix from vendor, because the problem is located in a closed source component of the firmware.~~
 
 ## Available fixes / solutions
@@ -109,3 +112,5 @@ first one).
 2016-11-20 04:30 - Problem was probably already fixed with version 113.06.69-41875, released as public beta version at 2016-11-04 (less than 4 weeks after first details were available on IPPF and in less than five months after my first message to vendor)
 
 2016-11-23 08:43 - A delayed response from vendor arrived today in the morning - the problem was fixed with version 113.06.69-41756, released at 2016-11-01 (three weeks ago). Mitigations to protect the owner and the description of available fixes were updated again (see above).
+
+2017-04-19 16:45 - I've done a final check with version 113.06.83 (on a 7490 device) and found the problem solved. Even if this version isn't available yet for the 6490 model, I will close this case here - the chances are good, that the fix will be contained in the next 6490 version too.
