@@ -22,11 +22,12 @@ Do not grant write access rights for the NAS base directory or even all volumes 
 
 ## Available fixes / solutions
 
-Not fixed until the time of this writing. 
+Partially fixed since 06.80 ... see above for the reason, why I call it a "partial fix".
+~~Not fixed until the time of this writing. ~~
 
 The vendor confirmed the vulnerability (see timeline below) and announced a fix for the next major release, expected in Q3 2016. 
 
-No attempt to fix it really is visible so far.
+~~No attempt to fix it really is visible so far.~~
 
 ## CVE
 
