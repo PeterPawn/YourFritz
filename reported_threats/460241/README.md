@@ -1,4 +1,4 @@
-#Security flaw in "AVM FRITZ!OS" 
+# Security flaw in "AVM FRITZ!OS" 
 
 ## Synopsis
 
@@ -68,3 +68,5 @@ The cheapest and simplest solution is denying access to this file for every NAS 
 2016-11-10 --:-- - No visible attempts to fix the flaw, no further notice from vendor about a postponed release of the next major version, which was announced in Q3 2016.
 
 2016-11-17 08:00 - Meanwhile Q4 2016 has reached its "half-time" and it's time to publish the description and an exploit, because there's obviously no attempt so far, to fix the problem.
+
+2017-04-19 16:30 - It looks like the problem was fixed ... at least a bit. I've removed all stored hash values from the current list (updated on 2017-04-11) - it's still possible with version 06.83. But the "contfiltd" daemon detected the changes (it stores now an own copy of the CRC32 value over the whole file) and fell back to the version included with the firmware image (/etc/bpjm.data from 2016-09-06 in a 06.83 image). Meanwhile this bug is only good to circumvent newer versions of the hash database ... but it's still bad enough to be categorized as a risk for FRITZ!Box owners relying on a functioning adult filter for their children or guests. Because there're other problems too (possible information disclosure with the embedded media server), if anyone has access to the ```/var/media/ftp/FRITZ``` directory, I still would prefer a "final solution", where _each_ FTP/SMB/HTTP access (even if it's only readable) to this directory will be denied.
