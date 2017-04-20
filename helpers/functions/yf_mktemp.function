@@ -18,6 +18,13 @@
 #       or could not be accessed/written to                                           #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: date dd printf mkdir touch                                                       #
+# F: yf_is_fritzos_device yf_random_string                                            #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
 yf_mktemp()
 (
 	name="$(date +%s)_$$" # it should be unique already, 'cause we're running in a subshell
@@ -28,10 +35,10 @@ yf_mktemp()
 		yf_is_fritzos_device && tmp="/var/tmp" || tmp="/tmp"
 	fi
 	name="$tmp/$name"
-	name="${name}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+	name="${name}_$(yf_random_string 8)"
 	if [ $dir -eq 1 ]; then
 		while [ -d "$name" ]; do
-			name="${name%_*}_$(dd if=/dev/urandom bs=8 count=1 2>/dev/null | yf_base64 | sed -e "s|[^A-Za-z0-9]*||g")"
+			name="${name%_*}_$(yf_random_string 8)"
 		done
 		mkdir -p "$name" 2>/dev/null
 	else

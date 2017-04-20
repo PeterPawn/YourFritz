@@ -16,6 +16,13 @@
 #   1 - parameter error, e.g. the specified path isn't a mountpoint                   #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: realpath sed printf                                                              #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
 yf_get_fstype_for_mountpoint()
 (
 	mp="$(realpath $1 2>/dev/null)"

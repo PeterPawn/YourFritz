@@ -18,6 +18,13 @@
 #   always 0 - no errors possible, but output may be missing, if no device was found  #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf find cat sed                                                              #
+# F: yf_sysfs yf_trim                                                                 #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
 yf_storage_devices()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"

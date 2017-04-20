@@ -15,6 +15,13 @@
 #   1 - error occured, sysfs isn't mounted or procfs isn't available                  #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf sed                                                                       #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: network filesystem                                                               #
+#                                                                                     #
+#######################################################################################
 yf_sysfs()
 (
 	mp="$(sed -n -e "s|^sysfs \([^ ]*\) .*|\1|p" /proc/mounts | sed -n -e "1p")"

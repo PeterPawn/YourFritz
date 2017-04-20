@@ -18,6 +18,13 @@
 #   always 0 (no errors, default output of "B" in case of problems)                   #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: dd printf                                                                        #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: convert endian                                                                   #
+#                                                                                     #
+#######################################################################################
 yf_endianess()
 (
 	[ $(dd if=/proc/self/exe bs=1 count=1 skip=5 2>/dev/null | yf_base64) = AQ== ] && printf "L" || printf "B"

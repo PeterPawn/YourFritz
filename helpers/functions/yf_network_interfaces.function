@@ -14,6 +14,13 @@
 #   alwasy 0 - the list will be empty in case of an error                             #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: find sed                                                                         #
+# F: yf_sysfs                                                                         #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
 yf_network_interfaces()
 (
 	sysfs="$(yf_sysfs || printf "/sys")"

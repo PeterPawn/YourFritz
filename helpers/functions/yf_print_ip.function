@@ -16,6 +16,13 @@
 #   1 - error occured, the specified parameter isn't a valid hexadecimal string       #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# F: yf_substring yf_hex2dec                                                          #
+# I: -                                                                                #
+# K: network strings                                                                  #
+#                                                                                     #
+#######################################################################################
 yf_print_ip()
 (
 	ip="$1"

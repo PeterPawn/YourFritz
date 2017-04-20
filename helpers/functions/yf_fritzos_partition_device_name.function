@@ -17,6 +17,13 @@
 #   1 - not a FRITZ!OS device                                                         #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# F: yf_is_fritzos_device                                                             #
+# I: -                                                                                #
+# K: fritzbox                                                                         #
+#                                                                                     #
+#######################################################################################
 yf_fritzos_partition_device_name()
 (
 	yf_is_fritzos_device || return 1

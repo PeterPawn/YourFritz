@@ -20,6 +20,13 @@
 #   1 - error occured, 'base64' command was not found or input data is invalid        #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: base64 sed printf expr dd                                                        #
+# I: -                                                                                #
+# F: yf_substring yf_index                                                            #
+# K: base64                                                                           #
+#                                                                                     #
+#######################################################################################
 yf_base64_decode()
 (
 	[ -t 0 ] && return 1
@@ -28,7 +35,7 @@ yf_base64_decode()
 		rc=$?
 	else
 		while read line; do
-			! [ -z "$(printf "%s" "$line" | sed -e "s|[A-Za-z0-9+/\r=]*||g")" ] && return 1
+			! [ -z "$(expr "$line" : "^[A-Za-z0-9+/\r=]")" ] && return 1
 			line=$(printf "%s" $line | sed -e "s|\r||g")
 			[ $(( ${#line} % 4 )) -gt 0 ] && return 1
 			i=0

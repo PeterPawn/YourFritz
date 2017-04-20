@@ -24,6 +24,13 @@
 #   2 - ring buffer file does already exist, the file was not changed                 #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf dd                                                                        #
+# F: yf_is_decimal yf_pack                                                            #
+# I: -                                                                                #
+# K: fritzbox                                                                         #
+#                                                                                     #
+#######################################################################################
 yf_initialize_ringbuffer()
 (
 	facility="$1" 
