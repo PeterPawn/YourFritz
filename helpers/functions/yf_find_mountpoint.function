@@ -15,6 +15,13 @@
 #   always zero, at least the root filesystem will always be found                    #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: realpath printf sed                                                              #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
 yf_find_mountpoint()
 (
 	[ -z "$1" ] && printf "/" && return 0

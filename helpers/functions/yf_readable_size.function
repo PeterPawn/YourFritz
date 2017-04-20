@@ -33,6 +33,13 @@
 #   fractions are only possible, if at least 10 bits are unused on input value.       #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf sed                                                                       #
+# F: yf_index                                                                         #
+# I: -                                                                                #
+# K: strings filesystem                                                               #
+#                                                                                     #
+#######################################################################################
 yf_readable_size()
 (
 	[ $(( 2 ** 32 )) -eq 0 ] && return 2	

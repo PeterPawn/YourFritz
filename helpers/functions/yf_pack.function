@@ -37,6 +37,14 @@
 #   1 - error occured, generally an invalid parameter was specified                   #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: printf readlink sed                                                              #
+# F: yf_substring yf_reverse_hex yf_endianess yf_hex2bin yf_dec2hex yf_ipv4_address   #
+# F: yf_str2hex                                                                       #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
 yf_pack()
 (
 	out="" 

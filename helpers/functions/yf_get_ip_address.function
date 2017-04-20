@@ -15,6 +15,13 @@
 #   1 - the interface name is invalid or the interface has no IPv4 address assigned   #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: ip sed printf                                                                    #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
 yf_get_ip_address()
 (
 	intf="$1"

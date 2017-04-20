@@ -20,11 +20,18 @@
 #       another possible error is a STDIN descriptor attached to a terminal           #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: base64 cmp expr printf                                                           #
+# I: -                                                                                #
+# F: -                                                                                #
+# K: base64                                                                           #
+#                                                                                     #
+#######################################################################################
 yf_base64()
 (
 	yf_base64_encode()
 	{
-		[ $1 -eq 0 ] && printf "A" || printf "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" | sed -n -e "s|.\{$1\}\(.\).*|\1|p"
+		[ $1 -eq 0 ] && printf "A" || printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" : ".\{$1\}\(.\).*")
 	}
 
 	yf_base64_append()
@@ -68,7 +75,7 @@ yf_base64()
 	}
 
 	[ -t 0 ] && return 1
-	if command -v base64 2>/dev/null 1>&2; then
+	if command -v base64 2>/dev/null 1>&2 ; then
 		command base64
 		rc=$?
 	else

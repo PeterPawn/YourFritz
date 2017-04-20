@@ -18,8 +18,15 @@
 #   1 - error occured, usally stdin isn't a valid stream or 'tr' finished with errors #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: sed                                                                              #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: strings                                                                          #
+#                                                                                     #
+#######################################################################################
 yf_uppercase()
 (
-	tr "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	return $?
 )

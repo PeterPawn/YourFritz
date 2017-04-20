@@ -31,6 +31,13 @@
 # are exported automatically.                                                         #
 #                                                                                     #
 #######################################################################################
+#                                                                                     #
+# U: sed                                                                              #
+# F: yf_is_fritzos_device yf_fritzos_model_settings                                   #
+# I: -                                                                                #
+# K: fritzbox                                                                         #
+#                                                                                     #
+#######################################################################################
 yf_get_fritzos_partition_by_name()
 (
 	yf_is_fritzos_device || return 1
