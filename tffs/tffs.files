@@ -102,6 +102,8 @@
 200 plugin-8
 201 websrv_ssl_key.pem SSL certificate key (protected with a box specific password)
 202 websrv_ssl_cert.pem SSL certificate
+203 letsencrypt_key.pem private key for Let's Encrypt SSL/TLS certificate
+204 letsencrypt_cert.pem Let's Encrypt SSL/TLS certificate file
 208 cert.cfg
 209 usb.cfg USB configuration settings (WebDAV is included too)
 210 xdslmode
