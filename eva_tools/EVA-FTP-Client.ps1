@@ -237,8 +237,9 @@ function UploadFlashFile {
 #                                                                                     #
 #######################################################################################
 function BootDeviceFromImage {
-    Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the file containing the image to be loaded')][String]$filename
-    )
+    Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the file containing the image to be loaded')][String]$filename,
+          [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'limit memory size to 128 MB for the uploaded image')][bool]$limitedMemory = $True
+     )
 
     if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     if (-not (Test-Path $filename)) {
@@ -257,6 +258,8 @@ function BootDeviceFromImage {
     if ($rem -ne 0) {
         $ex = New-Object System.Management.Automation.MethodInvocationException "The memory size was already reduced by an earlier upload, restart the device first."
         Throw $ex
+    }
+    if ($limitedMemory) {
     }
     # compute the needed size values (as strings)
     Write-Debug $("Memory size found    : {0:x8}" -f $memsize)
