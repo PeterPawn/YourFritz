@@ -260,6 +260,8 @@ function BootDeviceFromImage {
         Throw $ex
     }
     if ($limitedMemory) {
+        # set memory size to 128 MB
+        memsize = 1024 * 1024 * 128
     }
     # compute the needed size values (as strings)
     Write-Debug $("Memory size found    : {0:x8}" -f $memsize)
