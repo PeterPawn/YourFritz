@@ -7,6 +7,7 @@ filename="$1"
 # some constants to be changed, if needed
 #
 box_ip=${2:-192.168.178.1}
+limit_memory=${3:-1}
 box_port=21
 box_user=adam2
 box_pass=adam2
@@ -304,6 +305,7 @@ if [ x$ec == x220 ]; then
 					echo "Found hardware revision: $hwrev"
 					memsize=$(sed -n -e "s/^memsize *\(.*\)\r\$/\1/p" $environment)
 					echo "Memory size is $memsize $(printf "(%u MB)" $(( $memsize / 1024 / 1024 )))"
+					[ "$limit_memory" = "1" ] && memsize=$(( 1024 * 1024 * 128 )) && echo "Memory size limited to 128 MB"
 					echo "Image size is $(printf "0x%06x" $filesize) $(printf "(%u MB)" $(( filesize / 1024 / 1024 )))"
 					setmemsize=$(printf "0x%08x" $(( memsize - filesize )))
 					echo "Setting temporary memory size to: $setmemsize"
