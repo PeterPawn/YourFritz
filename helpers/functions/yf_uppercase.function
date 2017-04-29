@@ -20,6 +20,7 @@
 #######################################################################################
 #                                                                                     #
 # U: sed                                                                              #
+# W: -                                                                                #
 # F: -                                                                                #
 # I: -                                                                                #
 # K: strings                                                                          #
@@ -27,6 +28,6 @@
 #######################################################################################
 yf_uppercase()
 (
-	sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
 	return $?
 )

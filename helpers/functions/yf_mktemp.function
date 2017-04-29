@@ -8,7 +8,6 @@
 #   '-d' to create a directory, '-p <directory>' to create a file relative to the     #
 #   specified path.                                                                   #
 #                                                                                     #
-#                                                                                     #
 # stdout:                                                                             #
 #   the unique name, the file or directory is created to reserve it                   #
 #                                                                                     #
@@ -20,6 +19,7 @@
 #######################################################################################
 #                                                                                     #
 # U: date dd printf mkdir touch                                                       #
+# W: -                                                                                #
 # F: yf_is_fritzos_device yf_random_string                                            #
 # I: -                                                                                #
 # K: filesystem                                                                       #

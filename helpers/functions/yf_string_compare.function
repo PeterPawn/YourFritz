@@ -2,39 +2,45 @@
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 #######################################################################################
 #                                                                                     #
-# get_default_gateway_address - retrieve the IPv4 addresses for the specified         #
-#                               interface                                             #
+# string_compare - compare the two strings from the single line files specified as $1 #
+#                  and $2 and return a value on STDOUT describing their relation      #
 #                                                                                     #
 # parameters:                                                                         #
-#   none                                                                              #
+#   $1, $2 - files to compare                                                         #
 #                                                                                     #
 # stdout:                                                                             #
-#   gateway address for default route (0.0.0.0/0.0.0.0), only one should be present   #
+#   -1 - 1st line of 1st file is lower than the 1st line from the 2nd                 #
+#    0 - the strings are equal                                                        #
+#    1 - 1st line of 1st file is greater than the 1st line from the 2nd               #
 #                                                                                     #
 # return code:                                                                        #
-#   0 - stdout is valid                                                               #
-#   1 - no default gateway found at /proc/net/route                                   #
-#                                                                                     #
-# remarks:                                                                            #
-#   Any policy based routing is silently ignored - usually it's not used on a         #
-#   FRITZ!Box device.                                                                 #
+#   0 - comparision successful                                                        #
+#   1 - missing 'cmp' command                                                         #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: sed                                                                              #
+# U: cmp stat printf                                                                  #
 # W: -                                                                                #
-# F: yf_endianess yf_reverse_hex yf_print_ip                                          #
+# F: -                                                                                #
 # I: -                                                                                #
-# K: network                                                                          #
+# K: strings                                                                          #
 #                                                                                     #
 #######################################################################################
-yf_get_default_gateway_address()
+yf_string_compare()
 (
-	addr="$(sed -n -e "s|[^\t]*\t*0\{8\}\t*\([^\t]*\)\t*.*0\{8\}\t*.*\$|\1|p" /proc/net/route)"
-	[ ${#addr} -eq 0 ] && return 1
-	if [ $(yf_endianess) == L ]; then
-		addr="$(yf_reverse_hex "$addr")"
+	command -v cmp 2>/dev/null 1>&2 || return 1
+	cmp "$1" "$2" 2>/dev/null 1>&2 && return 0
+	res=$(cmp -l "$1" "$2" 2>/dev/null | \
+			while read offset left right; do
+				[ $left -lt $right ] && res=-1 || res=1
+				printf "%d" $res
+				break
+			done)
+	if [ -z "$res" ]; then
+		l1=$(stat -c %s "$1")
+		l2=$(stat -c %s "$2")
+		[ $l1 -lt $l2 ] && res=-1 || res=1
 	fi
-	yf_print_ip "$addr"
-	return $?
+	printf "%d" "$res"
+	return 0
 )
