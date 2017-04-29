@@ -254,7 +254,7 @@ __yf_functions="$(__yf_helpers_find_functions)"
 [ $? -eq 0 ] || eval $(__yf_helpers_exit) 129
 __yf_functions="$(__yf_helpers_add_dependencies "${__yf_functions}")"
 unset __yf_commands
-__yf_helpers_functions_count=0
+__yf_functions_count=0
 for __yf_temp in ${__yf_functions}; do
 	__yf_functions_count=$(( __yf_functions_count + 1 ))
 	if ! [ -z "$YF_SCRIPT_GENERATE_FILE" ]; then
@@ -266,7 +266,7 @@ for __yf_temp in ${__yf_functions}; do
 done
 [ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_message I "$(printf "included %d functions\n" ${__yf_functions_count})" 1>&2
 __yf_commands="$(__yf_helpers_unique "${__yf_commands}")"
-__yf_helpers_commands_count=0
+__yf_commands_count=0
 for __yf_temp in ${__yf_commands}; do
 	__yf_commands_count=$(( __yf_commands_count + 1 ))
 	__yf_helpers_contains "${__yf_helpers_needed_commands}" "${__yf_temp}" || __yf_helpers_check_command "${__yf_temp}" 0
@@ -279,7 +279,7 @@ done
 # housekeeping, remove as much unnecessary variables and functions as possible        #
 #                                                                                     #
 #######################################################################################
-__yf_vars="SUBSET FUNCTIONS FUNCTIONS_DIR DIR"
+__yf_vars="SUBSETS FUNCTIONS FUNCTIONS_DIR DIR"
 __yf_functions="check_command find_functions add_dependencies unique uniq uniqsort_inline uniq_inline string_compare contains get_line join_lines exit"
 for __yf_temp in ${__yf_functions}; do
 	unset -f __yf_helpers_${__yf_temp}
