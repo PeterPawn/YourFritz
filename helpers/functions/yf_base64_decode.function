@@ -21,7 +21,8 @@
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: base64 sed printf expr dd                                                        #
+# U: sed printf expr dd                                                               #
+# W: base64                                                                           #
 # I: -                                                                                #
 # F: yf_substring yf_index                                                            #
 # K: base64                                                                           #

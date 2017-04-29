@@ -10,14 +10,13 @@
 # stdout:                                                                             #
 #   input string in reverse order, swapped in two-character slices                    #
 #                                                                                     #
-#                                                                                     #
 # return code:                                                                        #
 #   always 0                                                                          #
-#                                                                                     #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
 # U: printf                                                                           #
+# W: -                                                                                #
 # F: yf_substring                                                                     #
 # I: -                                                                                #
 # K: strings                                                                          #

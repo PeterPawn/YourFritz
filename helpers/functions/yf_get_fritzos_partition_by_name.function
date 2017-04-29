@@ -33,6 +33,7 @@
 #######################################################################################
 #                                                                                     #
 # U: sed                                                                              #
+# W: -                                                                                #
 # F: yf_is_fritzos_device yf_fritzos_model_settings                                   #
 # I: -                                                                                #
 # K: fritzbox                                                                         #

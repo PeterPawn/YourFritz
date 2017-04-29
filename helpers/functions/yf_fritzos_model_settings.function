@@ -20,8 +20,9 @@
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: printf /etc/puma6_helper.sh                                                      #
-# F: yf_is_fritzos_device                                                             #
+# U: printf                                                                           #
+# W: /etc/puma6_helper.sh                                                             #
+# F: yf_is_fritzos_device yf_mktemp                                                   #
 # I: -                                                                                #
 # K: fritzbox                                                                         #
 #                                                                                     #
@@ -30,23 +31,23 @@
 # subfunction containing the definitions                                              #
 #                                                                                     #
 #######################################################################################
-yf_fritzos_model_settings_internal()
+__yf_fritzos_model_settings()
 (
-#######################################################################################
-#                                                                                     #
-# commons                                                                             #
-#                                                                                     #
-#######################################################################################
+	###################################################################################
+	#                                                                                 #
+	# commons                                                                         #
+	#                                                                                 #
+	###################################################################################
 	YF_FOS_PUMA6_HELPER='/etc/puma6_helper.sh'
 	printf "YF_FOS_PUMA6_HELPER='%s'\n" $YF_FOS_PUMA6_HELPER
 	printf "YF_FOS_KERNEL_NAME='kernel'\n"
 	printf "YF_FOS_FILESYSTEM_NAME='filesystem'\n"
 	printf "YF_FOS_RESERVED_PARTITION='reserved'\n"
-#######################################################################################
-#                                                                                     #
-# model specific                                                                      #
-#                                                                                     #
-#######################################################################################
+	###################################################################################
+	#                                                                                 #
+	# model specific                                                                  #
+	#                                                                                 #
+	###################################################################################
 	YF_FOS_IS_PUMA6=0
 	if [ -f $YF_FOS_PUMA6_HELPER ]; then
 		. $YF_FOS_PUMA6_HELPER
@@ -70,10 +71,16 @@ yf_fritzos_model_settings_internal()
 # call the subfunction and source it's output via a temporary file                    #
 #                                                                                     #
 #######################################################################################
-if yf_is_fritzos_device; then
-	YF_FOS_SETTINGS_TEMP="$(yf_mktemp)"
-	yf_fritzos_model_settings_internal >"$YF_FOS_SETTINGS_TEMP"
-	. "$YF_FOS_SETTINGS_TEMP"
-	rm "$YF_FOS_SETTINGS_TEMP" 2>/dev/null
-	unset YF_FOS_SETTINGS_TEMP
+if [ -d /proc/sys/urlader ] && [ -f /proc/sys/urlader/environment ]; then
+	__YF_FOS_SETTINGS_TEMP="$(yf_mktemp)"
+	__yf_fritzos_model_settings >"${__YF_FOS_SETTINGS_TEMP}"
+	. "${__YF_FOS_SETTINGS_TEMP}"
+	rm "${__YF_FOS_SETTINGS_TEMP}" 2>/dev/null
+	unset -v __YF_FOS_SETTINGS_TEMP
 fi
+unset -f __yf_fritzos_model_settings
+#######################################################################################
+#                                                                                     #
+# end of file                                                                         #
+#                                                                                     #
+#######################################################################################
