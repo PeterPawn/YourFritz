@@ -29,7 +29,7 @@
 yf_string_compare()
 (
 	command -v cmp 2>/dev/null 1>&2 || return 1
-	cmp "$1" "$2" 2>/dev/null 1>&2 && return 0
+	cmp "$1" "$2" 2>/dev/null 1>&2 && printf "0" && return 0
 	res=$(cmp -l "$1" "$2" 2>/dev/null | \
 			while read offset left right; do
 				[ $left -lt $right ] && res=-1 || res=1
