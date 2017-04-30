@@ -1,0 +1,65 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# random_string - return a random string (as a hexadecimal presentation) with the     #
+#                 specified length                                                    #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - length of string to generate, defaults to 16 (hexadecimal output of 8 chars) #
+#                                                                                     #
+# stdout:                                                                             #
+#   the random string value                                                           #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout content is valid                                                       #
+#   1 - error occured (e.g. missing a needed file or command)                         #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf dd cmp                                                                    #
+# W: -                                                                                #
+# F: yf_is_decimal yf_substring                                                       #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_random_string()
+(
+	yf_random_string_read_octals()
+	{
+		yf_random_string_read_octals_print()
+		{
+			[ $2 -gt 0 ] || return
+			[ $2 -eq 1 ] && l=1 || l=2
+			printf "%0${l}x" "$1"
+		}
+		len=$1
+		i=0
+		while read j val zero; do
+			i=$(( i + 1 ))
+			if [ $j -gt $i ]; then
+				while [ $i -lt $j ]; do
+					yf_random_string_read_octals_print "$v" "$len"
+					len=$(( len - 2 ))
+					i=$(( i + 1 ))
+				done
+			else
+				v=0
+				while [ ${#val} -gt 0 ]; do
+					v=$(( ( v << 3 ) + $(expr "$val" : "\([0-9]\).*") ))
+					val="$(expr "$val" : "[0-9]\([0-9]*\)")"
+				done
+				yf_random_string_read_octals_print "$v" "$len"
+				len=$(( len - 2 ))
+			fi
+			[ $len -lt 0 ] && break
+			[ $i -gt 128 ] && break
+		done
+	}
+	len="${1:-16}"
+	yf_is_decimal "$len" || return 1
+	size=$(( ( len + 1 ) / 2 ))
+	dd if=/dev/urandom bs=$size count=1 2>/dev/null | cmp -l - /dev/zero 2>/dev/null | yf_random_string_read_octals $len
+	return 0
+)

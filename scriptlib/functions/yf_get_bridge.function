@@ -1,0 +1,32 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_bridge - retrieve the bridge interface name for the specified interface, if any #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# stdout:                                                                             #
+#   the name of the bridge, where the specified interface is a member                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde member, stdout is valid                             #
+#   1 - the interface isn't a bridge member                                           #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf readlink sed                                                              #
+# W: -                                                                                #
+# F: yf_sysfs                                                                         #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_get_bridge()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/class/net/$1/brport ] || return 1
+	readlink $sysfs/class/net/$1/brport/bridge | sed -e "s|.*/\(.*\)\$|\1|"
+	return 0
+)

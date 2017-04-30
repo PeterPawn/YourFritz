@@ -1,0 +1,34 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# str2hex - convert a string to its hexadecimal representation                        #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# stdout:                                                                             #
+#   input string converted to its hexadecimal content (one character per nibble)      #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 - no errors possible                                                     #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_substring                                                                     #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_str2hex()
+(
+	in="$1"
+	while [ ${#in} -gt 0 ]; do
+		byte="$(yf_substring "$in" 0 1)"
+		in="$(yf_substring "$in" 1)"
+		printf "%02x" \'$byte
+	done	
+	return 0
+)

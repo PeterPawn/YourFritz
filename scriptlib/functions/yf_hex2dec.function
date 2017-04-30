@@ -1,0 +1,39 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# hex2dec - convert hexadecimal string to decimal value                               #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input value representing a hexadecimal string                                #
+#                                                                                     #
+# stdout:                                                                             #
+#   input value converted to decimal value                                            #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout content is valid                                                       #
+#   1 - error occured (e.g. input format is invalid)                                  #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_is_hexadecimal yf_substring                                                   #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_hex2dec()
+(
+	val="$1" 
+	out=0
+	yf_is_hexadecimal "$val" || return 1
+	[ $(( ${#val} % 2 )) -ne 0 ] && return 1
+	while [ ${#val} -gt 0 ]; do
+		byte=$(yf_substring "$val" 0 2)
+		val="$(yf_substring "$val" 2)"
+		out=$(( ( out << 8 ) + 0x$byte ))
+	done
+	printf "%u" "$out"
+	return 0
+)

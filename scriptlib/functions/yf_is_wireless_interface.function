@@ -1,0 +1,27 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_wireless_interface - check, if the specified interface is a wireless one         #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a wireless device                                            #
+#   1 - the interface isn't a wireless device                                         #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_sysfs                                                                         #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_is_wireless_interface()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/class/net/$1/wireless ] && return 0 || return 1
+)

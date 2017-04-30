@@ -1,0 +1,38 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# trim - remove leading and trailing characters from a given string on STDIN          #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - trim direction => -1 leading, 1 trailing, 0 both => default is 0             #
+#   $2 - character(s) to remove, defaults to "space", "tab" and "return", specify     #
+#        more than one character in square brackets (as in a regular expression)      #
+#                                                                                     #
+# stdout:                                                                             #
+#   the trimmed string                                                                #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - output valid                                                                  #
+#   1 - invalid parameter specified                                                   #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: sed                                                                              #
+# W: -                                                                                #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: strings                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_trim()
+(
+	dir=${1:-0}
+	[ $dir -lt -1 ] || [ $dir -gt 1 ] && return 1
+	char="${2:-[ \t\r]}"
+	[ ${#char} -gt 1 ] && ( [ "${char#[[]}" = "$char" ] || [ "${char%[]]}" = "$char" ] ) && return 1
+	[ $dir -eq -1 ] && sed -e "s!^${char}*!!g"
+	[ $dir -eq 1 ] && sed -e "s!${char}*\$!!g"
+	[ $dir -eq 0 ] && yf_trim -1 "$char" | yf_trim 1 "$char"
+	return 0
+)

@@ -1,0 +1,28 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_hexadecimal - check, if input string contains only hexadecimal digits            #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - input string                                                                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - only valid digits found                                                       #
+#   1 - non-digit characters present                                                  #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf sed                                                                       #
+# W: -                                                                                #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_is_hexadecimal()
+(
+	in="$(printf "$1" | sed -e 's|[0-9a-fA-F]||g')"
+	[ ${#in} -gt 0 ] && return 1
+	return 0
+)

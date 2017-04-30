@@ -1,0 +1,101 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# pack - create a packed complex data structure from basic data types                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   the input parameters are a list of type-value pairs representing the data to be   #
+#   packed to the resulting structure                                                 #
+#                                                                                     #
+# types:                                                                              #
+# - the first item in such type-value pairs is the desired type and it's simply the   #
+#   number of bits in the output "value" - 8 for "one byte", "16" for "two byte       #
+#   values" (short integers, signed or unsigned) and "32" for "four byte values"      #
+# - beneath these "basic" types there are some more complex input types:              #
+#   STR - the value is a character string (don't forget to use proper escapes there)  #
+#   IP  - same as IP4                                                                 #
+#   IP4 - the value is an IPv4 address and is encoded to binary (32 bit value) by     #
+#         yf_ipv4_address - it's "big endian" unless modified by "L" prefix           #
+#                                                                                     #
+# modifiers:                                                                          #
+# - values with more than 8 bit size are affected by the "endianess" of the system -  #
+#   it's the order in which multi-byte values are stored                              #
+# - without any modifier the resulting data is stored in the order, which the system  #
+#   we're running on uses                                                             #
+# - to set up an explicit order (e.g. "network" (BE) order on an LE host) you may     #
+#   specify a "prefix" character (L or B in mixed case) - "B32" is a 32-bit value in  #
+#   BE and "L8" is valid (but useless, because a single byte value cannot be swapped) #
+#   and even the "STR" type could be prefix (the prefix will be silently ignored      #
+#   there)                                                                            #
+#                                                                                     #
+# stdout:                                                                             #
+#   binary content of the packed structure, suitable to be written to a file/pipe     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, generally an invalid parameter was specified                   #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf readlink sed                                                              #
+# W: -                                                                                #
+# F: yf_substring yf_reverse_hex yf_endianess yf_hex2bin yf_dec2hex yf_ipv4_address   #
+# F: yf_str2hex                                                                       #
+# I: -                                                                                #
+# K: convert                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_pack()
+(
+	out="" 
+	while [ ${#1} -gt 0 ]; do
+		type="$1"
+		val="$2"
+		shift 2
+		endian=$(yf_substring "$type" 0 1 | yf_uppercase)
+		if [ $endian = B -o $endian = L ]; then
+			type="$(yf_substring "$type" 1)"
+		else
+			unset endian
+		fi
+		case $type in
+			8)
+				hex="$(yf_dec2hex $val 1)"
+				[ $? -ne 0 ] && return 1
+				;;
+			16)
+				hex="$(yf_dec2hex $val 2)"
+				[ $? -ne 0 ] && return 1
+				;;
+			32)
+				hex="$(yf_dec2hex $val 4)"
+				[ $? -ne 0 ] && return 1
+				;;
+			IP|IP4)
+				hex="$(yf_ipv4_address $val)"
+				[ $? -ne 0 ] && return 1
+				[ -z $endian ] && endian=B
+				;;
+			STR)
+				hex="$(yf_str2hex "$val")"
+				unset endian
+				;;
+			*)
+				return 1
+				;;
+		esac
+		if [ ! -z $endian ]; then
+			if [ $endian == L ]; then
+				hex="$(yf_reverse_hex "$hex")"				
+			fi
+		else
+			if [ $(yf_endianess) == L ]; then
+				hex="$(yf_reverse_hex "$hex")"
+			fi
+		fi
+		out="$out$hex"
+	done
+	yf_hex2bin "$out"
+	return 0
+)

@@ -1,0 +1,33 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# fritzos_partition_device_name                                                       #
+# - return the block device prefix used on the running FRITZ!OS to address kernel and #
+#   filesystem partitions                                                             #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   the (complete) device name without number suffix                                  #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - output is valid                                                               #
+#   1 - not a FRITZ!OS device                                                         #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_is_fritzos_device                                                             #
+# I: -                                                                                #
+# K: fritzbox                                                                         #
+#                                                                                     #
+#######################################################################################
+yf_fritzos_partition_device_name()
+(
+	yf_is_fritzos_device || return 1
+	printf "%s" $YF_FOS_PARTITION_DEVICE 
+	return 0
+)
