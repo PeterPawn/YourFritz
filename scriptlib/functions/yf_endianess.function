@@ -21,7 +21,7 @@
 #                                                                                     #
 # U: dd printf                                                                        #
 # W: -                                                                                #
-# F: -                                                                                #
+# F: yf_base64                                                                        #
 # I: -                                                                                #
 # K: convert endian                                                                   #
 #                                                                                     #
