@@ -1,0 +1,38 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_mountpoint_writable - detect, if the specified mountpoint is backed by a         #
+#                          writable filesystem                                        #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the mountpoint to be used                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   0 - the filesystem isn't 'rw' in /proc/mounts                                     #
+#   1 - the filesystem is marked as 'rw' in /proc/mounts                              #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - parameter error, e.g. the specified path isn't a mountpoint                   #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: realpath sed printf                                                              #
+# W: -                                                                                #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
+yf_is_mountpoint_writable()
+(
+	mp="$(realpath $1 2>/dev/null)"  
+	[ -z $mp ] && return 1
+	rw="$(sed -n -e "s|^[^ ]* $mp [^ ]* \(r[wo]\),[^ ]* [0-9] [0-9]|\1|p" /proc/mounts)"
+	if [ ${#rw} -gt 0 ]; then
+		[ "$rw" = "rw" ] && printf 1 || printf 0
+		return 0
+	fi
+	return 1
+)

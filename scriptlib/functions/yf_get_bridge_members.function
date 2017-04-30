@@ -1,0 +1,34 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# get_bridge_members - retrieve the bridge member names for the specified interface   #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# stdout:                                                                             #
+#   a (possibly empty) list of interface names assembled in the bridge                #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a bridge, stdout is valid                                    #
+#   1 - the interface isn't a bridge                                                  #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: find sed                                                                         #
+# W: -                                                                                #
+# F: yf_sysfs                                                                         #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_get_bridge_members()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/class/net/$1/brif ] || return 1
+	find $sysfs/class/net/$1/brif -maxdepth 1 -type l -print \
+		| sed -e "s|^$sysfs/class/net/$1/brif/\(.*\)\$|\1|" \
+		| sed -e ':x;$!N;s/\n/ /;tx'
+	return 0
+)

@@ -1,0 +1,66 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# ipv4_address - convert an IPv4 address from dotted-decimal format to hexadecimal    #
+#                string in "network order" (big endian)                               #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - string representing the IPv4 address, may be any valid decimal value (within #
+#        the range of validity) or a dotted-decimal of up to four parts               #
+#                                                                                     #
+# stdout:                                                                             #
+#   hexadecimal string representing the IP address in big endian order (MSB)          #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, the specified parameter isn't a valid IPv4 address             #
+#                                                                                     #
+# remarks:                                                                            #
+# The range check is performed with final value, there may be an overflow earlier,    #
+# if the input string is very "malformed".                                            #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf readlink sed                                                              #
+# W: -                                                                                #
+# F: yf_is_decimal yf_dec2hex                                                         #
+# I: -                                                                                #
+# K: network strings                                                                  #
+#                                                                                     #
+#######################################################################################
+yf_ipv4_address()
+(
+	in="$1" 
+	addr=0 
+	orgifs="$IFS" 
+	shifts=4 
+	error=0
+	IFS=.
+	set -- $in
+	IFS="$orgifs"
+	while [ ${#1} -gt 0 ]; do
+		tupel=$1
+		shift
+		if ! yf_is_decimal $tupel; then
+			error=1
+			break
+		fi
+		if [ ${#1} -gt 0 ]; then
+			if [ $tupel -gt 255 ]; then
+				error=1
+				break
+			fi
+			addr=$(( ( addr << 8 ) + tupel ))
+			shifts=$(( shifts - 1 ))
+		else
+			addr=$(( ( addr << ( shifts * 8 ) ) + tupel ))
+		fi
+	done
+	if [ $addr -lt $(( 0x01000000 )) -o $addr -gt $(( 0xFFFFFFFF )) ]; then
+		addr=0
+		error=1
+	fi
+	yf_dec2hex $addr
+	return $error
+)

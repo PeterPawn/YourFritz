@@ -1,0 +1,38 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# print_ip - print an IPv4 address in dotted-decimal format                           #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - string representing the IPv4 address in hexadecimal format (big endian)      #
+#                                                                                     #
+# stdout:                                                                             #
+#   the decimal representation of the specified address as 4 decimal numbers          #
+#   separated by dots                                                                 #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, the specified parameter isn't a valid hexadecimal string       #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_substring yf_hex2dec                                                          #
+# I: -                                                                                #
+# K: network strings                                                                  #
+#                                                                                     #
+#######################################################################################
+yf_print_ip()
+(
+	ip="$1"
+	[ ${#ip} -ne 8 ] && return 1
+	while [ ${#ip} -gt 0 ]; do
+		byte=$(yf_substring "$ip" 0 2)
+		printf "%u" $(yf_hex2dec $byte)
+		ip="$(yf_substring "$ip" 2)"
+		[ ${#ip} -gt 0 ] && printf "."
+	done
+	return 0
+)

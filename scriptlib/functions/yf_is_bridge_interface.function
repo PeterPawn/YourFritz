@@ -1,0 +1,27 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# is_bridge_interface - check, if the specified interface name is for a bridge devive #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - interface to be checked                                                      #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - the interface is a brigde device                                              #
+#   1 - the interface isn't a bridge device                                           #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_sysfs                                                                         #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_is_bridge_interface()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	[ -d $sysfs/class/net/$1/bridge ] && return 0 || return 1
+)

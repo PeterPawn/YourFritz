@@ -1,0 +1,39 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# word_of - return the n-th entry from a list of words                                #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - number of word to retrieve                                                   #
+#   $2 - word list                                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   the n-th word                                                                     #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - value found                                                                   #
+#   1 - invalid parameter ($1 isn't a decimal number or 0)                            #
+#   2 - word list is too short to find the n-th entry                                 #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf                                                                           #
+# W: -                                                                                #
+# F: yf_is_decimal                                                                    #
+# I: -                                                                                #
+# K: strings                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_word_of()
+(
+	n=$1 
+	i=0
+	yf_is_decimal $n || return 1
+	[ $n -lt 1 ] && return 1
+	for word in $2; do
+		i=$(( i + 1 ))
+		[ $i -eq $n ] && printf "$word" && return 0
+	done
+	return 2
+)

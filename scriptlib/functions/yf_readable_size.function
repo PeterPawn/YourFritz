@@ -1,0 +1,152 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# readable_size - convert given decimal value to a better readable one using binary   #
+#                 multiples of 2**10 for K, M, G or T (2**10, 2**20, 2**30, 2**40)    #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - the number to convert                                                        #
+#   $2 - optional unit of measurement for the final expression                        #
+#                                                                                     #
+# stdout:                                                                             #
+#   the expression with the requested format, with a space character between number   #
+#   and unit                                                                          #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - conversion done                                                               #
+#   1 - invalid input value or unit                                                   #
+#   2 - the used shell doesn't support 64-bit arithmetics                             #
+#                                                                                     #
+# remarks:                                                                            #
+#   If no unit was specified, the value will be normalized until the number part is   #
+#   lower than 2 ** 10 or 2**40 was used as unit.                                     #
+#   The used shell needs (usally) 64-bit support for numerical values or calculations #
+#   aren't possible.                                                                  #
+#   The input value may already contain a unit, it doesn't matter if it's in lower or #
+#   upper case.                                                                       #
+#   Localization for number formatting isn't supported - use the point (.) for any    #
+#   fractional parts and comma (,) as thousands separator. No sign is accepted after  #
+#   or before the number. For the fractional part of a number, only up to 3 digits    #
+#   may be specified and fractions are only supported, if a unit was specified.       #
+#   The script can't handle sizes >= 2 ** 53, because integer calculation with        #
+#   fractions are only possible, if at least 10 bits are unused on input value.       #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf sed                                                                       #
+# W: -                                                                                #
+# F: yf_index                                                                         #
+# I: -                                                                                #
+# K: strings filesystem                                                               #
+#                                                                                     #
+#######################################################################################
+yf_readable_size()
+(
+	[ $(( 2 ** 32 )) -eq 0 ] && return 2	
+	[ -z "$1" ] && return 1
+	u="$(printf "$1" | sed -n -e "s|^[0-9,\.]* \?\([kKmMgGtT]\)\?\$|\1|p" | sed -e "y/kmgt/KMGT/")"
+	v="$(printf "$1" | sed -n -e "s|^\([0-9,\.]*\) \?[kKmMgGtT]\?\$|\1|p" | sed -e "s|,||")"
+	if ! [ -z $u ]; then
+		case $u in
+			(K)
+				iu=$(( 2 ** 10 ))
+				;;
+			(M)
+				iu=$(( 2 ** 20 ))
+				;;
+			(G)
+				iu=$(( 2 ** 30 ))
+				;;
+			(T)
+				iu=$(( 2 ** 40 ))
+				;;
+			(*)
+				return 1
+				;;
+		esac
+	else
+		iu=1
+	fi
+	f=0
+	[ $(yf_index $v .) -gt 0 ] && [ $iu -eq 1 ] && return 1
+	if [ $(yf_index $v .) -gt 0 ]; then
+		l=$(printf "$v" | sed -e "s|[^\.]||g")
+		[ ${#l} -gt 1 ] && return 1
+		f=$(printf "${v##*.}000" | sed -n -e "s|^\([0-9]\{3\}\).*\$|\1|p" | sed -e "s|^0*||")
+		v=${v%%.*}
+		f=$(( f * iu ))
+		f=$(( ( f * 2 ** 10 ) / 10 ** 3 )) 
+	fi
+	[ $(( v * iu )) -ge $(( 2 ** 53 )) ] && return 1
+	v=$(( v * iu * 2 ** 10 ))
+	v=$(( v + f ))
+	if ! [ -z "$2" ]; then
+		case "$2" in
+			([Kk])
+				c=$(( v ))
+				ou=$2
+				;;
+			([Mm])
+				c=$(( v / 2 ** 10 ))
+				ou=$2
+				;;
+			([Gg])
+				c=$(( v / 2 ** 20 ))
+				ou=$2
+				;;
+			([Tt])
+				c=$(( v / 2 ** 30 ))
+				ou=$2
+				;;
+			(*)
+				return 1
+				;;
+		esac
+		d=$(( c % 2 ** 20 ))
+		c=$(( c / 2 ** 20 ))
+	else
+		ou=""
+		while [ $v -gt $(( 2 ** 20 )) ]; do
+			case $ou in
+				(T)
+					break
+					;;
+				(G)
+					ou=T
+					;;
+				(M)
+					ou=G
+					;;
+				(K)
+					ou=M
+					;;
+				*)
+					ou=K
+					;;
+			esac
+			c=$(( v / 2 ** 10 ))
+			d=$(( v % 2 ** 10 ))
+			v=$(( v / 2 ** 10 ))
+		done
+		d=$(( c % 2 ** 10 ))
+		c=$(( c / 2 ** 10 ))
+	fi
+	if [ $d -ne 0 ]; then
+		while [ $d -gt $(( 2 ** 10 * 10 )) ]; do
+			d=$(( d / 2 ** 10 ))
+		done
+		d=$(( d * 10 ** 3 / 2 ** 10 ))
+		while [ $d -gt $(( 10 ** 3 )) ]; do
+			d=$(( ( d + 5 ) / 10 ))
+		done
+		d=$(( ( d + 5 ) / 10 ))
+		d=$(printf "%02u" $d | sed -n -e "s|^\([0-9]\{2\}\).*\$|\1|p")
+		while [ ${d%0} != $d ]; do
+			d=${d%0}
+		done
+		printf "%u.%s %c" $c $d $ou
+	else
+		printf "%u %c" $c $ou
+	fi				
+)

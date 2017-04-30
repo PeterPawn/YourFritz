@@ -1,0 +1,49 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=dash : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# endianess_by_routing_table                                                          #
+# - detect the endianess of the system we're running on                               #
+#                                                                                     #
+# - this will use the routing table via /proc/net/route to find a network             #
+#   mask which doesn't contain all ones or all zeros and the value of the most        #
+#   left bit will be used to determine the endianess                                  #
+# - if the "Mask" column cannot be found, "B" (big endian) is assumed, because        #
+#   the main purpose of this script is the usage on a FRITZ!Box device and all        #
+#   newer devices use big endian scheme to store data                                 #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdout:                                                                             #
+#   "B" for big endian system and "L" for little endian system                        #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 (no errors, default output of "B" in case of problems)                   #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: sed grep printf                                                                  #
+# W: -                                                                                #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: convert_alt endian_alt                                                           #
+#                                                                                     #
+#######################################################################################
+yf_endianess_by_routing_table()
+(
+	endian="B"
+	i=0
+	col=$(sed -n -e "1s/\t/\n/pg" /proc/net/route | sed -e "/^[ \t]*\$/d" | grep -n "Mask" | sed -n -e "s/\([0-9]*\):Mask/\1/p")
+	if [ ${#col} -gt 0 ]; then
+		while [ $i -lt $col ]; do
+			mask="$mask\([^ \t]*\)[ \t]*"
+			i=$(( i + 1 ))
+		done
+		mask=$(sed -e "1d" /proc/net/route | sed -n -e "s|$mask.*|\\$col|p" | sed -e "/^FFFFFFFF\$/d" -e "/^00000000\$/d" | sed -n -e "1p")
+		mask=$(printf "$mask" | sed -n -e "s|\([0-9A-F]\).*|\1|p" | sed -e "s|[89A-F]||")
+		[ ${#mask} -gt 0 ] && endian="L" || endian="B"
+	fi
+	printf "%c" $endian
+	return 0
+)

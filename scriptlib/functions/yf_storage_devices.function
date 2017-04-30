@@ -1,0 +1,39 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# storage_devices - return a list of available storage (block) devices from sysfs     #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdio:                                                                              #
+#   binary data to encode                                                             #
+#                                                                                     #
+# stdout:                                                                             #
+#   one line for each storage device, containing device name, device vendor, device   #
+#   model, device size and the number of partitions, if the device contains a table   #
+#                                                                                     #
+# return code:                                                                        #
+#   always 0 - no errors possible, but output may be missing, if no device was found  #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf find cat sed                                                              #
+# W: -                                                                                #
+# F: yf_sysfs yf_trim                                                                 #
+# I: -                                                                                #
+# K: filesystem                                                                       #
+#                                                                                     #
+#######################################################################################
+yf_storage_devices()
+(
+	sysfs="$(yf_sysfs || printf "/sys")"
+	for device in /sys/block/sd*; do
+		printf "DEVICE='%s' VENDOR='%s' MODEL='%s' SIZE='%s' PARTITIONS='%d'\n" \
+			"${device##*/}" "$(cat $device/device/vendor | yf_trim)" "$(cat $device/device/model | yf_trim)" \
+			$(( $(cat $device/size) * $(cat $device/queue/logical_block_size) )) \
+			$(find ${device}/ -type d -name "${device##*/}[0-9]*" | sed -n -e '$=')
+	done
+	return 0 
+)
