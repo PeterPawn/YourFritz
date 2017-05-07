@@ -1,0 +1,161 @@
+#! /bin/sh
+#######################################################################################################
+#                                                                                                     #
+# extract a specified file from an AVM firmware image file                                            #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Copyright (C) 2016-2017 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
+#                                                                                                     #
+# This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# The script will extract a specified file from a complete firmware image file (it's a TAR archive).  #
+#                                                                                                     #
+# The name of the firmware image file has to be specified as first argument and the wanted file       #
+# within is expected as second parameter. This file will be written to STDOUT, if it's present and    #
+# has a length greater than 0.                                                                        #
+#                                                                                                     #
+# If the extracted file contains a checksum with a TI signature at its end, this signature will be    #
+# removed from output file, if no option "-k" is specified in front of the firmware image name.       #
+#                                                                                                     #
+# The script expects a writable directory behind the path "/tmp", the caller is responsible to assure #
+# this.                                                                                               #
+#                                                                                                     #
+# The behavior of this script is undefined, if the name of the wanted file isn't unambigous, e.g. it  #
+# matches more than one single file in the firmware image archive.                                    #
+#                                                                                                     #
+# No special commands are expected to be present, only some usually present components are used:      #
+#                                                                                                     #
+# - touch                                                                                             #
+# - tar                                                                                               #
+# - sed                                                                                               #
+# - stat                                                                                              #
+# - rm                                                                                                #
+# - dd                                                                                                #
+# - cmp                                                                                               #
+# - cat                                                                                               #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+tmpdir="/tmp"
+#######################################################################################################
+#                                                                                                     #
+# check debug option                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-d" -o "$1" = "--debug" ]; then
+	debug=1
+	shift
+else
+	debug=0
+fi
+#######################################################################################################
+#                                                                                                     #
+# check 'keep checksum' option                                                                        #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-k" -o "$1" = "--keep-chksum" ]; then
+	noremove=1
+	shift
+else
+	noremove=0
+fi
+#######################################################################################################
+#                                                                                                     #
+# check, if STDOUT isn't a terminal device                                                            #
+#                                                                                                     #
+#######################################################################################################
+[ -t 1 ] && printf "Please redirect STDOUT, the extracted file will be written to this handle.\n" 1>&2 && exit 1
+#######################################################################################################
+#                                                                                                     #
+# get parameters and check the file format                                                            #
+#                                                                                                     #
+#######################################################################################################
+if [ -z "$1" ]; then
+	[ $debug -eq 1 ] && printf "Missing firmware image filename.\n" 1>&2
+	exit 1
+fi
+src="$1"
+if [ -z "$2" ]; then
+	[ $debug -eq 1 ] && printf "Missing name of file to extract.\n" 1>&2
+	exit 1
+fi
+wanted="$2"
+if ! [ -e "$src" ]; then
+	[ $debug -eq 1 ] && printf "The specified firmware image file '%s' does not exist.\n" "$src" 1>&2
+	exit 1
+fi
+if ! tar -t -f "$src" 2>/dev/null 1>&2; then
+	[ $debug -eq 1 ] && printf "The specified file '%s' is not a valid TAR archive.\n" "$src" 1>&2
+	exit 1
+fi
+k="$(tar -t -f "$src" 2>/dev/null | sed -n -e "/$wanted/p")"
+if [ ${#k} -eq 0 ]; then
+	[ $debug -eq 1 ] && printf "The specified file does not contain a member '%s'." "$wanted" 1>&2
+	exit 1
+fi
+ks="$(tar -t -v -f "$src" "$k" | sed -n -e "s|^\([^ \t]* *\)\{2\}\([^ \t]*\) *.*\$|\2|p")"
+if [ $ks -eq 0 ]; then
+	[ $debug -eq 1 ] && printf "The length of '%s' in the specified file '%s' is 0." "$k" "$src" 1>&2
+	exit 1
+fi
+b=$(( ks / 8 ))
+if [ $(( b * 8 )) -ne $ks ]; then
+	[ $debug -eq 1 ] && printf "The file size of '%s' (%u) isn't a multiple of 8.\n" "$k" $ks 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# check temporary directory                                                                           #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -d "$tmpdir" ]; then
+	[ $debug -eq 1 ] && printf "The directory '%s' does not exist.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+name="$tmpdir/$$_get_file_from_image"
+rm "$name" 2>/dev/null
+touch "$name" 2>/dev/null
+if ! [ -e "$name" ]; then
+	[ $debug -eq 1 ] && printf "The directory '%s' is not writable.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+rm "$name" 2>/dev/null
+trap 'rm \"$name\" 2>/dev/null' HUP EXIT INT
+#######################################################################################################
+#                                                                                                     #
+# extract image file, check presence of TI checksum and copy the image file to STDOUT                 #
+#                                                                                                     #
+#######################################################################################################
+tar -x -f "$src" -O "$k" >"$name" 2>/dev/null
+s=$(stat -c %s "$name")
+if [ $s -ne $ks ]; then
+	[ $debug -eq 1 ] && printf "Error extracting '%s' from '%s', size mismatch.\n" "$k" "$src" 1>&2
+	exit 1
+fi
+[ $noremove -eq 0 ] && \
+	sig="$(dd if="$name" bs=8 skip=$(( b - 1 )) 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,4s|. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')" || \
+	sig="none"
+if [ "$sig" = "43 336 123 304" ]; then
+	[ $debug -eq 1 ] && printf "A TI checksum signature was found on '%s', file will be truncated by 8 byte.\n" "$k" 1>&2
+	dd if="$name" bs=8 count=$(( b - 1 )) 2>/dev/null
+else
+	cat "$name" 2>/dev/null # it's faster than 'dd' for the complete file
+fi
+#######################################################################################################
+#                                                                                                     #
+# end of script, temporary files are removed by 'trap' command on exit                                #
+#                                                                                                     #
+#######################################################################################################
+exit 0
