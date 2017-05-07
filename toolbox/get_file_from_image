@@ -132,7 +132,7 @@ if ! [ -e "$name" ]; then
 	exit 1
 fi
 rm "$name" 2>/dev/null
-trap 'rm \"$name\" 2>/dev/null' HUP EXIT INT
+trap 'rm $name 2>/dev/null' HUP EXIT INT
 #######################################################################################################
 #                                                                                                     #
 # extract image file, check presence of TI checksum and copy the image file to STDOUT                 #
