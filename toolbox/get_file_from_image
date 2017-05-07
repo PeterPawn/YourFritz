@@ -145,7 +145,7 @@ if [ $s -ne $ks ]; then
 	exit 1
 fi
 [ $noremove -eq 0 ] && \
-	sig="$(dd if="$name" bs=8 skip=$(( b - 1 )) 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,4s|. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')" || \
+	sig="$(dd if="$name" bs=8 skip=$(( b - 1 )) 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,4s|^[ \t]*. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')" || \
 	sig="none"
 if [ "$sig" = "43 336 123 304" ]; then
 	[ $debug -eq 1 ] && printf "A TI checksum signature was found on '%s', file will be truncated by 8 byte.\n" "$k" 1>&2
