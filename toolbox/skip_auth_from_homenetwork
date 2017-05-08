@@ -1,7 +1,7 @@
 #! /bin/sh
 #######################################################################################################
 #                                                                                                     #
-# add a new administrative user to ar7.cfg on a FRITZ!OS device                                       #
+# switch a FRITZ!OS device with a lost password to @SkipAuthFromHomenetwork mode                      #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -17,12 +17,12 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# The script will add a new user with the specified name and password (both values will be set to     #
-# 'superuser' as default value, if it was not specified while calling the script) to the ar7.cfg file #
-# on a FRITZ!OS device.                                                                               #
-# The new user's name is the first argument and the new password is the second - no check will be     #
-# made, if the specified name would be duplicate (the data is encrypted and this script will not try  #
-# to decode it in any manner).                                                                        #
+# The script checks the current login mode (based on user IDs in the boxusers.users section of the    #
+# 'ar7.cfg' file) and adds a complete new entry for the pseudo user '@SkipAuthFromHomenetwork' (with  #
+# user ID 101), if the box uses the 'username and password' mode at this time. If the compatibility   #
+# mode is active, its pseudo user (@CompatMode with user ID 100) will be changed to the correct data  #
+# for the 'skip authentication from home-network' mode. If this mode is already active, nothing will  #
+# be changed.                                                                                         #
 #                                                                                                     #
 # It will create its own character device to access the TFFS node 113 and it will add the new entry   #
 # with the first free user ID below 100 with all - usually encrypted - values as plain text.          #
@@ -43,18 +43,16 @@
 tmpdir="/tmp"
 proc="/proc"
 ar7_minor=113
-default_username="superuser"
-default_password="$default_username"
 user_template="\t\tenabled = yes;\n"
-user_template="${user_template}\t\tid = %u;\n"
-user_template="${user_template}\t\tname = \"%s\";\n"
+user_template="${user_template}\t\tid = 101;\n"
+user_template="${user_template}\t\tname = \"@SkipAuthFromHomenetwork\";\n"
 user_template="${user_template}\t\temail = \"\";\n"
-user_template="${user_template}\t\tpassword = \"%s\";\n"
+user_template="${user_template}\t\tpassword = \"\";\n"
 user_template="${user_template}\t\tvpn_access = no;\n"
-user_template="${user_template}\t\tbox_admin_rights = secobj_access_rights_readwrite_from_everywhere;\n"
-user_template="${user_template}\t\tnas_rights = secobj_access_rights_none;\n"
-user_template="${user_template}\t\tphone_admin_rights = secobj_access_rights_readwrite_from_everywhere;\n"
-user_template="${user_template}\t\thomeauto_admin_rights = secobj_access_rights_readwrite_from_everywhere;\n"
+user_template="${user_template}\t\tbox_admin_rights = secobj_access_rights_readwrite_from_homenetwork_only;\n"
+user_template="${user_template}\t\tnas_rights = secobj_access_rights_readwrite_from_homenetwork_only;\n"
+user_template="${user_template}\t\tphone_rights = secobj_access_rights_readwrite_from_homenetwork_only;\n"
+user_template="${user_template}\t\thomeauto_rights = secobj_access_rights_readwrite_from_homenetwork_only;\n"
 user_template="${user_template}\t} {\n"
 #######################################################################################################
 #                                                                                                     #
@@ -96,20 +94,19 @@ read_users()
 }
 #######################################################################################################
 #                                                                                                     #
-# find the first unused user ID below 100                                                             #
+# search a user ID in the list                                                                        #
 #                                                                                                     #
 #######################################################################################################
-find_free_user()
+find_userid()
 {
-	n=99
+	i="$2"
 	IFS=:
 	set -- $1
 	while [ $# -gt 0 ]; do
-		[ $1 -lt $n ] && printf "%u" $n && return 0
-		[ $1 -gt $n ] && shift && continue
-		n=$(( n - 1 ))
+		[ $1 -eq $i ] && return 0
 		shift
 	done
+	return 1
 }
 #######################################################################################################
 #                                                                                                     #
@@ -122,13 +119,6 @@ if [ "$1" = "-d" -o "$1" = "--debug" ]; then
 else
 	debug=0
 fi
-#######################################################################################################
-#                                                                                                     #
-# process parameters                                                                                  #
-#                                                                                                     #
-#######################################################################################################
-new_username="${1:-$default_username}"
-new_password="${2:-$default_password}"
 #######################################################################################################
 #                                                                                                     #
 # determine the major device number for TFFS nodes                                                    #
@@ -178,20 +168,35 @@ sed -n -e "/^boxusers/,/^}/p" "$copy" >"$new_users"
 userids="$(sed -n -e "/^[ \t]*id =/s|.* = \([0-9]*\);|\1|p" $new_users | read_users)"
 #######################################################################################################
 #                                                                                                     #
-# prepare new boxusers.users section                                                                  #
+# check login mode                                                                                    #
 #                                                                                                     #
 #######################################################################################################
-new_id=$(find_free_user $userids)
-printf "$user_template" $new_id "$new_username" "$new_password" >"$new_user"
-sed -n -e "/^boxusers/,/^}/p" "$copy" | sed -e "/^[ \t]*users {\$/r $new_user" | sed -e "1d" -e "/[ \t]*}\$/,\$d" >"$new_users"
-printf "\t}\n" >>"$new_users"
-[ $debug -eq 1 ] && printf "Added a new user '%s' (ID=%u) with password '%s'.\n" "$new_username" "$new_id" "$new_password" 1>&2
+if find_userid "$userids" 101; then # @NoAuthFromHomenetwork - no reason to set a new user
+	[ $debug -eq 1 ] && printf "Login mode is already set to @SkipAuthFromHomenetwork, nothing was changed.\n" 1>&2
+	action=0
+elif find_userid "$userids" 100; then # @CompatMode - change user ID and name and remove any password
+	sed -n -e "/^[ \t]*users {\$/,/[ \t]*}\$/p" "$new_users" | \
+	sed -e "/id = 100/,/name =/s|name = \"[^\"]*\";|name = \"@SkipAuthFromHomenetwork\";|" | \
+	sed -e "/id = 100/,/password =/s|password = \"[^\"]*\";|password = \"###REMOVETHISLINE###\";|" | \
+	sed -e "/###REMOVETHISLINE###/d" | \
+	sed -e "/id = 100/s|100|101|" >"$new_user"
+	sed -e "/[ \t]*}\$/,\$d" "$new_user" >"$new_users"
+	printf "\t}\n" >>"$new_users"
+	[ $debug -eq 1 ] && printf "Login mode was set to '@CompatMode', changed it to '@SkipAuthFromHomenetwork'.\n" 1>&2
+	action=1
+else # add a complete new account for @SkipAuthFromHomenetwork
+	printf "$user_template" >"$new_user"
+	sed -n -e "/^boxusers/,/^}/p" "$copy" | sed -e "/^[ \t]*users {\$/r $new_user" | sed -e "1d" -e "/[ \t]*}\$/,\$d" >"$new_users"
+	[ $debug -eq 1 ] && printf "Added a new user entry for '@SkipAuthFromHomenetwork'.\n" 1>&2
+	printf "\t}\n" >>"$new_users"
+	action=1
+fi
 #######################################################################################################
 #                                                                                                     #
 # edit the original file and replace the boxusers.users section with our new file                     #
 #                                                                                                     #
 #######################################################################################################
-sed -e "/^[ \t]*users {\$/,/^[ \t]*}\$/d" "$copy" | sed -e "/^boxusers/r $new_users" >"$node_name"
+[ $action -eq 1 ] && sed -e "/^[ \t]*users {\$/,/^[ \t]*}\$/d" "$copy" | sed -e "/^boxusers/r $new_users" >"$node_name"
 #######################################################################################################
 #                                                                                                     #
 # remove temporary files                                                                              #
