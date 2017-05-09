@@ -24,8 +24,10 @@
 # for the 'skip authentication from home-network' mode. If this mode is already active, nothing will  #
 # be changed.                                                                                         #
 #                                                                                                     #
-# It will create its own character device to access the TFFS node 113 and it will add the new entry   #
-# with the first free user ID below 100 with all - usually encrypted - values as plain text.          #
+# It will create its own character device to access the TFFS node 113 and will setup an user account  #
+# with ID 101 and the name "@SkipAuthFromHomenetwort" - either with a modification of an existing     #
+# "@CompatMode" account (it changes UID/name and removes an existing password) or it creates a        #
+# brand-new user account with the needed settings.                                                    #
 #                                                                                                     #
 # The major device number of the TFFS driver will be read from "/proc/devices" and the script needs   #
 # a writable filesystem mounted on "/tmp" - this means, the caller is responsible to ensure, that     #
