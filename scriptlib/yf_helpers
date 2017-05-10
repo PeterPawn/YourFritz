@@ -167,7 +167,9 @@ __yf_helpers_add_dependencies()
 		dep="$(__yf_helpers_get_line "$f" F)"
 		[ ${#dep} -eq 0 ] && continue
 		for d in $dep; do
-			deps="$deps ${__YF_SCRIPT_FUNCTIONS_DIR}/${d}.function"
+			fn="${__YF_SCRIPT_FUNCTIONS_DIR}/${d}.function"
+			__yf_helpers_contains "$deps" "$fn" && continue
+			deps="$deps $fn $(__yf_helpers_add_dependencies "$fn")"
 		done
 	done
 	__yf_helpers_unique "$deps"
