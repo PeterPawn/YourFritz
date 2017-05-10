@@ -1,0 +1,74 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# base32 - convert STDIN to a base32 string using AVMs presentation with characters   #
+#          A to Z and 1 to 6                                                          #
+#                                                                                     #
+# parameters:                                                                         #
+#   none                                                                              #
+#                                                                                     #
+# stdin:                                                                              #
+#   the content to convert, size should be a multiple of 5 or it will be padded with  #
+#   zero bytes to the next integral boundary of 5                                     #
+#                                                                                     #
+# stdout:                                                                             #
+#   the base32 encoded input, size is always a multiple of 8                          #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - error occured, a POSIX compatible 'cmp' command was not found;                #
+#       another possible error is a STDIN descriptor attached to a terminal           #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: cmp expr printf                                                                  #
+# W: -                                                                                #
+# I: -                                                                                #
+# F: -                                                                                #
+# K: avm encryption fritzbox                                                          #
+#                                                                                     #
+#######################################################################################
+yf_base32()
+(
+	yf_base32_encode()
+	{
+		[ $1 -eq 0 ] && printf "A" || printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" : ".\{$1\}\(.\).*")
+	}
+
+	yf_base32_append()
+	{
+		b=$(( b + 8 ))
+		v=$(( ( v << 8 ) + $1 ))
+		while [ $b -ge 5 ]; do
+			yf_base32_encode $(( v >> ( b - 5 ) ))
+			v=$(( v & ( 2 ** ( b - 5 ) - 1 ) ))
+			b=$(( b - 5 ))
+		done
+	}
+
+	yf_base32_read_octal()
+	{
+		i=1
+		b=0
+		v=0
+		while read pos left right; do
+			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
+				yf_base32_append 0
+				i=$(( i + 1 ))
+			done
+			yf_base32_append 0$right
+			i=$(( pos + 1 ))
+		done
+		while [ $(( ( i - 1 ) % 5 )) -ne 0 ]; do
+			yf_base32_append 0
+			i=$(( i + 1 ))
+		done
+	}
+
+	[ -t 0 ] && return 1
+	command -v cmp 2>/dev/null 1>&2 || return 1	
+	command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_base32_read_octal
+	printf "\n"
+	return $rc
+)
