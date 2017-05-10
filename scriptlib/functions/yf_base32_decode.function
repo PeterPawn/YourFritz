@@ -2,72 +2,68 @@
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 #######################################################################################
 #                                                                                     #
-# base32 - convert STDIN to a base32 string using AVMs presentation with characters   #
-#          A to Z and 1 to 6                                                          #
+# base32_decode - convert STDIN from base32 format (AVMs character set) to the binary #
+#                 content                                                             #
 #                                                                                     #
 # parameters:                                                                         #
 #   none                                                                              #
 #                                                                                     #
 # stdin:                                                                              #
-#   the content to convert, size should be a multiple of 5 or it will be padded with  #
-#   zero bytes to the next integral boundary of 5                                     #
+#   the content to decode, size has to be a multiple of 8 on each line and a newline  #
+#   character is needed at the end (otherwise the 'read' command will fail), even if  #
+#   the encoding function does not add one (it doesn't split its output into lines)   #
 #                                                                                     #
 # stdout:                                                                             #
-#   the base32 encoded input, size is always a multiple of 8                          #
+#   the decoded data                                                                  #
 #                                                                                     #
 # return code:                                                                        #
 #   0 - stdout value is valid                                                         #
-#   1 - error occured, a POSIX compatible 'cmp' command was not found;                #
-#       another possible error is a STDIN descriptor attached to a terminal           #
+#   1 - error occured, input data is invalid                                          #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: cmp expr printf                                                                  #
+# U: sed printf expr dd                                                               #
 # W: -                                                                                #
 # I: -                                                                                #
-# F: -                                                                                #
+# F: yf_substring yf_index                                                            #
 # K: avm encryption fritzbox                                                          #
 #                                                                                     #
 #######################################################################################
-yf_base32()
+yf_base32_decode()
 (
-	yf_base32_encode()
-	{
-		[ $1 -eq 0 ] && printf "A" || printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" : ".\{$1\}\(.\).*")
-	}
-
-	yf_base32_append()
-	{
-		b=$(( b + 8 ))
-		v=$(( ( v << 8 ) + $1 ))
-		while [ $b -ge 5 ]; do
-			yf_base32_encode $(( v >> ( b - 5 ) ))
-			v=$(( v & ( 2 ** ( b - 5 ) - 1 ) ))
-			b=$(( b - 5 ))
-		done
-	}
-
-	yf_base32_read_octal()
-	{
-		i=1
-		b=0
-		v=0
-		while read pos left right; do
-			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
-				yf_base32_append 0
-				i=$(( i + 1 ))
-			done
-			yf_base32_append 0$right
-			i=$(( pos + 1 ))
-		done
-		while [ $(( ( i - 1 ) % 5 )) -ne 0 ]; do
-			yf_base32_append 0
-			i=$(( i + 1 ))
-		done
-	}
-
 	[ -t 0 ] && return 1
-	command -v cmp 2>/dev/null 1>&2 || return 1
-	command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_base32_read_octal
+	rc=1 # preset, if no newline is present on STDIN, our 'read' will signal instant EOF
+	while read line; do
+		rc=0
+		! [ -z "$(expr "$line" : "\([^A-Z1-6\r]\)")" ] && return 1
+		line=$(printf "%s" $line | sed -e "s|\r||g")
+		[ $(( ${#line} % 8 )) -gt 0 ] && return 1
+		i=0
+		f=0
+		while [ $i -lt ${#line} ]; do
+			part=$(printf "%s" $(yf_substring "$line" $i 8) | sed -e "s|.|& |g")
+			i=$(( i + 8 ))
+			v=0
+			j=0
+			for c in $part; do
+				v=$(( ( v << 5 ) + $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" $c) - 1 ))
+				j=$(( j + 1 ))
+				[ $(( j % 4 )) -ne 0 ] && continue
+				# process 16 and 24 bits in two separate steps, this avoids
+				# problems with 32-bit-limited arithmetics
+				r=$(( j % 8 ))
+				o=$(( v >> r ))
+				s=$(( 24 - ( r * 2 ) ))
+				v=$(( v & ( 0x00FFFFFF >> ( r * 5 ) ) ))
+				while [ $s -gt 0 ]; do
+					s=$(( s - 8 ))
+					d=$(( ( o >> s ) & 255 ))
+					[ $d -eq 0 ] \
+						&& dd if=/dev/zero bs=1 count=1 2>/dev/null \
+						|| printf "%b" "\0$(( d >> 6 ))$(( ( d >> 3 ) & 7 ))$(( d & 7 ))"
+				done
+			done
+		done
+	done
 	return $rc
 )
