@@ -208,7 +208,7 @@ __yf_helpers_message()
 	e="$(printf %b \\033)"
 	s=$1
 	shift
-	[ "$s" = "F" -o "$s" = "E" ] && c=1
+	( [ "$s" = "F" ] || [ "$s" = "E" ] ) && c=1
 	[ "$s" = "W" ] && c=3
 	[ "$s" = "I" ] && c=2
 	s=$(printf "[%c[1;3%dm%c%c[0m]" "$e" "$c" "$s" "$e")

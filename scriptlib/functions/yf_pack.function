@@ -54,7 +54,7 @@ yf_pack()
 		val="$2"
 		shift 2
 		endian=$(yf_substring "$type" 0 1 | yf_uppercase)
-		if [ $endian = B -o $endian = L ]; then
+		if [ $endian = B ] || [ $endian = L ]; then
 			type="$(yf_substring "$type" 1)"
 		else
 			unset endian

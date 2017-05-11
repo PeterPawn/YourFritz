@@ -37,7 +37,7 @@ yf_get_last_host_in_subnet()
 	addr="${in%%/*}"
 	bits="${in#*/}"
 	yf_is_decimal "$bits" || return 1
-	[ $bits -le 1 -o $bits -gt 30 ] && return 1
+	( [ $bits -le 1 ] || [ $bits -gt 30 ] ) && return 1
 	addr="$(yf_ipv4_address "$addr")"
 	inv_mask=$(( ( 1 << ( 32 - bits ) ) - 1 ))
 	addr_dec=$(yf_hex2dec "$addr")
