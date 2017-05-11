@@ -73,7 +73,7 @@ __yf_helpers_contains()
 __yf_helpers_string_compare()
 (
 	cmp "$1" "$2" 2>/dev/null 1>&2 && printf "0" && return 0
-	res=$(cmp -l "$1" "$2" 2>/dev/null | \
+	res=$(cmp -l -- "$1" "$2" 2>/dev/null | \
 			while read offset left right; do
 				[ $left -lt $right ] && res=-1 || res=1
 				printf "%d" $res

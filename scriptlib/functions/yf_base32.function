@@ -68,6 +68,6 @@ yf_base32()
 
 	[ -t 0 ] && return 1
 	command -v cmp 2>/dev/null 1>&2 || return 1
-	command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_base32_read_octal
+	command cmp -l -- /dev/zero - 2>/dev/null | yf_base32_read_octal
 	return $rc
 )

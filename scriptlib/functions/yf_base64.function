@@ -81,7 +81,7 @@ yf_base64()
 		rc=$?
 	else
 		command -v cmp 2>/dev/null 1>&2 || return 1	
-		command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_base64_read_octal
+		command cmp -l -- /dev/zero - 2>/dev/null | yf_base64_read_octal
 		printf "\n"
 	fi
 	return $rc
