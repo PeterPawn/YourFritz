@@ -57,7 +57,7 @@ yf_ipv4_address()
 			addr=$(( ( addr << ( shifts * 8 ) ) + tupel ))
 		fi
 	done
-	if [ $addr -lt $(( 0x01000000 )) -o $addr -gt $(( 0xFFFFFFFF )) ]; then
+	if [ $addr -lt $(( 0x01000000 )) ] || [ $addr -gt $(( 0xFFFFFFFF )) ]; then
 		addr=0
 		error=1
 	fi
