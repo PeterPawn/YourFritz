@@ -1,0 +1,46 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+#######################################################################################
+#                                                                                     #
+# fritzos_login_hash - compute the hash over challenge and password to login to a     #
+#                      FRITZ!OS device                                                #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - password                                                                     #
+#   $2 - challenge                                                                    #
+#                                                                                     #
+# stdout:                                                                             #
+#   a string, which is usable as 'response' parameter to call the FRITZ!OS login page #
+#                                                                                     #
+# return code:                                                                        #
+#   none                                                                              #
+#                                                                                     #
+# remarks:                                                                            #
+# The challenge and password value may only contain characters with a decimal value   #
+# below 128. The conversion to UTF-16LE (the input string for our MD5 hash has to use #
+# this encoding) will simply be done by adding another 0x00 byte to each character    #
+# and this approach is only valid for characters from the 7-bit ASCII set.            #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: printf md5sum sed                                                                #
+# W: -                                                                                #
+# F: yf_bin2hex yf_hex2bin                                                            #
+# I: -                                                                                #
+# K: fritzos                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_fritzos_login_hash()
+(
+	printf "%s-%s" "$2" "$(printf "%s-%s" "$2" "$1" | \
+		yf_bin2hex | \
+		sed -e "s|..|&00 |g" | \
+		yf_hex2bin | \
+		md5sum | \
+		sed -n -e "s|^\([A-Fa-f0-9]*\)[ \t]*.*\$|\1|p")"
+)
+#######################################################################################
+#                                                                                     #
+# end of file                                                                         #
+#                                                                                     #
+#######################################################################################
