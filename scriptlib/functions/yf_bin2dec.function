@@ -61,6 +61,6 @@ yf_bin2dec()
 	else
 		[ $(yf_endianess) = L ] && e=1 || e=0
 	fi
-	command cmp -l /dev/zero /proc/self/fd/0 2>/dev/null | yf_bin2dec_read_octal $e
+	command cmp -l -- /dev/zero - 2>/dev/null | yf_bin2dec_read_octal $e
 	return 0
 )

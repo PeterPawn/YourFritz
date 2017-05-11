@@ -36,7 +36,7 @@ yf_random_string()
 		}
 		len=$1
 		i=0
-		while read j val zero; do
+		while read j zero val; do
 			i=$(( i + 1 ))
 			if [ $j -gt $i ]; then
 				while [ $i -lt $j ]; do
@@ -60,6 +60,6 @@ yf_random_string()
 	len="${1:-16}"
 	yf_is_decimal "$len" || return 1
 	size=$(( ( len + 1 ) / 2 ))
-	dd if=/dev/urandom bs=$size count=1 2>/dev/null | cmp -l - /dev/zero 2>/dev/null | yf_random_string_read_octals $len
+	dd if=/dev/urandom bs=$size count=1 2>/dev/null | cmp -l -- /dev/zero - 2>/dev/null | yf_random_string_read_octals $len
 	return 0
 )
