@@ -5,38 +5,79 @@
 # hex2bin - convert hexadecimal string to binary data                                 #
 #                                                                                     #
 # parameters:                                                                         #
-#   $1 - input value representing a hexadecimal string                                #
+#   $1 - optional string to convert, if STDIN is connected to a terminal device       #
+#                                                                                     #
+# stdin:                                                                              #
+#   stream with hexadecimal characters (0-9 and A-F/a-f and optional whitespaces,     #
+#   incl. newline and carriage-return)                                                #
 #                                                                                     #
 # stdout:                                                                             #
-#   input value converted to binary content                                           #
+#   input stream converted to binary content                                          #
 #                                                                                     #
 # return code:                                                                        #
 #   0 - stdout content is valid                                                       #
-#   1 - error occured (e.g. input format is invalid)                                  #
+#   1 - error occured (e.g. input format is invalid or 'cmp' command not available)   #
+#                                                                                     #
+# remarks:                                                                            #
+# The output of converted data is done immediately while reading input stream. If an  #
+# invalid character is detected somewhere in the input stream, the output stream will #
+# be incomplete, because the conversion will be aborted. Check the return code to     #
+# distinguish between a successful and complete conversion and a failure.             #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
 # U: dd printf                                                                        #
 # W: -                                                                                #
-# F: yf_is_hexadecimal yf_substring yf_hex2dec                                        #
+# F: -                                                                                #
 # I: -                                                                                #
 # K: convert                                                                          #
 #                                                                                     #
 #######################################################################################
 yf_hex2bin()
 (
-	val="$1"
-	zeroes=0
-	yf_is_hexadecimal "$val" || return 1
-	[ $(( ${#val} % 2 )) -ne 0 ] && return 1
-	while [ ${#val} -gt 0 ]; do
-		dec=$(yf_substring "$val" 0 2)
-		val="$(yf_substring "$val" 2)"
-		[ $dec = 00 ] && zeroes=$(( zeroes + 1 )) && continue
-		[ $zeroes -gt 0 ] && dd if=/dev/zero bs=1 count=$zeroes 2>/dev/null && zeroes=0
-		dec=$(yf_hex2dec $dec)
-		printf "%b" "\0$(( dec >> 6 ))$(( ( dec >> 3 ) & 7 ))$(( dec & 7 ))"
-	done
-	[ $zeroes -gt 0 ] && dd if=/dev/zero bs=1 count=$zeroes 2>/dev/null 
-	return 0
+	yf_hex2bin_read_octal()
+	{
+		i=1
+		h=1
+		z=0
+		while read p l o; do
+			[ $i -lt $p ] && return 1 # zero bytes on input stream are an error
+			i=$(( i + 1 ))
+			if [ $o -eq 11 ] || [ $o -eq 12 ] || [ $o -eq 15 ] || [ $o -eq 40 ]; then
+				[ $h -eq 1 ] && continue || return 1 # whitespace after odd hex-digits
+			fi
+			c=255
+			[ $o -ge 60 ] && [ $o -le 67 ] && c=$(( o - 60 ))
+			[ $o -ge 70 ] && [ $o -le 71 ] && c=$(( o - 62 ))
+			[ $o -ge 101 ] && [ $o -le 106 ] && c=$(( o - 91 ))
+			[ $o -ge 141 ] && [ $o -le 146 ] && c=$(( o - 131 ))
+			[ $c -eq 255 ] && return 1 # invalid character found
+			if [ $h -eq 0 ]; then
+				v=$(( v + c ))
+				if [ $v -eq 0 ]; then
+					z=$(( z + 1 )) # count consecutive zeroes
+				else
+					if [ $z -gt 0 ]; then
+						dd if=/dev/zero bs=$z count=1 2>/dev/null
+						z=0
+					fi
+					printf "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+				fi
+				h=1
+			else
+				v=$(( c << 4 ))
+				h=0
+			fi
+		done
+		[ $z -gt 0 ] && dd if=/dev/zero bs=$z count=1 2>/dev/null
+		return 0
+	}
+
+	if [ -t 0 ]; then
+		[ -z "$1" ] && return 0 || printf "%s" "$1" | yf_hex2bin
+		return $?
+	fi
+	command -v cmp 2>/dev/null 1>&2 || return 1
+	command cmp -l -- /dev/zero - 2>/dev/null | yf_hex2bin_read_octal
+	return $?
 )
