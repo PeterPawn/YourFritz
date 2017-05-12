@@ -35,8 +35,12 @@ yf_trim()
 			return 1
 		fi
 	fi
-	[ $dir -eq -1 ] && sed -e "s!^${char}*!!g"
-	[ $dir -eq 1 ] && sed -e "s!${char}*\$!!g"
-	[ $dir -eq 0 ] && yf_trim -1 "$char" | yf_trim 1 "$char"
-	return 0
+	if [ $dir -eq -1 ]; then
+		sed -e "s!^${char}*!!g"
+	elif [ $dir -eq 1 ]; then
+		sed -e "s!${char}*\$!!g"
+	else
+		sed -e "s!^${char}*!!g" -e "s!${char}*\$!!g"
+	fi
+	return $?
 )
