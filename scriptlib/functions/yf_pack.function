@@ -78,7 +78,7 @@ yf_pack()
 				[ -z $endian ] && endian=B
 				;;
 			STR)
-				hex="$(yf_str2hex "$val")"
+				hex="$(printf "%s" "$val" | yf_bin2hex)"
 				unset endian
 				;;
 			*)
@@ -96,6 +96,6 @@ yf_pack()
 		fi
 		out="$out$hex"
 	done
-	yf_hex2bin "$out"
+	printf "%s" "$out" | yf_hex2bin
 	return 0
 )
