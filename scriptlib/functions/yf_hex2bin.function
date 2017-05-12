@@ -46,12 +46,17 @@ yf_hex2bin()
 			if [ $o -eq 11 ] || [ $o -eq 12 ] || [ $o -eq 15 ] || [ $o -eq 40 ]; then
 				[ $h -eq 1 ] && continue || return 1 # whitespace after odd hex-digits
 			fi
-			c=255
-			[ $o -ge 60 ] && [ $o -le 67 ] && c=$(( o - 60 ))
-			[ $o -ge 70 ] && [ $o -le 71 ] && c=$(( o - 62 ))
-			[ $o -ge 101 ] && [ $o -le 106 ] && c=$(( o - 91 ))
-			[ $o -ge 141 ] && [ $o -le 146 ] && c=$(( o - 131 ))
-			[ $c -eq 255 ] && return 1 # invalid character found
+			if [ $o -ge 60 ] && [ $o -le 67 ]; then
+				c=$(( o - 60 ))
+			elif [ $o -ge 70 ] && [ $o -le 71 ]; then
+				c=$(( o - 62 ))
+			elif [ $o -ge 101 ] && [ $o -le 106 ]; then
+				c=$(( o - 91 ))
+			elif [ $o -ge 141 ] && [ $o -le 146 ]; then
+				c=$(( o - 131 ))
+			else
+				return 1 # invalid character found
+			fi
 			if [ $h -eq 0 ]; then
 				v=$(( v + c ))
 				if [ $v -eq 0 ]; then
