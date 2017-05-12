@@ -89,7 +89,7 @@ for counter in $counters; do
 	entry="$id$(yf_dec2hex $len 2)$val"
 	out="$out$entry"
 done
-yf_hex2bin "$out"
+echo "$out" | yf_hex2bin
 ##################################################################################
 #
 # regular end of script reached

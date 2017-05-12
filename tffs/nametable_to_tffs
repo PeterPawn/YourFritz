@@ -53,7 +53,7 @@ while read id name; do
 done
 len=$(( ${#out} / 2 ))
 out="$(yf_dec2hex "$nametable_id" 2)$(yf_dec2hex "$len" 2)$out"
-yf_hex2bin "$out"
+echo "$out" | yf_hex2bin
 ##################################################################################
 #
 # regular end of script reached

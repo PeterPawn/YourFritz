@@ -172,7 +172,7 @@ __yf_helpers_add_dependencies()
 			deps="$deps $fn $(__yf_helpers_add_dependencies "$fn")"
 		done
 	done
-	__yf_helpers_unique "$deps"
+	printf "%s" "$deps"
 )
 __yf_helpers_find_functions()
 (
@@ -254,7 +254,7 @@ __yf_e="$(printf %b \\033)"
 }
 __yf_functions="$(__yf_helpers_find_functions)"
 [ $? -eq 0 ] || eval $(__yf_helpers_exit) 129
-__yf_functions="$(__yf_helpers_add_dependencies "${__yf_functions}")"
+__yf_functions="$(__yf_helpers_unique "$(__yf_helpers_add_dependencies "${__yf_functions}")")"
 unset __yf_commands
 __yf_functions_count=0
 for __yf_temp in ${__yf_functions}; do
