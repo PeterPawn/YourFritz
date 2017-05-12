@@ -58,7 +58,7 @@ for name in $*; do
 		out="${out}00"
 		fill=$(( fill - 1 ))
 	done
-	yf_hex2bin "$out"
+	echo "$out" | yf_hex2bin
 done
 ##################################################################################
 #

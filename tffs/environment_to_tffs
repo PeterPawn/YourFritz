@@ -86,7 +86,7 @@ while read line; do
 		echo "name table entry for '$name' not found, value ignored" 1>&2
 	fi
 done <$envfile
-yf_hex2bin "$out"
+echo "$out" | yf_hex2bin
 ##################################################################################
 #
 # regular end of script reached

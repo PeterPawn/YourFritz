@@ -72,7 +72,7 @@ __yf_fritzos_model_settings()
 #                                                                                     #
 #######################################################################################
 if [ -d /proc/sys/urlader ] && [ -f /proc/sys/urlader/environment ]; then
-	__YF_FOS_SETTINGS_TEMP="$(yf_mktemp)"
+	__YF_FOS_SETTINGS_TEMP="${TMPDIR:-${TMP:-/tmp}}/$$_FOS_SETTINGS_TEMP"
 	__yf_fritzos_model_settings >"${__YF_FOS_SETTINGS_TEMP}"
 	. "${__YF_FOS_SETTINGS_TEMP}"
 	rm "${__YF_FOS_SETTINGS_TEMP}" 2>/dev/null
