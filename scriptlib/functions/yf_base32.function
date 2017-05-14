@@ -39,7 +39,7 @@ yf_base32()
 			while [ $b -ge 5 ]; do
 				b=$(( b - 5 ))
 				d=$(( v >> b ))
-				[ $d -eq 0 ] && printf "A" || printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" : ".\{$d\}\(.\).*")
+				printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" : ".\{$d\}\(.\).*")
 				v=$(( v % ( 2 ** b ) ))
 			done
 		done
