@@ -4,7 +4,7 @@
 # GUI Boot Manager extension for AVM's FRITZ!Box routers with "hot flash"    #
 # capabilities                                                               #
 #                                                                            #
-# Copyright (C) 2014-2016 P.Haemmerlein (http://www.yourfritz.de)            #
+# Copyright (C) 2014-2017 P.Haemmerlein (http://www.yourfritz.de)            #
 #                                                                            #
 # This program is free software; you can redistribute it and/or              #
 # modify it under the terms of the GNU General Public License                # 
@@ -40,7 +40,7 @@ reservedprefix="reserved"
 fsvarname="linux_fs_start"
 brandingvarname="firmware_version"
 wrapper="/wrapper"
-statfile="/var.tar"
+statfile="/etc/.modfs_version"
 rootfsimage="filesystem_core.squashfs"
 versionfilename="etc/version"
 defaultspath="etc/default.$CONFIG_PRODUKT"
@@ -54,6 +54,10 @@ semafile="/var/run/bootmanager.semaphore"
 #                                                                            #
 ##############################################################################
 . /etc/puma6_helper.sh
+is_puma6 && puma6=1 || puma6=0
+is_puma_na && plat=ATOM || plat=ARM
+[ $puma6 -eq 0 ] && blkdev=$mtdblockprefix || blkdev=$mmcprefix
+[ $puma6 -eq 0 ] && dev=$mtdprefix || dev=$mmcprefix
 ##############################################################################
 #                                                                            #
 # subfunctions                                                               #
@@ -95,6 +99,25 @@ get_system_branding()
 )
 ##############################################################################
 #                                                                            #
+# check the first 16 byte of the specified partition, if they're all 0xFF,   #
+# there's usually no kernel (and no alternative system) installed            #
+# $1 - kernel (block) device to check                                        #
+#                                                                            #
+##############################################################################
+is_kernel_present()
+(
+	read_bytes()
+	{
+		while read line left right; do
+			[ $left -ne 377 -a $left -ne 0 ] && return 0
+		done
+		return 1
+	}
+	dd if=$blkdev$1 bs=16 count=1 2>/dev/null | cmp -l - /dev/zero 2>/dev/null | read_bytes
+	return $?
+)
+##############################################################################
+#                                                                            #
 # get next system index from environment                                     #
 #                                                                            #
 ##############################################################################
@@ -110,8 +133,8 @@ get_system_switch()
 ##############################################################################
 get_partition_by_name() 
 (
-	if is_puma6; then
-		name="$1${2:+_}${2}_ARM"
+	if [ $puma6 -eq 1 ]; then
+		name="$1${2:+_}${2}_${plat}"
 		sed -n -e "s|^${name}=$mmcprefix\([0-9]\{1,2\}\)\$|\1|p" $pumaparts
 	else
 		name=$2${2:+-}$1
@@ -126,8 +149,8 @@ get_partition_by_name()
 ##############################################################################
 get_partition_by_number() 
 (
-	if is_puma6; then
-		sed -e "/_SIZE=/d" -e "s|_|-|g" $pumaparts | sed -n -e "s|^\([a-z]*\)\(-$reservedprefix\)\?-ARM=$mmcprefix$1|\1\2|p" | sed -e "s|\(.*\)-\(.*\)|\2-\1|"
+	if [ $puma6 -eq 1 ]; then
+		sed -e "/_SIZE=/d" -e "s|_|-|g" $pumaparts | sed -n -e "s|^\([a-z]*\)\(-$reservedprefix\)\?-${plat}=$mmcprefix$1|\1\2|p" | sed -e "s|\(.*\)-\(.*\)|\2-\1|"
 	else
 		sed -n -e "s|$mtdprefix$1: [0-9a-f]\{8\} [0-9a-f]\{8\} \"\(.*\)\"|\1|p" $procmtd 
 	fi
@@ -234,26 +257,33 @@ switch_system_to()
 ##############################################################################
 mount_alternative_system()
 (
-	# CGI calls have only a limited search PATH yet and the old value isn't
-	# important (and needs not to be saved), 'cause changing the PATH should
-	# still be local to this function and it's children, if it's exported here
+	# CGI calls have only /bin:/usr/bin in the search PATH, the old value is
+	# not important, changing the PATH should be local to this function and
+	# it's children, even if it's "export"ed here
 	export PATH=/sbin:/usr/sbin:/bin:/usr/bin
 	mkdir -p $2/$altfs 2>/dev/null || return 1
-	if is_puma6; then
-		mount -t squashfs -o ro $mmcprefix$1 $2/$altfs 2>/dev/null || return 1
+	if [ $puma6 -eq 1 ]; then
+		mount -t squashfs -o ro $blkdev$1 $2/$altfs 2>/dev/null || return 1
 		printf '%s/%s' $2 $altfs
+		return 0
 	else
 		blkid=$(command -v blkid 2>/dev/null)
-		[ -z $blkid ] && fstype=squashfs
-		[ -z $fstype ] && fstype=$(blkid $mtdblockprefix$1 | sed -n -e 's|.*TYPE="\?\([^"]*\)"\?|\1|p')
+		if [ -z $blkid ]; then
+			[ -d /wrapper ] && fstype=yaffs2 || fstype=squashfs
+		fi
+		[ -z $fstype ] && fstype=$(blkid $blkdev$1 | sed -n -e 's|.*TYPE="\?\([^"]*\)"\?|\1|p')
 		[ -z $fstype ] && fstype=yaffs2
-		mount -t $fstype -o ro $mtdblockprefix$1 $2/$altfs 2>/dev/null || return 1
+		mount -t $fstype -o ro $blkdev$1 $2/$altfs 2>/dev/null || return 1
 		! [ $fstype = yaffs2 ] && printf '%s/%s' $2 $altfs && return 0
-		mkdir -p $2/$altroot 2>/dev/null || return 1
-		mount -t squashfs -o ro $2/$altfs/$rootfsimage $2/$altroot 2>/dev/null || return 1
-		printf '%s/%s' $2 $altroot
+		if mkdir -p $2/$altroot 2>/dev/null; then
+			if mount -t squashfs -o ro $2/$altfs/$rootfsimage $2/$altroot 2>/dev/null; then
+				printf '%s/%s' $2 $altroot
+				return 0
+			fi
+		fi
+		umount $2/$altfs 2>/dev/null
+		return 1
 	fi
-	return 0
 )
 ##############################################################################
 #                                                                            #
@@ -265,7 +295,7 @@ dismount_alternative_system()
 (
 	umount $1 2>/dev/null || return 1
 	rmdir $1 2>/dev/null
-	is_puma6 && return 0
+	[ $puma6 -eq 1 ] && return 0
 	mp=$(sed -n -e "s|[^ ]* \(${1%/*}/[^ ]*\) .*|\1|p" /proc/mounts)
 	[ -z $mp ] && return 0
 	umount $mp 2>/dev/null || return 1
@@ -292,6 +322,7 @@ get_brandings()
 get_loop_device_file()
 (
 	[ -d /sys/block/loop$1/loop ] || return 1
+	[ -f /sys/block/loop$1/loop/backing_file ] || return 1
 	cat /sys/block/loop$1/loop/backing_file
 )
 ##############################################################################
@@ -411,33 +442,52 @@ html_display()
 			|| printf '<h4>Switching between alternative systems is not supported on this device.</h4>\n'
 		return 1
 	else
-		spinlock get 10 && mp=$(mount_alternative_system $alternative_filesystem $tempdir)
-		if [ -z $mp ]; then
+		is_kernel_present $alternative_kernel
+		if [ $? -eq 1 ]; then 
+			alternative_is_missing=1
 			alternative_version="unknown"
 			alternative_date="unknown"
 			alternative_fsdate="unknown"
 			alternative_brandings="$current_branding"
+			running_checked=1
 		else
-			alternative_version=$(get_system_version $mp)
-			alternative_date=$(get_system_date $mp)
-			[ -d $wrapper ] \
-				&& alternative_fsdate=$(stat -c %Y $(get_image_name $mp) 2>/dev/null) \
-				|| alternative_fsdate=$(stat -c %Y $mp$statfile 2>/dev/null)
-			alternative_brandings="$current_branding"
-			if [ -z $alternative_fsdate ]; then
+			alternative_is_missing=0
+			spinlock get 10 && mp=$(mount_alternative_system $alternative_filesystem $tempdir)
+			if [ -z $mp ]; then
+				alternative_version="unknown"
+				alternative_date="unknown"
 				alternative_fsdate="unknown"
+				alternative_brandings="$current_branding"
 			else
-				alternative_fsdate="$(date -d @$alternative_fsdate +'%d.%m.%y %H:%M')"
-				alternative_brandings="$(get_brandings $mp)"
+				alternative_version="$(get_system_version $mp)"
+				alternative_date="$(get_system_date $mp)"
+				if [ -d $wrapper ]; then
+					image="$(get_image_name $mp)"
+					[ $? -eq 0 ] && alternative_fsdate="$(stat -c %Y $image 2>/dev/null)"
+				else
+					alternative_fsdate="$(stat -c %Y $mp$statfile 2>/dev/null)"
+				fi
+				alternative_brandings="$current_branding"
+				if [ -z "$alternative_fsdate" ]; then
+					alternative_fsdate="unknown"
+				else
+					alternative_fsdate="$(date -d @$alternative_fsdate +'%d.%m.%Y %H:%M:%S')"
+					alternative_brandings="$(get_brandings $mp)"
+				fi
+				dismount_alternative_system $mp
 			fi
-			dismount_alternative_system $mp
+			spinlock release
 		fi
-		spinlock release
-		running_version=$(get_system_version)
-		running_date=$(get_system_date)
-		[ -d $wrapper ] \
-			&& running_fsdate="$(date -d @$(stat -c %Y $(get_image_name /)) +"%d.%m.%y %H:%M")" \
-			|| running_fsdate="$(date -d @$(stat -c %Y $statfile) +"%d.%m.%y %H:%M")"
+		running_version="$(get_system_version)"
+		running_date="$(get_system_date)"
+		if [ -d $wrapper ]; then
+			image="$(get_image_name /)"
+			[ $? -eq 0 ] || image=$wrapper/$rootfsimage
+			running_fsdate="$(date -d @$(stat -c %Y $image 2>/dev/null) +'%d.%m.%Y %H:%M:%S')"
+		else
+			[ -f $statfile ] && running_fsdate="$(date -d @$(stat -c %Y $statfile 2>/dev/null) +'%d.%m.%Y %H:%M:%S')"
+		fi
+		[ -z "$running_fsdate" ] && [ -f /$versionfilename ] && running_fsdate="$(date -d @$(stat -c %Y /$versionfilename 2>/dev/null) +'%d.%m.%Y %H:%M:%S')"
 		running_brandings="$(get_brandings)"
 		if is_switched; then
 			running_checked=""
@@ -452,19 +502,28 @@ html_display()
 		[ $(count_of_items "$alternative_brandings") -gt 1 ] && chg_alternative_branding=1 || chg_alternative_branding=0
 		[ $alternative_version = unknown ] && chg_alternative_branding=0
 		if [ $Language = de ]; then
+			[ "$alternative_version" = "unknown" ] && alternative_version="unbekannt"
+			[ "$alternative_date" = "unknown" ] && alternative_date="unbekannt"
+			[ "$alternative_fsdate" = "unknown" ] && alternative_fsdate="unbekannt"
+			[ "$running_fsdate" = "unknown" ] && running_fsdate="unbekannt"
 			printf '<br /><h3>Folgende Systeme stehen auf dieser FRITZ!Box zur Auswahl bei einem Neustart:</h3><br />\n'
 			printf '<input type="radio" id="radioRunning" name="%s" value="running"%s />\n' $fsvarname "$running_checked"
 			printf '<label for="radioRunning">das aktuell laufende System</label><br /><br />\n'
 			printf 'Version %s vom %s (linux_fs_start=%d), das System wurde am %s zuletzt modifiziert<br /><br />\n' \
 				$running_version "$running_date" $(get_system_switch) "$running_fsdate"
-			printf '<input type="radio" id="radioAlternative" name="%s" value="alternative"%s />\n' $fsvarname "$alternative_checked"
-			printf '<label for="radioAlternative">das derzeit inaktive System</label><br /><br />\n'
-			if [ $alternative_version = unknown ]; then
-				printf 'Das System in den alternativen Partitionen kann nicht identifiziert werden, es k&ouml;nnte besch&auml;digt oder nicht vorhanden bzw. gel&ouml;scht sein.<br />\n'
-				printf 'Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.<br /><br />\n' 
+			if [ $alternative_is_missing -eq 0 ]; then
+				printf '<input type="radio" id="radioAlternative" name="%s" value="alternative"%s />\n' $fsvarname "$alternative_checked"
+				printf '<label for="radioAlternative">das derzeit inaktive System</label><br /><br />\n'
+				if [ $alternative_version = unbekannt ]; then
+					printf 'Das System in den alternativen Partitionen kann nicht identifiziert werden, es k&ouml;nnte besch&auml;digt sein.<br />\n'
+					printf 'Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.<br /><br />\n' 
+				else
+					printf 'Version %s vom %s (linux_fs_start=%d), das System wurde am %s zuletzt modifiziert<br /><br />\n' \
+						$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+				fi
 			else
-				printf 'Version %s vom %s (linux_fs_start=%d), das System wurde am %s zuletzt modifiziert<br /><br />\n' \
-					$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+				printf '<input type="radio" id="radioAlternative" name="%s" value="alternative" disabled />\n' $fsvarname
+				printf '<label for="radioAlternative">die derzeit inaktiven Partitionen enthalten kein g&uuml;ltiges System</label><br /><br />\n'
 			fi
 			printf '<span id="running_branding">\n'
 			if [ $chg_running_branding -eq 1 ]; then
@@ -482,7 +541,7 @@ html_display()
 				printf '<label for="idAlternativeBranding">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet: </label>\n'
 				selectbox idAlternativeBranding alternative_branding "$alternative_brandings" $current_branding
 			else
-				if [ $alternative_version = unknown ];then
+				if [ $alternative_version = unbekannt ];then
 					printf '<h4>Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Brandings verf&uuml;gbar.</h4>\n'
 					printf '<input type="hidden" name="alternative_branding" value="%s" />\n' $current_branding
 				else
@@ -505,12 +564,17 @@ html_display()
 				$running_version "$running_date" $(get_system_switch) "$running_fsdate"
 			printf '<input type="radio" id="radioAlternative" name="%s" value="alternative"%s />\n' $fsvarname "$alternative_checked"
 			printf '<label for="radioAlternative">the alternative system</label><br /><br />\n'
-			if [ $alternative_version = unknown ]; then
-				printf 'Unable to identify the installed system in the alternative partitions, it could have been damaged or was missing/deleted.<br />\n'
-				printf 'Switching to this system may prevent your device from starting correctly - you should be really sure, what you are doing in this case.<br /><br />\n' 
+			if [ $alternative_is_missing -eq 0 ]; then
+				if [ $alternative_version = unknown ]; then
+					printf 'Unable to identify the installed system in the alternative partitions, it could have been damaged or was missing/deleted.<br />\n'
+					printf 'Switching to this system may prevent your device from starting correctly - you should be really sure, what you are doing in this case.<br /><br />\n' 
+				else
+					printf 'version %s - originally built on %s (linux_fs_start=%d), this system was last modified on %s<br /><br />\n' \
+						$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+				fi
 			else
-				printf 'version %s - originally built on %s (linux_fs_start=%d), this system was last modified on %s<br /><br />\n' \
-					$alternative_version "$alternative_date" $(( ( $(get_system_switch) + 1 ) % 2 )) "$alternative_fsdate"
+				printf '<input type="radio" id="radioAlternative" name="%s" value="alternative" disabled />\n' $fsvarname
+				printf '<label for="radioAlternative">the alternative partitions do not contain a valid system</label><br /><br />\n'
 			fi
 			printf '<span id="running_branding">\n'
 			if [ $chg_running_branding -eq 1 ]; then
