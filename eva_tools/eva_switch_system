@@ -1,9 +1,9 @@
 #! /bin/sh
-[ ${#2} -eq 0 -o ${#3} -ne 0 ] && echo "Calling: $0 <interface> <ip address to use>" 2>&1 && exit 1
+[ ${#2} -eq 0 -o ${#3} -eq 0 -o ${#4} -ne 0 ] && echo "Calling: $0 <interface> <requested ip address of the box> <own ip address to use>" 2>&1 && exit 1
 #
 # some constants to be changed, if needed
 #
-ip=$(eva_discover INTERFACE=$1 TO=$2)
+ip=$(eva_discover INTERFACE=$1 TO=$2 FROM=$3)
 [ $? -ne 0 ] && exit 1
 eval $ip
 box_ip=$EVA_IP
