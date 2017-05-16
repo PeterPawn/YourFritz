@@ -280,7 +280,7 @@ fi
 # build an ext2 image of 10 MB size and mount it                                                      #
 #                                                                                                     #
 #######################################################################################################
-if ! dd if=/dev/zero of="$name/ext2_image" bs=1024 count=$(( 10 * 1024 )) 2>/dev/null; then
+if ! dd if=/dev/zero of="$name/ext2_image" bs=1024 count=$(( ${TOOLBOX_IMAGE_SIZE:-10} * 1024 )) 2>/dev/null; then
 	[ $debug -eq 1 ] && printf "Error preparing image file for the new filesystem image.\n" 1>&2
 	exit 1
 fi
