@@ -23,6 +23,8 @@ Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the IP address
       [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'an optional script block, which will be executed in the context of an active FTP session')][ScriptBlock]$ScriptBlock
 )
 
+$Global:LogoutBeforeClose = $False
+
 #######################################################################################
 #                                                                                     #
 # check the reply of the server for the expected error code                           #
@@ -90,6 +92,9 @@ function SendCommand {
     $Global:EVAWriter.WriteLine($command)
     $Global:EVAWriter.Flush()
     Write-Debug "Sent`n$command`n================"
+    if ($command.ToUpper() -eq "QUIT") {
+        $Global:LogoutBeforeClose = $False
+    }
 }
 
 #######################################################################################
@@ -253,6 +258,7 @@ function BootDeviceFromImage {
         Throw $ex
     }
     $memsize = GetEnvironmentValue "memsize"
+    $originalmemory = $memsize
     # check, if memsize is a multiple of 32 MB, else it's already changed by an earlier attempt
     $rem = $memsize % (1024 * 1024 * 32)
     if ($rem -ne 0) {
@@ -298,7 +304,8 @@ function BootDeviceFromImage {
     }
     if (-not (WriteFile $filename "$startaddr $endaddr")) {
         # try to reset environment settings
-        SetEnvironmentValue "memsize" $memsize
+        $memory = "0x{0:x8}" -f $newsize
+        SetEnvironmentValue "memsize" $memory
         SetEnvironmentValue "kernel_args_tmp"
         # throw error from WriteFile
         $ex = New-Object System.IO.IOException "Error uploading image file."
@@ -321,6 +328,15 @@ function WriteFile {
 
     if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     Write-Debug "Uploading file '$filename' to '$target' ..."
+    # ensure file is readable
+    try {
+        $path = Resolve-Path $filename
+        $file = [System.IO.File]::Open($path, "Open", "Read")
+    }
+    catch {
+        $ex = New-Object System.IO.IOException "Unable to locate or open input file."
+        throw $ex
+    }
     # set passive mode
     SendCommand $passive_cmd
     $answer = ReadAnswer
@@ -337,7 +353,6 @@ function WriteFile {
     try {
         $connection = New-Object System.Net.Sockets.TcpClient $data_addr, $data_port
         $stream = $connection.GetStream()
-        $file = [System.IO.File]::Open($filename, "Open", "Read")
     }
     catch {
         if ($stream) {
@@ -603,11 +618,22 @@ catch {
 $answer = ReadAnswer
 if (ParseAnswer $answer "220") {
     if (Login) {
+        $Global:LogoutBeforeClose = $True
         SendCommand "SYST"
         $answer = ReadAnswer
         if (ParseAnswer $answer "215 AVM EVA") {
             if ($ScriptBlock) {
-                $ScriptBlock.Invoke()
+                try {
+                    $ScriptBlock.Invoke()
+                }
+                catch {
+                    if ($Global:LogoutBeforeClose) {
+                        SendCommand "QUIT"
+                        $answer = ReadAnswer
+                        $Global:LogoutBeforeClose = $False
+                    }
+                    throw $_.Exception
+                }
             }
             else {
 #####################################################################################
@@ -650,6 +676,11 @@ if (ParseAnswer $answer "220") {
         }
         else {
             Write-Verbose "Unexpected FTP server found:`n$answer"
+            if ($Global:LogoutBeforeClose) {
+                SendCommand "QUIT"
+                $answer = ReadAnswer
+                $Global:LogoutBeforeClose = $False
+            }
         }
     }
     else {
