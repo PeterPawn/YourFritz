@@ -622,20 +622,12 @@ if (ParseAnswer $answer "220") {
         SendCommand "SYST"
         $answer = ReadAnswer
         if (ParseAnswer $answer "215 AVM EVA") {
-            if ($ScriptBlock) {
                 try {
+            try {
+                if ($ScriptBlock) {
                     $ScriptBlock.Invoke()
                 }
-                catch {
-                    if ($Global:LogoutBeforeClose) {
-                        SendCommand "QUIT"
-                        $answer = ReadAnswer
-                        $Global:LogoutBeforeClose = $False
-                    }
-                    throw $_.Exception
-                }
-            }
-            else {
+                else {
 #####################################################################################
 #                                                                                   #
 # place your orders here, you may use the provided subfunctions or build your own   #
@@ -672,6 +664,15 @@ if (ParseAnswer $answer "220") {
 # or blame the author                                                               #
 #                                                                                   #
 #####################################################################################
+                }
+            }
+            catch {
+                if ($Global:LogoutBeforeClose) {
+                    SendCommand "QUIT"
+                    $answer = ReadAnswer
+                    $Global:LogoutBeforeClose = $False
+                }
+                throw $_.Exception
             }
         }
         else {
