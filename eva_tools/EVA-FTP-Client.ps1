@@ -622,7 +622,6 @@ if (ParseAnswer $answer "220") {
         SendCommand "SYST"
         $answer = ReadAnswer
         if (ParseAnswer $answer "215 AVM EVA") {
-                try {
             try {
                 if ($ScriptBlock) {
                     $ScriptBlock.Invoke()
