@@ -304,7 +304,7 @@ function BootDeviceFromImage {
     }
     if (-not (WriteFile $filename "$startaddr $endaddr")) {
         # try to reset environment settings
-        $memory = "0x{0:x8}" -f $newsize
+        $memory = "0x{0:x8}" -f $originalmemory
         SetEnvironmentValue "memsize" $memory
         SetEnvironmentValue "kernel_args_tmp"
         # throw error from WriteFile
