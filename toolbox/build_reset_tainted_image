@@ -1,0 +1,406 @@
+#! /bin/sh
+#######################################################################################################
+#                                                                                                     #
+# create a bootable image to reset the "unauthorized changes" flag on FRITZ!OS devices                #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Copyright (C) 2016-2017 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
+#                                                                                                     #
+# This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script takes an original firmware image from AVM and extracts the kernel image file.           #
+#                                                                                                     #
+# This step is necessary, because newer kernels contain a hardware-specific payload with variable     #
+# configuration data and it's not sure, that an 'one size fits all'-kernel may be used on each VR9-   #
+# based model.                                                                                        #
+#                                                                                                     #
+# Therefore you need an image file from the vendor and we will use the kernel within it. At the same  #
+# time the contained filesystem image is checked to assure, that this model uses a wrapper partition  #
+# to store the SquashFS image file for the real root filesystem - in this case it's able to use an    #
+# ext2 image as root filesystem on boot-time.                                                         #
+#                                                                                                     #
+# The name of the firmware image file has to be specified as first argument, the created bootable     #
+# image will be written to STDOUT and the caller is responsible for the proper redirection.           #
+#                                                                                                     #
+# The root filesystem for the bootable image is built on top of a 10 MByte image file, which will be  #
+# formatted with an ext2 structure. The only binary file, which is copied into this filesystem, is    #
+# a statically linked BusyBox binary from my GitHub repository (for the MIPS platform).               #
+# If you want to get a filesystem image with a different size, you can set the environment variable   #
+# 'TOOLBOX_IMAGE_SIZE' to the requested value (in MBytes) prior to calling this script.               #
+#                                                                                                     #
+# It needs some additional script files, they will be looked up in the current directory only.        #
+#                                                                                                     #
+# There are only little prerequisites to be met to run this script on your Linux system. The most     #
+# important point: You have to run this script as "root".                                             #
+#                                                                                                     #
+# All the commands used herein, should be available in each Linux distribution and while writing the  #
+# shell statements, I kept the POSIX standard definitions in mind - that means, it should also work   #
+# with very limited shells like 'dash'.                                                               #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+tmpdir="/tmp"
+toolbox_scripts="get_file_from_image"
+create_inodes="$(cat <<'EOT'
+d /bin 700 0 0
+d /dev 700 0 0
+d /etc 700 0 0
+d /lib 700 0 0
+d /proc 700 0 0
+d /sbin 700 0 0
+d /tmp 700 0 0
+d /var 700 0 0
+d /var/log 700 0 0
+d /var/run 700 0 0
+d /var/lock 700 0 0
+f /tmp/mtab 700 0 0
+f /etc/inittab 700 0 0
+l /etc/mtab /tmp/mtab
+c /dev/console 666 0 0 5 1
+c /dev/zero 666 0 0 1 5
+c /dev/null 666 0 0 1 3
+l /dev/log /tmp/log
+b /dev/loop0 666 0 0 7 0
+b /dev/loop1 666 0 0 7 1
+b /dev/loop2 666 0 0 7 2
+b /dev/loop3 666 0 0 7 3
+c /dev/random 666 0 0 1 8
+c /dev/urandom 666 0 0 1 9
+c /dev/ttyS0 555 0 0 4 64
+EOT
+)"
+busybox_source="../bin/mips/busybox"
+busybox_applets="$(cat <<'eot'
+bin/ash
+bin/cat
+bin/chgrp
+bin/chmod
+bin/chown
+bin/cp
+bin/date
+bin/dd
+bin/df
+bin/echo
+bin/egrep
+bin/false
+bin/fgrep
+bin/getopt
+bin/grep
+bin/gunzip
+bin/gzip
+bin/hostname
+bin/kill
+bin/ln
+bin/login
+bin/ls
+bin/mkdir
+bin/mknod
+bin/mount
+bin/mv
+bin/nice
+bin/pidof
+bin/ping
+bin/ps
+bin/pwd
+bin/rm
+bin/rmdir
+bin/sed
+bin/sh
+bin/sleep
+bin/stat
+bin/sync
+bin/tar
+bin/touch
+bin/true
+bin/umount
+bin/vi
+bin/zcat
+sbin/halt
+sbin/ifconfig
+sbin/ifdown
+sbin/ifup
+sbin/init
+sbin/insmod
+sbin/lsmod
+sbin/modprobe
+sbin/pivot_root
+sbin/poweroff
+sbin/reboot
+sbin/rmmod
+sbin/route
+sbin/swapoff
+sbin/swapon
+sbin/sysctl
+eot
+)"
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# remove mounts, loop devices and temporary files                                                     #
+#                                                                                                     #
+#######################################################################################################
+housekeeping()
+{
+	grep -q "$1" /proc/mounts 2>/dev/null && umount "$1/mp" 2>/dev/null
+	if losetup -a 2>/dev/null | grep -q "$1"; then
+		# umount did not remove the loop device
+		dev=$(losetup -a 2>/dev/null | sed -n -e "s|^\([^:]*\):.*$1.*\$|\1|p")
+		[ ${#dev} -gt 0 ] && losetup -d "$dev" 2>/dev/null
+	fi
+	rm -r "$1" 2>/dev/null
+}
+#######################################################################################################
+#                                                                                                     #
+# parse inode list entries                                                                            #
+#                                                                                                     #
+#######################################################################################################
+get_values()
+{
+	line="$1"
+	shift
+	while [ $# -gt 0 ]; do
+		if [ $# -gt 1 ]; then
+			val="$(expr "$line" : "\([^ ]*\) .*")"
+			line="$(expr "$line" : "[^ ]* \(.*\)")"
+		else
+			val="$line"
+		fi
+		printf "%s='%s' " "$1" "$val"
+		shift
+	done
+}
+#######################################################################################################
+#                                                                                                     #
+# check debug option                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-d" -o "$1" = "--debug" ]; then
+	debug=1
+	dbgopt="-d"
+	shift
+else
+	debug=0
+	dbgopt=""
+fi
+#######################################################################################################
+#                                                                                                     #
+# check, if STDOUT isn't a terminal device                                                            #
+#                                                                                                     #
+#######################################################################################################
+[ -t 1 ] && printf "Please redirect STDOUT, the created boot image will be written to this handle.\n" 1>&2 && exit 1
+#######################################################################################################
+#                                                                                                     #
+# check presence of needed toolbox scripts                                                            #
+#                                                                                                     #
+#######################################################################################################
+for f in $toolbox_scripts; do
+	! [ -r $f ] && printf "Missing toolbox script '%s' in the current directory.\n" "$f" 1>&2 && exit 1
+done
+#######################################################################################################
+#                                                                                                     #
+# get parameters and check the file format                                                            #
+#                                                                                                     #
+#######################################################################################################
+if [ -z "$1" ]; then
+	[ $debug -eq 1 ] && printf "Missing firmware image filename.\n" 1>&2
+	exit 1
+fi
+src="$1"
+username="$2"
+password="$3"
+#######################################################################################################
+#                                                                                                     #
+# check temporary directory                                                                           #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -d "$tmpdir" ]; then
+	[ $debug -eq 1 ] && printf "The directory '%s' does not exist.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+name="$tmpdir/$$_reset_tainted"
+rm -r "$name" 2>/dev/null
+mkdir "$name" 2>/dev/null
+if ! [ -d "$name" ]; then
+	[ $debug -eq 1 ] && printf "The directory '%s' is not writable.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+trap 'housekeeping $name' HUP EXIT INT
+#######################################################################################################
+#                                                                                                     #
+# extract kernel image                                                                                #
+#                                                                                                     #
+#######################################################################################################
+if ! $SHELL get_file_from_image $dbgopt "$src" kernel.image >"$name/kernel"; then
+	[ $debug -eq 1 ] && printf "Error extracting kernel image from firmware image file '%s'.\n" "$src" 1>&2
+	exit 1
+fi
+size=$(stat -c %s "$name/kernel")
+if [ $(( size % 256 )) -ne 0 ]; then
+	[ $debug -eq 1 ] && printf "Padding extracted kernel from %u bytes to the next 256 byte boundary.\n" "$size" 1>&2
+	dd if=/dev/zero bs=1 count=$(( 256 - ( size % 256 ) )) 2>/dev/null >>"$name/kernel"
+	cp "$name/kernel" saved_kernel.bin
+fi
+#######################################################################################################
+#                                                                                                     #
+# extract first 256 byte of filesystem image and check the presence of the dummy signature            #
+#                                                                                                     #
+#######################################################################################################
+if ! $SHELL get_file_from_image $dbgopt -k "$src" filesystem.image | dd bs=256 count=1 2>/dev/null >"$name/header"; then
+	[ $debug -eq 1 ] && printf "Error extracting filesystem image (header only) from firmware image file '%s'.\n" "$src" 1>&2
+	exit 1
+fi
+size=$(stat -c %s "$name/header")
+if [ $size -ne 256 ]; then
+	[ $debug -eq 1 ] && printf "Extracted filesystem header has the wrong size (%u).\n" "$size" 1>&2
+	exit 1
+fi
+( printf "sqsh"; dd if=/dev/zero bs=4 count=$(( 256 / 4 - 1 )) 2>/dev/null ) >"$name/dummy_header"
+size=$(stat -c %s "$name/dummy_header")
+if [ $size -ne 256 ]; then
+	[ $debug -eq 1 ] && printf "Wrong size (%u) of constructed dummy header.\n" "$size" 1>&2
+	exit 1
+fi
+if ! cmp "$name/header" "$name/dummy_header" 2>/dev/null 1>&2; then # file sizes are already checked
+	[ $debug -eq 1 ] && printf "The filesystem image has a wrong header, please check that the target device uses a wrapper partition.\n" 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# build an ext2 image of 10 MB size and mount it                                                      #
+#                                                                                                     #
+#######################################################################################################
+if ! dd if=/dev/zero of="$name/ext2_image" bs=1024 count=$(( ${TOOLBOX_IMAGE_SIZE:-10} * 1024 )) 2>/dev/null; then
+	[ $debug -eq 1 ] && printf "Error preparing image file for the new filesystem image.\n" 1>&2
+	exit 1
+fi
+if ! mkfs -t ext2 "$name/ext2_image" 2>/dev/null 1>&2; then
+	[ $debug -eq 1 ] && printf "Error making ext2 filesystem structures on new filesystem image.\n" 1>&2
+	exit 1
+fi
+if ! mkdir "$name/mp" 2>/dev/null; then
+	[ $debug -eq 1 ] && printf "Error creating mount point for the new filesystem image.\n" 1>&2
+	exit 1
+fi
+if ! mount "$name/ext2_image" "$name/mp" 2>/dev/null; then
+	[ $debug -eq 1 ] && printf "Error mounting ext2 image for the new filesystem.\n" 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# create predefined inodes in our new filesystem image                                                #
+#                                                                                                     #
+#######################################################################################################
+base="$name/mp"
+lineno=0
+printf "%s" "$create_inodes" |
+while read type line; do
+	lineno=$(( lineno + 1 ))
+	case $type in
+		(b|c)
+			eval $(get_values "$line" file mode uid gid major minor)
+			mknod -m $mode $base$file $type $major $minor
+			chown $uid $base$file
+			chgrp $gid $base$file
+			;;
+		(d)
+			eval $(get_values "$line" dir mode uid gid)
+			mkdir -p $base$dir
+			chmod $mode $base$dir
+			chown $uid $base$dir
+			chgrp $gid $base$dir
+			;;
+		(f)
+			eval $(get_values "$line" file mode uid gid)
+			touch $base$file
+			chmod $mode $base$file
+			chown $uid $base$file
+			chgrp $gid $base$file
+			;;
+		(l)
+			eval $(get_values "$line" name target)
+			ln -sf $target $base$name
+			;;
+		(*)
+			[ $debug -eq 1 ] && printf "Unknown type '%s' found on line %u of inode list.\n" "$type" "$lineno" 1>&2
+			;;
+	esac
+done
+#######################################################################################################
+#                                                                                                     #
+# copy BusyBox binary into our new filesystem image                                                   #
+#                                                                                                     #
+#######################################################################################################
+if [ -f "$busybox_source" ]; then
+	cp -a "$busybox_source" "$base/bin/busybox"
+	chmod 555 "$base/bin/busybox"
+	chown 0 "$base/bin/busybox"
+	chgrp 0 "$base/bin/busybox"
+else
+	[ $debug -eq 1 ] && printf "Unable to find the BusyBox binary for the target platform.\n" 1>&2
+	exit 1
+fi
+printf "%s" "$busybox_applets" |
+while read name; do
+	ln -s /bin/busybox $base/$name
+done
+#######################################################################################################
+#                                                                                                     #
+# add files needed to fulfill our function                                                            #
+#                                                                                                     #
+#######################################################################################################
+cat >"$base/sbin/rc.init" <<EOS
+#! /bin/sh
+/bin/mount -t proc proc /proc
+/bin/mount -t tmpfs tmpfs /tmp
+export PATH=/sbin:/bin
+printf 'clear_id 87\n' >/proc/tffs
+printf 'cleanup\n' >/proc/tffs
+/sbin/reboot
+EOS
+cat >"$base/etc/inittab" <<EOF
+/dev/ttyS0::sysinit:/bin/sh /sbin/rc.init
+EOF
+chmod 777 "$base/sbin/rc.init"
+chmod 666 "$base/etc/inittab"
+chown 0 "$base/sbin/rc.init" "$base/etc/inittab"
+chgrp 0 "$base/sbin/rc.init" "$base/etc/inittab"
+#######################################################################################################
+#                                                                                                     #
+# dismount then new filesystem image                                                                  #
+#                                                                                                     #
+#######################################################################################################
+umount "$name/mp" 2>/dev/null
+if losetup -a 2>/dev/null | grep -q "$name/mp"; then
+	# umount did not remove the loop device
+	dev=$(losetup -a 2>/dev/null | sed -n -e "s|^\([^:]*\):.*$name/mp.*\$|\1|p")
+	[ ${#dev} -gt 0 ] && losetup -d "$dev" 2>/dev/null
+fi
+#######################################################################################################
+#                                                                                                     #
+# write data to STDOUT                                                                                #
+#                                                                                                     #
+#######################################################################################################
+cat "$name/kernel"
+cat "$name/header"
+cat "$name/ext2_image"
+#######################################################################################################
+#                                                                                                     #
+# end of script, temporary directory will be removed by 'trap' command on exit                        #
+#                                                                                                     #
+#######################################################################################################
+exit 0
