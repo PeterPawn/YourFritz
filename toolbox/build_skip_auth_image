@@ -36,6 +36,8 @@
 # The root filesystem for the bootable image is built on top of a 10 MByte image file, which will be  #
 # formatted with an ext2 structure. The only binary file, which is copied into this filesystem, is    #
 # a statically linked BusyBox binary from my GitHub repository (for the MIPS platform).               #
+# If you want to get a filesystem image with a different size, you can set the environment variable   #
+# 'TOOLBOX_IMAGE_SIZE' to the requested value (in MBytes) prior to calling this script.               #
 #                                                                                                     #
 # There are only little prerequisites to be met to run this script on your Linux system. The most     #
 # important point: You have to run this script as "root".                                             #
