@@ -33,11 +33,21 @@ yf_bin2hex()
 	yf_bin2hex_read_octal()
 	{
 		i=1
+		ff=0
 		while read pos left right; do
 			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
-				printf "00"
+				if [ $ff -eq 1 ]; then
+					printf "ff"
+					ff=0
+				else
+					printf "00"
+				fi
 				i=$(( i + 1 ))
 			done
+			if [ $right -eq 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
 			printf "%02x" 0$right
 			i=$(( pos + 1 ))
 		done
@@ -45,6 +55,6 @@ yf_bin2hex()
 
 	[ -t 0 ] && return 0
 	command -v cmp 2>/dev/null 1>&2 || return 1
-	command cmp -l -- /dev/zero - 2>/dev/null | yf_bin2hex_read_octal
+	( cat; printf "%b" "\0377" ) | command cmp -l -- /dev/zero - 2>/dev/null | yf_bin2hex_read_octal
 	return $?
 )
