@@ -243,6 +243,12 @@ __yf_e="$(printf %b \\033)"
 [ -d "${__YF_SCRIPT_FUNCTIONS_DIR}" ] || __yf_helpers_message F "$(printf "Missing helpers function directory '%c[1m%s%c[0m' - please set YF_SCRIPT_DIR to the appropriate path (the library base directory)." "${__yf_e}" "${__YF_SCRIPT_FUNCTIONS_DIR}" "${__yf_e}")"
 #######################################################################################
 #                                                                                     #
+# check automatic function assembly                                                   #
+#                                                                                     #
+#######################################################################################
+[ "$YF_SCRIPT_SAVE" = "1" ] && YF_SCRIPT_GENERATE_FILE="$0.yf_scriptlib"
+#######################################################################################
+#                                                                                     #
 # include wanted functions                                                            #
 #                                                                                     #
 #######################################################################################
@@ -276,6 +282,7 @@ done
 [ "$YF_HELPERS_DEBUG" = "1" ] &&
 	__yf_helpers_message I "$(printf "checked %d mandatory commands\n" ${__yf_commands_count})" 1>&2 &&
 	__yf_helpers_message I "${__yf_commands}" 1>&2
+[ "$YF_SCRIPT_SAVE" = "1" ] && . $YF_SCRIPT_GENERATE_FILE
 #######################################################################################
 #                                                                                     #
 # housekeeping, remove as much unnecessary variables and functions as possible        #

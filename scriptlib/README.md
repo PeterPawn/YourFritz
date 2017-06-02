@@ -48,6 +48,18 @@ If you want to include one or more single function with automatic dependency res
 
 The selected functions (and any other function, they're depending from) are automatically included into the current shell instance using the dot-command (any comment lines will be ignored by the shell itself), if you do not specify a variable ```YF_SCRIPT_GENERATE_FILE```. If it exists, it has to contain the name of a file, where the assembled functions are stored; this file will be overwritten without any warning, if it exists already. The output file is piped through a ```sed``` instance, which removes all comment lines (but only whole lines starting with a hash-tag, no - rarely used anyway - comments after a valid statement) - please remember the license limitations for this file.
 
+You may use another variable to automatically store the resulting include file, if the directory with the script is writable for your account. If the variable ```YF_SCRIPT_SAVE``` is set to ```1```, the include file will be saved as ```$0.yf_scriptlib``` (if write fails, the functions aren't included) and you can try to use this file next time, if you include something like this into your script:
+
+```
+if [ -f "$0.yf_scriptlib" ]; then
+        . $0.yf_scriptlib
+else
+        YF_SCRIPT_FUNCTIONS="..."
+        YF_SCRIPT_SAVE=1
+        . "$YF_SCRIPT_DIR/yf_helpers"
+fi
+``` 
+
 There are some verifications done by ```yf_helpers```, that are not meaningful for the generated include file, if it's not built for the system, where ```yf_helpers``` was running. The ```yf_helpers``` script itself needs the following POSIX compatible utilities to operate:
 
 * cmp
