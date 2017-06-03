@@ -8,7 +8,7 @@ cfgvar()
 	v="$(echo -e "$n" | ar7cfgctl -w 2>/dev/null)"
 	i=$(expr index "$v" '\$\$\$\$')
 	if [ $i -gt 0 ]; then
-		v="$(echo "$v" | decode_passwords)"
+		v="$(echo "$v" | decoder decode_secrets)"
 	fi
 	if ! test -z "$p"; then
 		p="${p//\[/\\[}"
