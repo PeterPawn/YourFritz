@@ -50,7 +50,7 @@ But Samba access provides a way to change a file "in place". If a file is opened
 
 Changing the stored hash in any entry will render the whole entry useless, because it will not match the hashed address anymore.
 
-A Windows-based proof-of-concept (using PowerShell) exploiting this vulnerability is available as `FakeBPjMList.ps1`. It fills the whole database with empty entries (all zeroes) and computes and stores a new CRC32 value. After this changes, sites may accessed with unsuitable content originally blocked by the list.
+A Windows-based proof-of-concept (using PowerShell) exploiting this vulnerability is available as `FakeBPjMList.ps1`. It fills the whole database with empty entries (all zeros) and computes and stores a new CRC32 value. After this changes, sites may accessed with unsuitable content originally blocked by the list.
 
 The obviously causes for this possibility to attack the integrity of the outbound firewall are the unnecessary write access to the database and the very weak protection of its integrity with a CRC32 checksum. This checksum is taken from the original file and not an idea of the FRITZ!Box vendor.
 
