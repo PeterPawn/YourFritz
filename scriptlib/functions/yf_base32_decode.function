@@ -35,7 +35,7 @@ yf_base32_decode()
 	rc=1 # preset, if no newline is present on STDIN, our 'read' will signal instant EOF
 	while read line; do
 		rc=0
-		! [ -z "$(expr "$line" : "\([^A-Z1-6\r]\)")" ] && return 1
+		! [ -z "$(expr -- "$line" : "\([^A-Z1-6\r]\)")" ] && return 1
 		line=$(printf "%s" $line | sed -e "s|\r||g")
 		[ $(( ${#line} % 8 )) -gt 0 ] && return 1
 		i=0
