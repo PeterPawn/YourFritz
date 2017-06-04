@@ -1,4 +1,4 @@
-// vi: set tabstop=4 syntax=c :
+// vim: set tabstop=4 syntax=c :
 #ifndef AVM_KERNEL_CONFIG_HELPERS_H
 #define AVM_KERNEL_CONFIG_HELPERS_H
 
