@@ -36,7 +36,7 @@ yf_base64_decode()
 		rc=$?
 	else
 		while read line; do
-			! [ -z "$(expr "$line" : "\([^A-Za-z0-9+/\r=]\)")" ] && return 1
+			! [ -z "$(expr -- "$line" : "\([^A-Za-z0-9+/\r=]\)")" ] && return 1
 			line=$(printf "%s" $line | sed -e "s|\r||g")
 			[ $(( ${#line} % 4 )) -gt 0 ] && return 1
 			i=0

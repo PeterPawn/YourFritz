@@ -47,8 +47,8 @@ yf_random_string()
 			else
 				v=0
 				while [ ${#val} -gt 0 ]; do
-					v=$(( ( v << 3 ) + $(expr "$val" : "\([0-9]\).*") ))
-					val="$(expr "$val" : "[0-9]\([0-9]*\)")"
+					v=$(( ( v << 3 ) + $(expr -- "$val" : "\([0-9]\).*") ))
+					val="$(expr -- "$val" : "[0-9]\([0-9]*\)")"
 				done
 				yf_random_string_read_octals_print "$v" "$len"
 				len=$(( len - 2 ))
