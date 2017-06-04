@@ -331,7 +331,7 @@ dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
 # - the input file will be combined with another 1 KB containing zeros             #
 # - any superfluous blocks at the end of the archive are truncated                 #
 # - the original EoA entry will be replaced with an empty 1K block for the sig     #                                        
-# - an additional 1K block of zeroes serves as new EoA header                      #
+# - an additional 1K block of zeros serves as new EoA header                       #
 #                                                                                  #
 ##################################A#################################################
 echo -en "Signing the image hash (\x1B[1m$hash_algo\x1B[0m) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
