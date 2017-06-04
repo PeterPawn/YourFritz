@@ -1,4 +1,4 @@
-/* vi: set tabstop=4 syntax=asm : */
+/* vim: set tabstop=4 syntax=asm : */
 #ifndef _AVM_KERNEL_CONFIG_MACROS_H
 #define _AVM_KERNEL_CONFIG_MACROS_H
 
