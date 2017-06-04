@@ -59,8 +59,8 @@ yf_base32()
 					i=$(( i + 1 ))
 				fi
 				unset z
-				while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
-					[ ${#z} -gt 32 ] && yf_base32_append $z && unset z # output next 16 zeroes
+				while [ $i -lt $pos ]; do # zeros are equal for 'cmp'
+					[ ${#z} -gt 32 ] && yf_base32_append $z && unset z # output next 16 zeros
 					z="$z 0"
 					i=$(( i + 1 ))
 				done

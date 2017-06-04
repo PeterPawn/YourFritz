@@ -60,7 +60,7 @@ yf_hex2bin()
 			if [ $h -eq 0 ]; then
 				v=$(( v + c ))
 				if [ $v -eq 0 ]; then
-					z=$(( z + 1 )) # count consecutive zeroes
+					z=$(( z + 1 )) # count consecutive zeros
 				else
 					if [ $z -gt 0 ]; then
 						dd if=/dev/zero bs=$z count=1 2>/dev/null
