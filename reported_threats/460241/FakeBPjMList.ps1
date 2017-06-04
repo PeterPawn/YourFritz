@@ -73,7 +73,7 @@ Add-Type -TypeDefinition @'
 '@
 #######################################################################################
 #                                                                                     #
-# determine the file basics first and overwrite each entry with all zeroes            #
+# determine the file basics first and overwrite each entry with all zeros             #
 #                                                                                     #
 #######################################################################################
 $Error.Clear()
