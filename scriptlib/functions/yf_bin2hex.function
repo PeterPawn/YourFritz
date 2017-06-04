@@ -35,7 +35,7 @@ yf_bin2hex()
 		i=1
 		ff=0
 		while read pos left right; do
-			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
+			while [ $i -lt $pos ]; do # zeros are equal for 'cmp'
 				if [ $ff -eq 1 ]; then
 					printf "ff"
 					ff=0

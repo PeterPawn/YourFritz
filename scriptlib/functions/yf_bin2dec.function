@@ -48,7 +48,7 @@ yf_bin2dec()
 				i=$(( i + 1 ))
 				ff=0
 			fi
-			while [ $i -lt $pos ]; do # insert zeroes for missing bytes
+			while [ $i -lt $pos ]; do # insert zeros for missing bytes
 				[ $e -eq 0 ] && v=$(( v << 8 )) || s=$(( s + 8 ))
 				i=$(( i + 1 ))
 			done

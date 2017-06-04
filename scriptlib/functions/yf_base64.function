@@ -63,7 +63,7 @@ yf_base64()
 		k=0
 		ff=0
 		while read pos left right; do
-			while [ $i -lt $pos ]; do # zeroes are equal for 'cmp'
+			while [ $i -lt $pos ]; do # zeros are equal for 'cmp'
 				if [ $ff -eq 1 ]; then
 					yf_base64_append 377
 					ff=0
