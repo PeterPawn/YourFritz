@@ -57,10 +57,17 @@ show_version()
 	v=$(openssl version 2>/dev/null)
 	if [ $? -eq 127 ]; then
 		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
-		return 1
+		return 127
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
-		return 0
+		v="$(openssl version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
+		[ "$v" = "1.0" ] && return 0
+		if [ "$v" = "0.9" ]; then
+			echo -e "\x1B[1;33mThe OpenSSL version is really old, you should update it as soon as possible.\x1b[0m" 1>&2
+			return 0
+		fi
+		echo -e "\x1B[1;31mYour OpenSSL version is too new ... please install a version 1.0.2 to use this script.\x1B[0m" 1>&2
+		return 127
 	fi
 }
 #######################################################################################
