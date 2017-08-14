@@ -25,6 +25,7 @@
 56 provider_default/ansage_no_number
 57 provider_default/ansage_user
 58 provider_default/ansage_user2
+60 freetz.config Freetz configuration file (it's an uncompressed TAR file of /tmp/flash)
 61 provider_default/calllog
 62 provider_default/phonebook
 63 provider_default/fonctrl
@@ -86,6 +87,8 @@
 145 tamconf
 160 aura-usb
 161 configd
+162 ewnwstatus.cfg known LAN clients
+163 fwupdatetrace.cfg
 168 browser-data
 169 update-url.cfg
 176 dect_misc
@@ -104,6 +107,7 @@
 202 websrv_ssl_cert.pem SSL certificate
 203 letsencrypt_key.pem private key for Let's Encrypt SSL/TLS certificate
 204 letsencrypt_cert.pem Let's Encrypt SSL/TLS certificate file
+205 avmnexus.cfg looks like a configuration file for Mesh functionality
 208 cert.cfg
 209 usb.cfg USB configuration settings (WebDAV is included too)
 210 xdslmode
