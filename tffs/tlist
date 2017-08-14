@@ -5,8 +5,8 @@ table()
 	{
 		local d=$1 i=$2
 		while [ $i -gt 0 ]; do
-			echo -n "$d"
-			let i=i-1
+			printf "%s" "$d"
+			i=$(( i - 1 ))
 		done
 	}
 	row()
@@ -20,9 +20,9 @@ table()
 			eval len=\$$colname
 			eval align=\$$alignname
 			if [ ${#val} -lt $len ]; then
-				if [ x"$align" == x"R" ]; then
+				if [ "$align" = "R" ]; then
 					val="$(copies " " $(( $len - ${#val} )))$val"
-				elif [ x"$align" == x"C" ]; then
+				elif [ "$align" = "C" ]; then
 					val="$(copies " " $(( ( $len - ${#val} ) / 2 )))$val"
 					val="$val$(copies " " $(( $len - ${#val} )))"
 				else
@@ -30,10 +30,10 @@ table()
 				fi
 			fi
 			show="${show}| $val "
-			let i=i+1
+			i=$(( i + 1 ))
 		done
 		show="${show}|"
-		echo "$show"
+		printf "$show\n"
 	}
 	if [ ${#1} -eq 0 ]; then
 		op="empty"
@@ -90,11 +90,11 @@ table()
 			return 0
 			;;
 		empty)
-			echo "EMPTY" >>$td/lines
+			printf "EMPTY\n" >>$td/lines
 			return 0
 			;;
 		outside)
-			echo "OUTSIDE=\"$*\"" >>$td/lines
+			printf "OUTSIDE=\"%s\"\n" "$*" >>$td/lines
 			return 0
 			;;
 		columns)
@@ -111,33 +111,33 @@ table()
 						name="$1"
 						align=L
 					fi
-					echo "NAME=\"$name\" LEN=${#name} ALIGN=$align" >>$td/columns
+					printf "NAME=\"%s\" LEN=%u ALIGN=%s\n" "$name" "${#name}" "$align" >>$td/columns
 					shift
 				done
 				return 0
 			fi
 			;;
 		header)
-			echo "HEADER" >>$td/lines
+			printf "HEADER\n" >>$td/lines
 			return 0
 			;;
 		repeatheader)
-			echo "REPEATHEADER" >>$td/lines
+			printf "REPEATHEADER\n" >>$td/lines
 			return 0
 			;;
 		delimiter)
-			echo "DELIMITER" >>$td/lines
+			printf "DELIMITER\n" >>$td/lines
 			return 0
 			;;
 		footer)
-			echo "FOOTER" >>$td/lines
+			printf "FOOTER\n" >>$td/lines
 			return 0
 			;;
 		row)
 			i=0
 			line=""
 			while [ ${#1} -gt 0 ]; do
-				let i=i+1
+				i=$(( i + 1 ))
 				line="${line}COL$i=\"$1\" "
 				eval $(sed -n -e "${i}p" $td/columns)
 				if [ ${#1} -gt $LEN ]; then
@@ -145,14 +145,14 @@ table()
 				fi
 				shift
 			done
-			echo "$line" >>$td/lines
+			printf "$line\n" >>$td/lines
 			return 0
 			;;
 		output)
 			i=0
 			headline=""
 			while read line; do
-				let i=i+1
+				i=$(( i + 1 ))
 				eval $line
 				eval "column_${i}_name=\"$NAME\""
 				eval "column_${i}_len=\"$LEN\""
@@ -161,36 +161,36 @@ table()
 			done <$td/columns
 			column_count=$i
 			while read line; do
-				if [ "${line:0:5}" == "EMPTY" ]; then
-					echo ""
-				elif [ "${line:0:6}" == "HEADER" ]; then
+				if [ "${line:0:5}" = "EMPTY" ]; then
+					printf "\n"
+				elif [ "${line:0:6}" = "HEADER" ]; then
 					delimiter=""
 					i=1
 					while [ $i -le $column_count ]; do
 						eval "len=\${column_${i}_len} value=\"\${column_${i}_name}\""
 						delimiter="${delimiter}+$(copies - $(( $len + 2 )))"
-						let i=i+1
+						i=$(( i + 1 ))
 					done
 					delimiter="${delimiter}+"
-					echo "$delimiter"
+					printf "$delimiter\n"
 					eval "$headline"
 					row
-					echo "$delimiter"
+					printf "$delimiter\n"
 					footer="$delimiter"
-				elif [ "${line:0:12}" == "REPEATHEADER" ]; then
-					echo "$delimiter"
+				elif [ "${line:0:12}" = "REPEATHEADER" ]; then
+					printf "$delimiter\n"
 					eval "$headline"
 					row
-					echo "$delimiter"
-				elif [ "${line:0:9}" == "DELIMITER" ]; then
-					echo "$delimiter"
-				elif [ "${line:0:6}" == "FOOTER" ]; then
-					echo "$delimiter"
-				elif [ "${line:0:7}" == "OUTSIDE" ]; then
+					printf "$delimiter\n"
+				elif [ "${line:0:9}" = "DELIMITER" ]; then
+					printf "$delimiter\n"
+				elif [ "${line:0:6}" = "FOOTER" ]; then
+					printf "$delimiter\n"
+				elif [ "${line:0:7}" = "OUTSIDE" ]; then
 					unset COL1 COL2 COL3 COL4 COL5 COL6 COL7 COL8 COL9 COL10
 					eval "$line"
-					echo "$OUTSIDE"
-				elif [ "${line:0:3}" == "COL" ]; then
+					printf "$OUTSIDE\n"
+				elif [ "${line:0:3}" = "COL" ]; then
 					unset COL1 COL2 COL3 COL4 COL5 COL6 COL7 COL8 COL9 COL10
 					eval "$line"
 					row
@@ -209,14 +209,15 @@ display()
 	table outside "TFFS content listing"
 	table outside "===================="
 	table outside "TFFS major device ID : $major"
-	table outside "TFFS MTD partitions  : $mtd_a/$mtd_b"
+	table outside "TFFS storage type    : $type"
+	table outside "TFFS MTD partition(s): $parts"
 	table outside "TFFS size            : $size KByte ($space Byte)"
-	table outside "TFFS fill level      : $fill %"
+	table outside "TFFS fill level      : $fill %%"
 	table empty
 	table columns "minor:R" "hex:R" "size:R" "visible:C" "name" "comment"
 	table header 
 	for minor in $(seq 0 255); do
-		echo -n -e "\rProcessing minor $minor of 255 ..." 1>&2
+		printf "\rProcessing minor $minor of 255 ..." 1>&2
 		mknod $td/cdev c $major $minor
 		checkempty $td/cdev >/dev/null 2>&1
 		empty=$?
@@ -225,21 +226,24 @@ display()
 		else
 			fsize=0
 		fi
-		let used=used+fsize
-		line=$(grep "^$minor " $mydir/tffs.files)
+		used=$(( used + fsize ))
+		line=$(grep "^$minor " $mydir/tffs.files 2>/dev/null)
 		if [ -n "$line" ]; then
-			comment=$(echo "$line" | sed -n -e 's/^[^ ]* [^ ]* *\(.*\)$/\1/p')
+			comment=$(printf "$line\n" | sed -n -e 's/^[^ ]* [^ ]* *\(.*\)$/\1/p')
 			if [ -z "$comment" ]; then
-				name=$(echo "$line" | sed -n -e 's/^[^ ]* \(.*\)/\1/p')
+				name=$(printf "$line\n" | sed -n -e 's/^[^ ]* \(.*\)/\1/p')
 			else
-				name=$(echo "$line" | sed -n -e 's/^[^ ]* \([^ ]*\) *.*$/\1/p')
+				name=$(printf "$line\n" | sed -n -e 's/^[^ ]* \([^ ]*\) *.*$/\1/p')
 			fi
 		else
 			name=""
 			comment=""
 		fi
 		grep -q "^$minor " $td/visible_names && vis=yes || vis=no
-		len=$(echo -e "$minor\t$fsize\t$vis\t$name" | wc -c)
+		if [ "$vis" = "yes" ] && [ -z "$name" ]; then
+			name="$(sed -n -e "s|^$minor \(.*\)|\1|p" $td/visible_names)"
+		fi
+		len=$(printf "$minor\t$fsize\t$vis\t$name" | wc -c)
 		table row "$minor" $(printf "0x%02X" $minor) "$fsize" "$vis" "$name" "$comment"
 		rm $td/cdev
 		if [ $(( minor % 64 )) -eq 63 ]; then
@@ -248,7 +252,7 @@ display()
 			table delimiter
 		fi
 	done
-	echo -n -e "\r\x1B[0KPreparing output table ..." 1>&2
+	printf "\r\x1B[0KPreparing output table ..." 1>&2
 	table empty
 	table outside "Cumulated file sizes : $used"
 	table output
@@ -258,17 +262,36 @@ myname=${myself##*/}
 mydir=${myself%/*}
 td=/var/tmp/tfls_$$_$(date +%s)
 mkdir -p $td || exit 1
-#echo cleanup >/proc/tffs
-echo info >/proc/tffs
-major=$(grep tffs /proc/devices | sed -n -e 's/^\(.*\) .*/\1/p')
-mtd=$(grep '^mount=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p' | sed -n -e ':x;N;$!bx;s/\n/ /p')
-set -- $mtd
-mtd_a=$1
-mtd_b=$2
-mtd_a_num=$(echo $mtd_a | sed -n -e 's/^mtd\(.*\)/\1/p')
-size=$(grep mtdblock$mtd_a_num /proc/partitions | sed -n -e 's/^.* .* \(.*\) .*/\1/p')
-let space=size*1024
-fill=$(grep '^fill=' /proc/tffs | sed -n -e 's/^.*=\(.*\)/\1/p')
+#printf "cleanup\n" >/proc/tffs
+printf "info\n" >/proc/tffs
+major=$(sed -n -e 's/^\(.*\) tffs/\1/p' /proc/devices)
+if [ ${#major} -eq 0 ]; then
+	printf "\r\x1B[0KUnable to find the major device ID for TFFS driver.\n" 1>&2
+	exit 1
+fi
+mtd=$(sed -n -e 's/^mount=\(.*\)/\1/p' /proc/tffs | sed -n -e ':x;N;$!bx;s/\n/ /p')
+if [ ${#mtd} -gt 0 ]; then
+	type=spi
+	set -- $mtd
+	mtd_a=$1
+	mtd_b=$2
+	mtd_a_num=$(printf $mtd_a | sed -n -e 's/^mtd\(.*\)/\1/p')
+	size=$(sed -n -e "s/^ .* .* \(.*\) mtdblock$mtd_a_num\$/\1/p" /proc/partitions)
+	space=$(( size * 1024 ))
+	parts="$mtd_a/$mtd_b"
+else
+	mtd=$(sed -n -e "s/^\([^:]*\):.*tffs.*/\1/p" /proc/mtd)
+	if [ ${#mtd} -gt 0 ]; then
+		type=nand
+		size=$(sed -n -e "s/^$mtd: \([0-9a-f]*\).*nand-tffs.*/\1/p" /proc/mtd)
+		space=$(( 0x$size ))
+		size=$(( 0x$size / 1024 ))
+		parts="$mtd"
+	else
+		type=unknown
+	fi
+fi
+fill=$(sed -n -e 's/^fill=\(.*\)/\1/p' /proc/tffs)
 used=0
 touch $td/vnames
 popd=$(pwd)
@@ -276,7 +299,7 @@ cd /var/flash
 for file in $(ls *); do
 	if [ -c $file ]; then
 		eval "minor=\$((0x$(stat -c %T $file)))"
-		echo "$minor $file" >>$td/vnames
+		printf "$minor $file\n" >>$td/vnames
 	fi
 done
 cd $popd
