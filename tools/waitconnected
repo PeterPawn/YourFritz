@@ -1,9 +1,5 @@
 #! /bin/sh
-if [ -z $1 ]; then
-	loop=-1
-else
-	loop=$(( $1 + 0 ))
-fi
+[ -z $1 ] && loop=-1 || loop=$(( $1 + 0 ))
 while ! [ $(ctlmgr_ctl r connection0 status/connect) = "5" ]; do
 	loop=$(( loop + 1 ))
 	[ $loop -eq 0 ] && exit 1
