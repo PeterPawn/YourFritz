@@ -1,0 +1,14 @@
+#! /bin/sh
+if [ "$1" = "guid" ]; then
+	if [ -f /proc/sys/kernel/random/uuid ]; then
+		cat /proc/sys/kernel/random/uuid
+		exit 0
+	else
+		printf "Kernel GUID generator isn't available.\n" 1>&2
+		exit 1
+	fi
+fi
+len=${1:-8}
+[ $len -gt 32 ] && exit 1
+dd if=/dev/urandom of=/proc/self/fd/1 count=1 bs=16 2>/dev/null | md5sum | sed -n -e "s/\([0-9a-f]\{$len\}\).*/\1/p"
+exit 0
