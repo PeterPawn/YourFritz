@@ -23,7 +23,7 @@ if [ -z $1 ]; then
 	printf "will be asked to stop 'ctlmgr' while storing the new data.\n" 1>&2
 	exit 1
 fi
-major=$(sed -n -e 's/^\([0-9]*\) tffs.*/\1/p' /proc/devices)
+major=$(sed -n -e "s|^ *\([0-9]\{1,3\}\) tffs\$|\1|p" /proc/devices)
 [ "$(expr "$1" : "\(^[0-9]*$\)")" = "$1" ] && i=$1 || i=-1
 if [ $i -gt 0 ] && [ $i -le 255 ]; then
 	minor=$i
