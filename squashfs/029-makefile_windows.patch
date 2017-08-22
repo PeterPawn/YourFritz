@@ -1,0 +1,72 @@
+--- Makefile.org	2017-08-22 03:32:55.697831000 +0200
++++ Makefile	2017-08-22 03:41:16.271780200 +0200
+@@ -26,7 +26,7 @@
+ # To build using XZ Utils liblzma - install the library and uncomment
+ # the XZ_SUPPORT line below.
+ #
+-#XZ_SUPPORT = 1
++XZ_SUPPORT = 1
+ 
+ 
+ ############ Building LZO support ##############
+@@ -73,7 +73,7 @@
+ #
+ #LZMA_XZ_SUPPORT = 1
+ #LZMA_SUPPORT = 1
+-#LZMA_DIR = ../../../../LZMA/lzma465
++LZMA_DIR = /usr/include/lzma
+ 
+ ######## Specifying default compression ########
+ #
+@@ -81,7 +81,7 @@
+ # in Mksquashfs.  Obviously the compression algorithm must have been
+ # selected to be built
+ #
+-COMP_DEFAULT = gzip
++COMP_DEFAULT = xz
+ 
+ ###############################################
+ #  Extended attribute (XATTRs) build options  #
+@@ -92,7 +92,7 @@
+ # If your C library or build/target environment doesn't support XATTRs then
+ # comment out the next line to build Mksquashfs and Unsquashfs without XATTR
+ # support
+-XATTR_SUPPORT = 1
++XATTR_SUPPORT = 0
+ 
+ # Select whether you wish xattrs to be stored by Mksquashfs and extracted
+ # by Unsquashfs by default.  If selected users can disable xattr support by
+@@ -100,8 +100,9 @@
+ #
+ # If unselected, Mksquashfs/Unsquashfs won't store and extract xattrs by
+ # default.  Users can enable xattrs by using the -xattrs option.
+-XATTR_DEFAULT = 1
++XATTR_DEFAULT = 0
+ 
++STATIC = 1
+ 
+ ###############################################
+ #        End of BUILD options section         #
+@@ -123,6 +124,11 @@
+ 	-Wall
+ 
+ LIBS = -lpthread -lm
++
++ifeq ($(STATIC),1)
++LIBS += -Wl,-Bstatic
++endif
++
+ ifeq ($(GZIP_SUPPORT),1)
+ CFLAGS += -DGZIP_SUPPORT
+ MKSQUASHFS_OBJS += gzip_wrapper.o
+@@ -177,6 +183,10 @@
+ COMPRESSORS += lz4
+ endif
+ 
++ifeq ($(STATIC),1)
++LIBS += -Wl,-Bdynamic
++endif
++
+ ifeq ($(XATTR_SUPPORT),1)
+ ifeq ($(XATTR_DEFAULT),1)
+ CFLAGS += -DXATTR_SUPPORT -DXATTR_DEFAULT
