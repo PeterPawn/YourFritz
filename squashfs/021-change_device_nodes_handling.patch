@@ -1,6 +1,6 @@
 --- squashfs-tools/unsquashfs.c
 +++ squashfs-tools/unsquashfs.c
-@@ -75,6 +75,9 @@
+@@ -75,7 +75,11 @@
  int inode_number = 1;
  int no_xattrs = XATTR_DEF;
  int user_xattrs = FALSE;
@@ -8,9 +8,11 @@
 +char * device_nodes_file_name = NULL;
 +FILE * device_nodes_file = NULL;
  FILE * listfile = NULL;
++char * dest = "squashfs-root";
  
  int lookup_type[] = {
-@@ -1121,6 +1124,19 @@
+ 	0,
+@@ -1121,6 +1125,19 @@
  			int chrdev = i->type == SQUASHFS_CHRDEV_TYPE;
  			TRACE("create_inode: dev, rdev 0x%llx\n", i->data);
  
@@ -18,7 +20,7 @@
 +				if (device_nodes_file_name && device_nodes_file) {
 +					/* save device files as pseudo file definitions */
 +					fprintf(device_nodes_file, "%s %c %3o %u %u %u %u\n",
-+						pathname, chrdev ? 'c' : 'b',
++						pathname + strlen(dest), chrdev ? 'c' : 'b',
 +						(i->mode & 0777),
 +						(unsigned int) i->uid, (unsigned int) i->gid,
 +						(unsigned int) (i->data >> 8) & 0xff,
@@ -30,6 +32,14 @@
  			if(root_process) {
  				if(force)
  					unlink(pathname);
+@@ -2497,7 +2514,6 @@
+ 	fprintf(stderr, "GNU General Public License for more details.\n");
+ int main(int argc, char *argv[])
+ {
+-	char *dest = "squashfs-root";
+ 	int i, stat_sys = FALSE, version = FALSE;
+ 	int n;
+ 	struct pathnames *paths = NULL;
 @@ -2609,6 +2625,12 @@
  				exit(1);
  			}
