@@ -1,0 +1,335 @@
+--- squashfs-tools/unsquashfs.c
++++ squashfs-tools/unsquashfs.c
+@@ -75,6 +75,7 @@
+ int inode_number = 1;
+ int no_xattrs = XATTR_DEF;
+ int user_xattrs = FALSE;
++FILE * listfile = NULL;
+ 
+ int lookup_type[] = {
+ 	0,
+@@ -228,7 +229,7 @@
+ {
+ 	pthread_mutex_lock(&queue->mutex);
+ 
+-	printf("Max size %d, size %d%s\n", queue->size - 1,  
++	fprintf(stderr, "Max size %d, size %d%s\n", queue->size - 1,  
+ 		queue->readp <= queue->writep ? queue->writep - queue->readp :
+ 			queue->size - queue->readp + queue->writep,
+ 		queue->readp == queue->writep ? " (EMPTY)" :
+@@ -488,7 +489,7 @@
+ {
+ 	pthread_mutex_lock(&cache->mutex);
+ 
+-	printf("Max buffers %d, Current size %d, Used %d,  %s\n",
++	fprintf(stderr, "Max buffers %d, Current size %d, Used %d,  %s\n",
+ 		cache->max_buffers, cache->count, cache->used,
+ 		cache->free_list ?  "Free buffers" : "No free buffers");
+ 
+@@ -522,7 +523,7 @@
+ 	struct tm *t;
+ 
+ 	if(short_ls) {
+-		printf("%s\n", pathname);
++		fprintf(listfile, "%s\n", pathname);
+ 		return 1;
+ 	}
+ 
+@@ -554,7 +555,7 @@
+ 	} else
+ 		groupstr = group->gr_name;
+ 
+-	printf("%s %s/%s ", modestr(str, inode->mode), userstr, groupstr);
++	fprintf(listfile, "%s %s/%s ", modestr(str, inode->mode), userstr, groupstr);
+ 
+ 	switch(inode->mode & S_IFMT) {
+ 		case S_IFREG:
+@@ -565,7 +566,7 @@
+ 			padchars = TOTALCHARS - strlen(userstr) -
+ 				strlen(groupstr);
+ 
+-			printf("%*lld ", padchars > 0 ? padchars : 0,
++			fprintf(listfile, "%*lld ", padchars > 0 ? padchars : 0,
+ 				inode->data);
+ 			break;
+ 		case S_IFCHR:
+@@ -573,7 +574,7 @@
+ 			padchars = TOTALCHARS - strlen(userstr) -
+ 				strlen(groupstr) - 7; 
+ 
+-			printf("%*s%3d,%3d ", padchars > 0 ? padchars : 0, " ",
++			fprintf(listfile, "%*s%3d,%3d ", padchars > 0 ? padchars : 0, " ",
+ 				(int) inode->data >> 8, (int) inode->data &
+ 				0xff);
+ 			break;
+@@ -581,11 +582,11 @@
+ 
+ 	t = localtime(&inode->time);
+ 
+-	printf("%d-%02d-%02d %02d:%02d %s", t->tm_year + 1900, t->tm_mon + 1,
++	fprintf(listfile, "%d-%02d-%02d %02d:%02d %s", t->tm_year + 1900, t->tm_mon + 1,
+ 		t->tm_mday, t->tm_hour, t->tm_min, pathname);
+ 	if((inode->mode & S_IFMT) == S_IFLNK)
+-		printf(" -> %s", inode->symlink);
+-	printf("\n");
++		fprintf(listfile, " -> %s", inode->symlink);
++	fputc('\n', listfile);
+ 		
+ 	return 1;
+ }
+@@ -1623,29 +1624,29 @@
+ }
+ 
+ 
+-void squashfs_stat(char *source)
++void squashfs_stat(char *source, FILE * file)
+ {
+ 	time_t mkfs_time = (time_t) sBlk.s.mkfs_time;
+ 	char *mkfs_str = ctime(&mkfs_time);
+ 
+ #if __BYTE_ORDER == __BIG_ENDIAN
+-	printf("Found a valid %sSQUASHFS %d:%d superblock on %s.\n",
++	fprintf(file, "Found a valid %sSQUASHFS %d:%d superblock on %s.\n",
+ 		sBlk.s.s_major == 4 ? "" : swap ? "little endian " :
+ 		"big endian ", sBlk.s.s_major, sBlk.s.s_minor, source);
+ #else
+-	printf("Found a valid %sSQUASHFS %d:%d superblock on %s.\n",
++	fprintf(file, "Found a valid %sSQUASHFS %d:%d superblock on %s.\n",
+ 		sBlk.s.s_major == 4 ? "" : swap ? "big endian " :
+ 		"little endian ", sBlk.s.s_major, sBlk.s.s_minor, source);
+ #endif
+ 
+-	printf("Creation or last append time %s", mkfs_str ? mkfs_str :
++	fprintf(file, "Creation or last append time %s", mkfs_str ? mkfs_str :
+ 		"failed to get time\n");
+-	printf("Filesystem size %.2f Kbytes (%.2f Mbytes)\n",
++	fprintf(file, "Filesystem size %.2f Kbytes (%.2f Mbytes)\n",
+ 		sBlk.s.bytes_used / 1024.0, sBlk.s.bytes_used /
+ 		(1024.0 * 1024.0));
+ 
+ 	if(sBlk.s.s_major == 4) {
+-		printf("Compression %s\n", comp->name);
++		fprintf(file, "Compression %s\n", comp->name);
+ 
+ 		if(SQUASHFS_COMP_OPTS(sBlk.s.flags)) {
+ 			char buffer[SQUASHFS_METADATA_SIZE] __attribute__ ((aligned));
+@@ -1661,22 +1662,22 @@
+ 		}
+ 	}
+ 
+-	printf("Block size %d\n", sBlk.s.block_size);
+-	printf("Filesystem is %sexportable via NFS\n",
++	fprintf(file, "Block size %d\n", sBlk.s.block_size);
++	fprintf(file, "Filesystem is %sexportable via NFS\n",
+ 		SQUASHFS_EXPORTABLE(sBlk.s.flags) ? "" : "not ");
+-	printf("Inodes are %scompressed\n",
++	fprintf(file, "Inodes are %scompressed\n",
+ 		SQUASHFS_UNCOMPRESSED_INODES(sBlk.s.flags) ? "un" : "");
+-	printf("Data is %scompressed\n",
++	fprintf(file, "Data is %scompressed\n",
+ 		SQUASHFS_UNCOMPRESSED_DATA(sBlk.s.flags) ? "un" : "");
+ 
+ 	if(sBlk.s.s_major > 1) {
+ 		if(SQUASHFS_NO_FRAGMENTS(sBlk.s.flags))
+-			printf("Fragments are not stored\n");
++			fprintf(file, "Fragments are not stored\n");
+ 		else {
+-			printf("Fragments are %scompressed\n",
++			fprintf(file, "Fragments are %scompressed\n",
+ 				SQUASHFS_UNCOMPRESSED_FRAGMENTS(sBlk.s.flags) ?
+ 				"un" : "");
+-			printf("Always-use-fragments option is %sspecified\n",
++			fprintf(file, "Always-use-fragments option is %sspecified\n",
+ 				SQUASHFS_ALWAYS_FRAGMENTS(sBlk.s.flags) ? "" :
+ 				"not ");
+ 		}
+@@ -1684,34 +1685,34 @@
+ 
+ 	if(sBlk.s.s_major == 4) {
+ 		if(SQUASHFS_NO_XATTRS(sBlk.s.flags))
+-			printf("Xattrs are not stored\n");
++			fprintf(file, "Xattrs are not stored\n");
+ 		else
+-			printf("Xattrs are %scompressed\n",
++			fprintf(file, "Xattrs are %scompressed\n",
+ 				SQUASHFS_UNCOMPRESSED_XATTRS(sBlk.s.flags) ?
+ 				"un" : "");
+ 	}
+ 
+ 	if(sBlk.s.s_major < 4)
+-			printf("Check data is %spresent in the filesystem\n",
++			fprintf(file, "Check data is %spresent in the filesystem\n",
+ 				SQUASHFS_CHECK_DATA(sBlk.s.flags) ? "" :
+ 				"not ");
+ 
+ 	if(sBlk.s.s_major > 1)
+-		printf("Duplicates are %sremoved\n",
++		fprintf(file, "Duplicates are %sremoved\n",
+ 			SQUASHFS_DUPLICATES(sBlk.s.flags) ? "" : "not ");
+ 	else
+-		printf("Duplicates are removed\n");
++		fprintf(file, "Duplicates are removed\n");
+ 
+ 	if(sBlk.s.s_major > 1)
+-		printf("Number of fragments %d\n", sBlk.s.fragments);
++		fprintf(file, "Number of fragments %d\n", sBlk.s.fragments);
+ 
+-	printf("Number of inodes %d\n", sBlk.s.inodes);
++	fprintf(file, "Number of inodes %d\n", sBlk.s.inodes);
+ 
+ 	if(sBlk.s.s_major == 4)
+-		printf("Number of ids %d\n", sBlk.s.no_ids);
++		fprintf(file, "Number of ids %d\n", sBlk.s.no_ids);
+ 	else {
+-		printf("Number of uids %d\n", sBlk.no_uids);
+-		printf("Number of gids %d\n", sBlk.no_guids);
++		fprintf(file, "Number of uids %d\n", sBlk.no_uids);
++		fprintf(file, "Number of gids %d\n", sBlk.no_guids);
+ 	}
+ 
+ 	TRACE("sBlk.s.inode_table_start 0x%llx\n", sBlk.s.inode_table_start);
+@@ -2331,7 +2332,7 @@
+ 			EXIT_UNSQUASH("Failed to create thread\n");
+ 	}
+ 
+-	printf("Parallel unsquashfs: Using %d processor%s\n", processors,
++	fprintf(stderr, "Parallel unsquashfs: Using %d processor%s\n", processors,
+ 			processors == 1 ? "" : "s");
+ 
+ 	if(pthread_sigmask(SIG_SETMASK, &old_mask, NULL) == -1)
+@@ -2354,7 +2355,7 @@
+ 	if(progress_enabled) {
+ 		progress_bar(sym_count + dev_count + fifo_count + cur_blocks,
+ 			total_inodes - total_files + total_blocks, columns);
+-		printf("\n");
++		fputc('\n', stdout);
+ 	}
+ 	progress_enabled = FALSE;
+ 	pthread_mutex_unlock(&screen_mutex);
+@@ -2368,7 +2369,7 @@
+ 	pthread_mutex_lock(&screen_mutex);
+ 
+ 	if(progress_enabled)
+-		fprintf(stderr, "\n");
++		fputc('\n', stderr);
+ 
+ 	va_start(ap, fmt);
+ 	vfprintf(stderr, fmt, ap);
+@@ -2385,10 +2386,10 @@
+ 	pthread_mutex_lock(&screen_mutex);
+ 
+ 	if(progress_enabled)
+-		printf("\n");
++		fputc('\n', stdout);
+ 
+ 	va_start(ap, fmt);
+-	vprintf(fmt, ap);
++	vfprintf(stdout, fmt, ap);
+ 	va_end(ap);
+ 
+ 	pthread_mutex_unlock(&screen_mutex);
+@@ -2428,18 +2429,18 @@
+ 		previous = current;
+ 	}
+ 
+-	printf("\r[");
++	fprintf(stdout, "\r[");
+ 
+ 	while (hashes --)
+-		putchar('=');
++		fputc('=', stdout);
+ 
+-	putchar(rotate_list[rotate]);
++	fputc(rotate_list[rotate], stdout);
+ 
+ 	while(spaces --)
+-		putchar(' ');
++		fputc(' ', stdout);
+ 
+-	printf("] %*lld/%*lld", max_digits, current, max_digits, max);
+-	printf(" %3lld%%", current * 100 / max);
++	fprintf(stdout, "] %*lld/%*lld", max_digits, current, max_digits, max);
++	fprintf(stdout, " %3lld%%", current * 100 / max);
+ 	fflush(stdout);
+ }
+ 
+@@ -2477,23 +2478,23 @@
+ 
+ 
+ #define VERSION() \
+-	printf("unsquashfs version 4.3 (2014/05/12)\n");\
+-	printf("copyright (C) 2014 Phillip Lougher "\
++	fprintf(stderr, "unsquashfs version 4.3 (2014/05/12)\n");\
++	fprintf(stderr, "copyright (C) 2014 Phillip Lougher "\
+ 		"<phillip@squashfs.org.uk>\n\n");\
+-    	printf("This program is free software; you can redistribute it and/or"\
++   	fprintf(stderr, "This program is free software; you can redistribute it and/or"\
+ 		"\n");\
+-	printf("modify it under the terms of the GNU General Public License"\
++	fprintf(stderr, "modify it under the terms of the GNU General Public License"\
+ 		"\n");\
+-	printf("as published by the Free Software Foundation; either version "\
++	fprintf(stderr, "as published by the Free Software Foundation; either version "\
+ 		"2,\n");\
+-	printf("or (at your option) any later version.\n\n");\
+-	printf("This program is distributed in the hope that it will be "\
++	fprintf(stderr, "or (at your option) any later version.\n\n");\
++	fprintf(stderr, "This program is distributed in the hope that it will be "\
+ 		"useful,\n");\
+-	printf("but WITHOUT ANY WARRANTY; without even the implied warranty of"\
++	fprintf(stderr, "but WITHOUT ANY WARRANTY; without even the implied warranty of"\
+ 		"\n");\
+-	printf("MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"\
++	fprintf(stderr, "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"\
+ 		"\n");\
+-	printf("GNU General Public License for more details.\n");
++	fprintf(stderr, "GNU General Public License for more details.\n");
+ int main(int argc, char *argv[])
+ {
+ 	char *dest = "squashfs-root";
+@@ -2627,6 +2628,8 @@
+ 	progress = FALSE;
+ #endif
+ 
++	listfile = stdout;
++
+ 	if(i == argc) {
+ 		if(!version) {
+ options:
+@@ -2693,7 +2696,7 @@
+ 		exit(1);
+ 
+ 	if(stat_sys) {
+-		squashfs_stat(argv[i]);
++		squashfs_stat(argv[i], stdout);
+ 		exit(0);
+ 	}
+ 
+@@ -2788,7 +2791,7 @@
+ 	memset(created_inode, 0, sBlk.s.inodes * sizeof(char *));
+ 	inode_number = 1;
+ 
+-	printf("%d inodes (%d blocks) to write\n\n", total_inodes,
++	fprintf(stderr, "%d inodes (%d blocks) to write\n\n", total_inodes,
+ 		total_inodes - total_files + total_blocks);
+ 
+ 	enable_progress_bar();
+@@ -2802,12 +2805,12 @@
+ 	disable_progress_bar();
+ 
+ 	if(!lsonly) {
+-		printf("\n");
+-		printf("created %d files\n", file_count);
+-		printf("created %d directories\n", dir_count);
+-		printf("created %d symlinks\n", sym_count);
+-		printf("created %d devices\n", dev_count);
+-		printf("created %d fifos\n", fifo_count);
++		fputc('\n', stderr);
++		fprintf(stderr, "created %d files\n", file_count);
++		fprintf(stderr, "created %d directories\n", dir_count);
++		fprintf(stderr, "created %d symlinks\n", sym_count);
++		fprintf(stderr, "created %d devices\n", dev_count);
++		fprintf(stderr, "created %d fifos\n", fifo_count);
+ 	}
+ 
+ 	return 0;

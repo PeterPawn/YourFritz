@@ -1,0 +1,87 @@
+--- squashfs-tools/unsquashfs.c
++++ squashfs-tools/unsquashfs.c
+@@ -75,6 +75,9 @@
+ int inode_number = 1;
+ int no_xattrs = XATTR_DEF;
+ int user_xattrs = FALSE;
++int no_device_nodes = FALSE;
++char * device_nodes_file_name = NULL;
++FILE * device_nodes_file = NULL;
+ FILE * listfile = NULL;
+ 
+ int lookup_type[] = {
+@@ -1121,6 +1124,19 @@
+ 			int chrdev = i->type == SQUASHFS_CHRDEV_TYPE;
+ 			TRACE("create_inode: dev, rdev 0x%llx\n", i->data);
+ 
++			if(no_device_nodes) {
++				if (device_nodes_file_name && device_nodes_file) {
++					/* save device files as pseudo file definitions */
++					fprintf(device_nodes_file, "%s %c %3o %u %u %u %u\n",
++						pathname, chrdev ? 'c' : 'b',
++						(i->mode & 0777),
++						(unsigned int) i->uid, (unsigned int) i->gid,
++						(unsigned int) (i->data >> 8) & 0xff,
++						(unsigned int) i->data & 0xff);
++				}
++				break;
++			}
++
+ 			if(root_process) {
+ 				if(force)
+ 					unlink(pathname);
+@@ -2609,6 +2625,12 @@
+ 				exit(1);
+ 			}
+ 			path = process_extract_files(path, argv[i]);
++		} else if(strcmp(argv[i], "-no-dev") == 0) {
++			no_device_nodes = TRUE;
++		} else if(strcmp(argv[i], "-pseudo") == 0 ||
++				strcmp(argv[i], "-ps") == 0) {
++			no_device_nodes = TRUE;
++			device_nodes_file_name = strdup(argv[++i]);
+ 		} else if(strcmp(argv[i], "-regex") == 0 ||
+ 				strcmp(argv[i], "-r") == 0)
+ 			use_regex = TRUE;
+@@ -2628,6 +2650,7 @@
+ 	progress = FALSE;
+ #endif
+ 
++	/* default output stream for list modes is STDOUT */
+ 	listfile = stdout;
+ 
+ 	if(i == argc) {
+@@ -2667,6 +2690,10 @@
+ 				"information\n");
+ 			ERROR("\t-e[f] <extract file>\tlist of directories or "
+ 				"files to extract.\n\t\t\t\tOne per line\n");
++			ERROR("\t-no-dev\t\t\tdo not create device files\n");
++			ERROR("\t-ps[eudo] <file>\twrite device inodes to the specified file as\n"
++				"\t\t\t\tpseudo file definitions usable for 'mksquashfs'\n"
++				"\t\t\t\t(date/time info will be lost)\n");
+ 			ERROR("\t-da[ta-queue] <size>\tSet data queue to "
+ 				"<size> Mbytes.  Default %d\n\t\t\t\tMbytes\n",
+ 				DATA_BUFFER_DEFAULT);
+@@ -2785,6 +2812,12 @@
+ 		paths = add_subdir(paths, path);
+ 	}
+ 
++	if(no_device_nodes && device_nodes_file_name) {
++		device_nodes_file = fopen(device_nodes_file_name, "w");
++		if(device_nodes_file == NULL)
++			EXIT_UNSQUASH("failed to open file for device nodes\n");
++	}
++
+ 	pre_scan(dest, SQUASHFS_INODE_BLK(sBlk.s.root_inode),
+ 		SQUASHFS_INODE_OFFSET(sBlk.s.root_inode), paths);
+ 
+@@ -2813,5 +2846,9 @@
+ 		fprintf(stderr, "created %d fifos\n", fifo_count);
+ 	}
+ 
++	if (device_nodes_file != NULL) {
++		fclose(device_nodes_file);
++	}
++
+ 	return 0;
+ }
