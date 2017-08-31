@@ -1,9 +1,5 @@
 #! /bin/sh
-if [ -z "$1" ]; then
-	timeout=0
-else
-	timeout=$(( $1 + 0 ))
-fi
+[ -z "$1" ] && timeout=0 || timeout=$(( $1 + 0 ))
 starttime=$(date +%s)
 [ $starttime -gt 86400 ] && exit $rc
 difftime=$(( starttime + timeout ))
