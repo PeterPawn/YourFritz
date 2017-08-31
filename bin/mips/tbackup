@@ -1,0 +1,95 @@
+#! /bin/sh
+find_executable()
+{
+	e="$1"
+	IFS=:
+	set -- $PATH
+	while [ ${#1} -gt 0 ]; do
+		[ -x "$1/$e" ] && return 0
+		shift
+	done
+	return 1
+}
+
+backup()
+{
+	for minor in $(seq 0 255); do
+		printf "\r\x1B[0KProcessing minor $minor (will go from 0 to 255) ..." 1>&2
+		mknod $td/cdev c $major $minor
+		checkempty $td/cdev >/dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			if grep -q '$$$$[A-Z1-6]*' $td/cdev 2>/dev/null; then
+				if find_executable "decode_secrets" then
+					printf "\x1B[5m decoding content\x1B[25m" 1>&2
+					decode_secrets $td/cdev >$td/$minor
+					decoded=",decoded=1"
+				else
+					cat $td/cdev >$td/$minor
+					decoded=",contains_encrypted_data"
+				fi
+			else
+				cat $td/cdev >$td/$minor
+				unset decoded
+			fi
+			fsize=$(cat $td/$minor | wc -c)
+			printf "$minor\n" >>$td/files
+			printf "minor=$minor,size=$fsize$decoded\n" >>$td/minors
+			used=$(( used + fsize ))
+		else
+			printf "minor=$minor,size=0\n" >>$td/minors
+		fi
+		rm $td/cdev
+	done
+	printf "used=$used\n" >>$td/info
+	cat $td/minors >>$td/info
+	printf "\r\x1B[0KCreating archive file from saved content ..." 1>&2
+	cd $td
+	printf "info" >>$td/files
+	tar -c -C $td -f $td/tffs.tar -T $td/files
+	cd $popd
+	printf "\r\x1B[0KCompressing archive file ..." 1>&2
+	gzip -9 -c $td/tffs.tar
+	printf "\r\x1B[0K" 1>&2
+}
+myself=$(realpath $0)
+myname=${myself##*/}
+mydir=${myself%/*}
+printf "\r\x1B[0KBacking up TFFS content ..." 1>&2
+td=/tmp/tbkp_$$_$(date +%s)
+mkdir -p $td || exit 1
+printf "cleanup\n" >/proc/tffs
+printf "info\n" >/proc/tffs
+major=$(sed -n -e 's/^\(.*\) tffs/\1/p' /proc/devices)
+if [ ${#major} -eq 0 ]; then
+	printf "\r\x1B[0KUnable to find the major device ID for TFFS driver.\n" 1>&2
+	exit 1
+fi
+mtd=$(sed -n -e 's/^mount=\(.*\)/\1/p' /proc/tffs | sed -n -e ':x;N;$!bx;s/\n/ /p')
+if [ ${#mtd} -gt 0 ]; then
+	type=spi
+	set -- $mtd
+	mtd_a=$1
+	mtd_b=$2
+	mtd_a_num=$(printf $mtd_a | sed -n -e 's/^mtd\(.*\)/\1/p')
+	size=$(sed -n -e "s/^ .* .* \(.*\) mtdblock$mtd_a_num\$/\1/p" /proc/partitions)
+	space=$(( size * 1024 ))
+else
+	mtd=$(sed -n -e "s/^\([^:]*\):.*tffs.*/\1/p" /proc/mtd)
+	if [ ${#mtd} -gt 0 ]; then
+		type=nand
+		size=$(sed -n -e "s/^$mtd: \([0-9a-f]*\).*nand-tffs.*/\1/p" /proc/mtd)
+		space=$(( 0x$size ))
+	else
+		type=unknown
+	fi
+fi
+fill=$(sed -n -e 's/^fill=\(.*\)/\1/p' /proc/tffs)
+printf "major=$major\n" >$td/info
+[ ${#mtd_a} -gt 0 ] && \
+	printf "part1=$mtd_a\npart2=$mtd_b\ntype=$type\n" >$td/info || \
+	printf "part=$mtd\ntype=$type\n" >$td/info
+printf "size=$space\nfill=$fill\n" >$td/info
+used=0
+popd=$(pwd)
+backup
+rm -r $td

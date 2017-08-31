@@ -1,0 +1,240 @@
+#! /bin/sh
+#######################################################################################
+#                                                                                     #
+# generate a RSA key usable to sign a firmware image, which may pass the signature    #
+# checks in current FRITZ!OS versions and convert the public key to a file, which     #
+# may be included into an own image for later use                                     #
+#                                                                                     #
+# This script needs a full-functioning OpenSSL binary ('genrsa' is embedded into      #
+# FRITZ!OS images, but 'rsa' and 'rsautl' are not available) and a shell version,     #
+# which may use "read -sp" for hidden terminal reads. If your shell does not          #
+# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the    #
+# password as argument during call.                                                   #
+#                                                                                     #
+# We assume enough entropy here ... please make sure there's enough randomness,       #
+# before you call this script and you should be profoundly  convinced, that your      #
+# "openssl" binary does not seed the PRNG with any fixed value.                       #
+#                                                                                     # 
+# You could read some values from /dev/random (not /dev/urandom, because this uses    #
+# unblocking access and may return poor values, if no entropy is available)  before   #
+# you call this script.                                                               #
+#                                                                                     #
+# $ dd if=/dev/random bs=1 count=16 status=none | busybox hd                          #
+# 00000000  8f 29 47 29 4a b7 95 de  b0 f5 75 52 6c 51 63 4f  |.)G)J.....uRlQcO|      #
+# 00000010                                                                            #
+#                                                                                     #
+# Afterwards the call to 'genrsa' may take some more time, but it should              #
+# get really random values for the key generation.                                    #
+#                                                                                     #
+# You may also generate your own random seed file (have a look at the file name       #
+# definitions in the include file for further explanations) to seed the PRNG for      #
+# the 'genrsa' call.                                                                  #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# determine our script path to locate the include file                                #
+#                                                                                     #
+#######################################################################################
+my_path="$0"
+[ "${my_path%/*}" == "$my_path" ] && my_path="." || my_path="${my_path%/*}"
+my_name="${0##*/}"
+#######################################################################################
+#                                                                                     #
+# include the common file definitions                                                 #
+#                                                                                     #
+#######################################################################################
+source "$my_path/image_signing_files.inc"
+#######################################################################################
+#                                                                                     #
+# some subfunctions                                                                   #
+#                                                                                     #
+#######################################################################################
+show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
+show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
+show_version()
+{
+	local v
+	v=$(openssl version 2>/dev/null)
+	if [ $? -eq 127 ]; then
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
+		return 127
+	else
+		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
+		v="$(openssl version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
+		[ "$v" = "1.0" ] && return 0
+		if [ "$v" = "0.9" ]; then
+			echo -e "\x1B[1;33mThe OpenSSL version is really old, you should update it as soon as possible.\x1b[0m" 1>&2
+			return 0
+		fi
+		echo -e "\x1B[1;31mYour OpenSSL version is too new ... please install a version 1.0.2 to use this script.\x1B[0m" 1>&2
+		return 127
+	fi
+}
+#######################################################################################
+#                                                                                     #
+# usage screen, caller has to redirect output to STDERR if needed                     #
+#                                                                                     #
+#######################################################################################
+usage()
+{
+	echo -e "\x1B[1mCreate a RSA key pair to sign image files for AVM routers.\x1B[0m\n"
+	echo -e "Usage:\n"
+	echo -e "$0 [\x1B[1mpassword\x1B[0m]\n"
+	echo -e "The \x1B[1mpassword\x1B[0m will be read from the terminal, if it's not specified.\n"
+	echo -e "The script may generate a key with more than 1024 bit length, if the environment"
+	echo -e "variable KEYSIZE is set to the requested length, but \x1B[1m1024\x1B[0m, \x1B[1m\
+2048\x1B[0m and \x1B[1m4096\x1B[0m are the"
+	echo -e "only valid selections, because larger keys would affect the size of the encrypted"
+	echo -e "signature file and this would need further changes. Please keep in mind, that you"
+	echo -e "cannot use such a key with the original AVM code (yet - I hope, they will change"
+	echo -e "something in the near future, to re-establish a secure handling of images)."
+}
+#######################################################################################
+#                                                                                     #
+# check parameters                                                                    #
+#                                                                                     #
+#######################################################################################
+if [ x"$1" == x"-h" -o x"$1" == x"--help" ]; then
+	usage 1>&2
+	exit 1
+fi
+#######################################################################################
+#                                                                                     #
+# check OpenSSL presence and version                                                  #
+#                                                                                     #
+#######################################################################################
+show_version
+if [ $? -eq 127 ]; then
+	exit 1
+fi
+echo -en "Check \x1B[1mgenrsa\x1B[0m command ... " 1>&2
+openssl genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok
+else
+	show_error
+fi
+#######################################################################################
+#                                                                                     #
+# get and check the password for the new key                                          #
+#                                                                                     #
+#######################################################################################
+if [ -z $1 ]; then
+	if ! [ -t 0 ]; then
+		usage 1>&2
+		exit 1
+	else
+		read -sp "Enter a password for the generated key: " KEYPASSWORD
+		echo "" 1>&2
+	fi
+else
+	KEYPASSWORD="$1"
+fi
+#######################################################################################
+#                                                                                     #
+# set or check the key size to generate                                               #
+#                                                                                     #
+#######################################################################################
+if [ ${#KEYSIZE} -eq 0 ]; then
+	key_size=1024
+else
+	if [ "$KEYSIZE" == "1024" -o "$KEYSIZE" == "2048" -o "$KEYSIZE" == "4096" ]; then
+		key_size=$KEYSIZE
+	else
+		echo "Unsupported key size \x1B[1m$KEYSIZE\x1B[0m found in the environment." 1>&2
+		exit 1
+	fi
+fi
+#######################################################################################
+#                                                                                     #
+# generate a random seed file with content from /dev/random, it will be used later to #
+# call "openssl genrsa"                                                               #
+#                                                                                     #
+#######################################################################################
+if ! [ -f "${name_prefix}.${seed_extension}" ]; then
+	echo -n "Generating random seed file from /dev/random (may take some time) ... " 1>&2
+	dd if=/dev/random of="${name_prefix}.${seed_extension}" bs=16 count=16 status=none 2>/dev/null
+	if [ $rc -ne 0 -o ! -f "${name_prefix}.${seed_extension}" ]; then
+		show_error
+		exit 1
+	else
+		show_ok
+	fi
+fi
+#######################################################################################
+#                                                                                     #
+# generate the RSA key first, we need a 1024 bit key (even today and even if such     #
+# keys are considered unsafe this time)                                               #
+#                                                                                     #
+#######################################################################################
+echo -en "Generating RSA key as \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
+KEYPASSWORD="${KEYPASSWORD}" openssl genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
+rc=$?
+if [ $rc -ne 0 -o ! -f "${name_prefix}.${private_extension}" ]; then
+	show_error
+	exit 1
+else
+	show_ok
+fi
+#######################################################################################
+#                                                                                     #
+# extract public key as PEM file                                                      #
+#                                                                                     #
+#######################################################################################
+echo -en "Extracting public key to \x1B[1m${name_prefix}.${public_extension}\x1B[0m ... " 1>&2
+KEYPASSWORD="${KEYPASSWORD}" openssl rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
+rc=$?
+if [ $rc -ne 0 -o ! -f "${name_prefix}.${public_extension}" ]; then
+	show_error
+	exit 1
+else
+	show_ok
+fi
+#######################################################################################
+#                                                                                     #
+# extract modulus and exponent to create the AVM formatted public key                 #
+# - the exponent was set by '-f4' and does not need to be read from file              #
+# - the modulus has to start without highest bit set (to ensure positive number)      # 
+#                                                                                     #
+#######################################################################################
+echo -en "Extracting public key in AVM format to \x1B[1m${name_prefix}.${avm_extension}\x1B[0m ... " 1>&2
+EXPONENT=010001
+eval $(openssl rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout)
+rc=$?
+if [ $rc -ne 0 ]; then
+	show_error
+	exit 1
+else
+	MODULUS="$(echo "$Modulus" | tr 'A-F' 'a-f')"
+	first=${MODULUS:0:1}
+	[ "${first/[89a-f]/}" != "$first" ] && MODULUS="00$MODULUS"
+	echo $MODULUS >"${name_prefix}.${avm_extension}"
+	echo $EXPONENT >>"${name_prefix}.${avm_extension}"
+	show_ok
+fi
+#######################################################################################
+#                                                                                     #
+# show some additional info                                                           #
+#                                                                                     #
+#######################################################################################
+if [ $key_size -eq 1024 ]; then
+	echo -en "\nYou should copy the file \x1B[1m${name_prefix}.${avm_extension}\x1B[0m \
+to your firmware image as \x1B[1m/etc/avm_firmware_public_key9\x1B[0m to use it for ima\
+ge verification with AVM components.\n" | fold -w 80 -s 1>&2
+else
+	echo -en "\nThe generated key may be used to sign own TAR archives, if they will be\
+ checked later without AVM components. The used key size of $key_size bits isn't suppor\
+ted yet by the original firmware.\n" | fold -w 80 -s 1>&2
+fi
+#######################################################################################
+#                                                                                     #
+# all done                                                                            #
+#                                                                                     #
+#######################################################################################
+exit 0
+#######################################################################################
+#                                                                                     #
+# end of file                                                                         #
+#                                                                                     #
+#######################################################################################
