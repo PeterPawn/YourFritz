@@ -1,5 +1,5 @@
 #! /bin/sh
-if [ -z $1 ] || [ -z $2 ] || [ -t 0 ]; then
+if [ -z $1 ] || [ -t 0 ]; then
 	printf "Usage: $0 <id>\n\n" 1>&2
 	printf "create TFFS file from stdin content (which may not be a terminal device)\n\n" 1>&2
 	printf "<id>       - TFFS character device minor id\n" 1>&2
