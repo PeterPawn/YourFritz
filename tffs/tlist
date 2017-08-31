@@ -296,7 +296,7 @@ used=0
 touch $td/vnames
 popd=$(pwd)
 cd /var/flash
-for file in $(ls *); do
+for file in $(ls -d *); do
 	if [ -c $file ]; then
 		eval "minor=\$((0x$(stat -c %T $file)))"
 		printf "$minor $file\n" >>$td/vnames
