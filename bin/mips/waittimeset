@@ -1,0 +1,15 @@
+#! /bin/sh
+[ -z "$1" ] && timeout=0 || timeout=$(( $1 + 0 ))
+starttime=$(date +%s)
+[ $starttime -gt 86400 ] && exit $rc
+difftime=$(( starttime + timeout ))
+[ $timeout -eq 0 ] && difftime=$(( starttime + 86400 ))
+while [ $(date +%s) -lt $difftime ]; do
+	if [ $timeout -gt 0 ]; then
+		now=$(date +%s)
+		waiting=$(( now - starttime ))
+		[ $waiting -gt $timeout ] && exit 1
+	fi
+    sleep 1
+done
+exit 0

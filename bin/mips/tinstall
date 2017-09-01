@@ -1,0 +1,24 @@
+#! /bin/sh
+if [ -z $1 ] || [ -t 0 ]; then
+	printf "Usage: $0 <id>\n\n" 1>&2
+	printf "create TFFS file from stdin content (which may not be a terminal device)\n\n" 1>&2
+	printf "<id>       - TFFS character device minor id\n" 1>&2
+	exit 1
+fi
+major=$(sed -n -e 's/^\([0-9]*\) tffs.*/\1/p' /proc/devices)
+if ! [ "$(expr "$1" : "\(^[0-9]*$\)")" = "$1" ]; then
+	printf "Non-numeric argument '%s' specified.\n" "$1" 1>&2
+	exit 1
+fi
+i=$1
+if [ $i -gt 0 ] && [ $i -le 255 ]; then
+	minor=$i
+	fn="/var/tmp/mknod_$$_$(date +%s)"
+	mknod "$fn" c $major $minor
+	cat >"$fn"
+	rm "$fn"
+	exit 0
+else
+	printf "The specified minor id '%s' is invalid.\n" "$1" 1>&2
+	exit 1
+fi

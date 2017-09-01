@@ -1,0 +1,8 @@
+#! /bin/sh
+[ -z $1 ] && loop=-1 || loop=$(( $1 + 0 ))
+while ! [ $(ctlmgr_ctl r connection0 status/connect) = "5" ]; do
+	loop=$(( loop + 1 ))
+	[ $loop -eq 0 ] && exit 1
+    sleep 1
+done
+exit 0

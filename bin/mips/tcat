@@ -1,0 +1,51 @@
+#! /bin/sh
+find_executable()
+{
+	e="$1"
+	IFS=:
+	set -- $PATH
+	while [ ${#1} -gt 0 ]; do
+		[ -x "$1/$e" ] && return 0
+		shift
+	done
+	return 1
+}
+
+decode()
+{
+	cat "$1" | gunzip -c 2>/dev/null
+	if [ $? -ne 0 ]; then
+		cat "$1"
+	fi
+}
+
+if [ -z "$1" ]; then
+	printf "Usage: $0 <id>\n\n" 1>&2
+	printf "cat an invisible TFFS file\n\n" 1>&2
+	printf "<id>       - TFFS character device minor id\n" 1>&2
+	exit 1
+fi
+major=$(sed -n -e 's/^\([0-9]*\) tffs.*/\1/p' /proc/devices)
+if ! [ "$(expr "$1" : "\(^[0-9]*$\)")" = "$1" ]; then
+	printf "Non-numeric argument '%s' specified.\n" "$1" 1>&2
+	exit 1
+fi
+i=$1
+if [ $i -gt 0 ] && [ $i -le 255 ]; then
+	minor=$i
+	fn="/var/tmp/mknod_$$_$(date +%s)"
+	mknod "$fn" c $major $minor
+	checkempty "$fn" 2>/dev/null
+	if [ $? -eq 1 ]; then
+		find_executable "decode_secrets" && ( decode "$fn" | decode_secrets ) || decode "$fn"
+		rc=0
+	else
+		printf "The file is empty.\n" 1>&2
+		rc=1
+	fi
+	rm "$fn"
+	exit $rc
+else
+	printf "The specified minor id '%s' is invalid.\n" "$1" 1>&2
+	exit 1
+fi

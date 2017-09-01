@@ -1,0 +1,130 @@
+29 provider-additive.tar provider additive configuration
+31 provider_default/ar7.cfg.diff
+32 chrony.drift
+33 chrony.rtc
+34 provider_default/voip.cfg.diff
+35 provider_default/wlan.cfg.diff
+38 provider_default/vpn.cfg.diff
+39 provider_default/tr069.cfg.diff
+40 provider_default/user.cfg.diff
+41 provider_default/userstat.cfg
+42 provider_default/void_call_stat
+43 provider_default/rext.cfg
+44 provider_default/nlr.cfg
+45 provider_default/pin
+46 provider_default/hcid.conf
+47 provider_default/link_key
+48 provider_default/telefon_msns
+49 provider_default/fx_conf
+50 provider_default/fx_lcr
+51 provider_default/fx_moh
+52 provider_default/fx_cg
+53 provider_default/telefon_misc
+54 provider_default/ansage_moh2
+55 provider_default/ansage_no_service
+56 provider_default/ansage_no_number
+57 provider_default/ansage_user
+58 provider_default/ansage_user2
+60 freetz.config Freetz configuration file (it's an uncompressed TAR file of /tmp/flash)
+61 provider_default/calllog
+62 provider_default/phonebook
+63 provider_default/fonctrl
+64 provider_default/powermode
+65 provider_default/aura-usb
+66 provider_default/browser-data
+67 provider_default/update-url.cfg
+68 provider_default/dect_misc
+69 provider_default/dect_eeprom
+70 provider_default/dmgr_handset_user
+71 provider_default/websrv_ssl_key.pem
+72 provider_default/websrv_ssl_cert.pem
+73 provider_default/cert.cfg
+74 provider_default/usb.cfg.diff
+75 provider_default/xdslmode
+76 provider_default/umts.cfg
+77 provider_default/maild.xml
+78 provider_defautl/timeprofile.cfg
+79 provider_default/configd
+87 fw_attrib Firmware validation flags (TELNET, signed/unsigned)
+93 crash.log.atom 2nd crash log file (ATOM kernel)
+94 panic.atom 2nd panic log file (ATOM kernel)
+95 crash.log crash log file (ARM kernel)
+96 panic panic log file (ARM kernel)
+97 rc.user.additional additional content needed by rc.user
+98 debug.cfg in earlier versions sometimes called 'rc.user'
+99 fx_def
+112 multid.leases DHCP leasings
+113 ar7.cfg main configuration file
+114 voip.cfg VoIP client accounts and internal server settings
+115 wlan.cfg WLAN settings
+116 stat.cfg usage statistics
+117 net.update
+118 vpn.cfg VPN configuration
+119 tr069.cfg TR-069 configuration
+120 user.cfg user profiles for access control
+121 userstat.cfg per user statistics (used for budgets)
+122 voipd_call_stat VoIP call statistics
+123 rext.cfg WLAN repeater configuration parts
+124 nlr.cfg audio and display configuration of first repeater generation (N/G)
+125 pin currently unused ?
+126 hcid.conf
+127 link_key
+128 telefon_msns
+129 fx_conf closed source configuration settings
+130 fx_lcr
+131 fx_moh
+132 fx_cg
+133 telefon_misc telephone settings
+134 ansage_moh2
+135 ansage_no_service
+136 ansage_no_number
+137 ansage_user
+138 ansage_user2
+141 calllog currently unused ?
+142 phonebook
+143 fonctrl
+144 powermode
+145 tamconf
+160 aura-usb
+161 configd
+162 ewnwstatus.cfg known LAN clients
+163 fwupdatetrace.cfg
+168 browser-data
+169 update-url.cfg
+176 dect_misc
+177 dect_eeprom
+178 dmgr_handset_user
+192 plugin-manager.ini
+193 plugin-1
+194 plugin-2
+195 plugin-3
+196 plugin-4
+197 plugin-5
+198 plugin-6
+199 plugin-7
+200 plugin-8
+201 websrv_ssl_key.pem SSL certificate key (protected with a box specific password)
+202 websrv_ssl_cert.pem SSL certificate
+203 letsencrypt_key.pem private key for Let's Encrypt SSL/TLS certificate
+204 letsencrypt_cert.pem Let's Encrypt SSL/TLS certificate file
+205 avmnexus.cfg looks like a configuration file for Mesh functionality
+208 cert.cfg
+209 usb.cfg USB configuration settings (WebDAV is included too)
+210 xdslmode
+211 umts.cfg
+212 maild.xml
+213 timeprofile.cfg
+214 saved_events
+215 featovl.cfg change firmware settings on-the-fly
+216 usbgsm.cfg
+217 plc.pib
+218 modulemem
+219 dvb.cfg DVB-C TV/radio channel configuration
+224 SmartMeterCfg
+225 aha.cfg
+226 ahausr.cfg
+227 ahastat.cfg
+228 ahadect.cfg
+229 ahanet.cfg
+230 ahaglobal.cfg
+231 ahapushmail.cfg

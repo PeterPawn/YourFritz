@@ -1,0 +1,636 @@
+#! /bin/sh
+####################################################################################
+#                                                                                  #
+# check, if the specified image contains an AVM-like signature and if it is signed #
+# with a key from the specified list of possible public key files (the public keys #
+# may be specified/used in various format, please read the usage output carefully) #
+#                                                                                  #
+# The result of this check is written to STDERR and the return code is set to one  #
+# of the values below:                                                             #
+#                                                                                  #
+#   0 - verification successful                                                    #
+#   1 - invalid arguments on command line                                          #
+#   2 - missing arguments                                                          #
+#   3 - specified image file not found                                             #
+#   4 - the image file contains no "./var/signature" member                        #
+#   5 - the signature file has a wrong size                                        #
+#   6 - the specified file does not exist                                          #
+#   7 - no usable public key found                                                 #
+#   8 - the signature file contains no ASN.1 structure                             #
+#   9 - the signature file uses an unsupported hash algorithm                      #
+#  10 - the hash algorithm used to sign isn't supported by the openssl binary      #
+#  11 - none of the specified public key sources was able to provide a key         #
+#  12 - a specified file contains invalid data                                     #
+#  13 - the builtin key files from FRITZ!OS (option -b) can only be used, if we're #
+#       running in the correct environment (or a valid emulation of such one)      #
+#  14 - unable to read the FRITZ!OS RSA key from /var/flash                        #
+#  32 - "openssl" binary not found                                                 #
+#  33 - "openssl" function "dgst" is not available                                 #
+#  34 - "openssl" function "rsautl" is not available                               #
+#  35 - "openssl" function "x509" is needed and not available                      #
+#  64 - signature verification failed                                              #
+#                                                                                  #
+####################################################################################
+#                                                                                  #
+# constants                                                                        #
+#                                                                                  #
+####################################################################################
+avm_default_files="/etc/avm_firmware_public_key[1-9] plugin_global_key.pem"
+eva_prompt="Eva_AVM"
+box_key_name="/var/flash/websrv_ssl_key.pem"
+box_cert_name1="/var/flash/websrv_ssl_cert.pem"
+box_cert_name2="/var/tmp/websrv_ssl_cert.pem"
+####################################################################################
+#                                                                                  #
+# some subfunctions                                                                #
+#                                                                                  #
+####################################################################################
+show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
+show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
+show_version() 
+{ 
+	local v
+	v=$(openssl version 2>/dev/null)
+	if [ $? -eq 127 ]; then
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
+		return 1
+	else
+		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
+		return 0
+	fi
+}
+####################################################################################
+#                                                                                  #
+# usage screen, caller has to redirect output to STDERR if needed                  #
+#                                                                                  #
+####################################################################################
+usage()
+{
+	echo -e "\x1B[1mCheck, if the signature of the specified image file is valid.\x1B[0m\n"
+	echo -e "Usage:\n"
+	echo -e "$0 \x1B[1mimagefile\x1B[0m \x1B[1;34mpublic_keys\x1B[0m\n"
+	echo -e "\x1B[1mimagefile\x1B[0m is the archive to check and the list of public keys to consider"
+	echo -e "for decryption (the \x1B[1;34mpublic_keys\x1B[0m part above) may be built from the following"
+	echo -e "sources:"
+	echo -e ""
+	echo -e "-f \x1B[1mfilename\x1B[0m - add the file names in the specified file"
+	echo -e "-b          - add the key files from the current OS to the list, this option"
+	echo -e "              makes only sense, if the script is executed on a FRITZ!OS-based"
+	echo -e "              device or in a proper emulation; an existing plugin signing key"
+	echo -e "              is also affected by this option"
+	echo -e "-c \x1B[1mfilename\x1B[0m - add raw lines from the specified file to the list,"
+	echo -e "              each line needs a MOD and EXP value, SRC as a pseudo"
+	echo -e "              filename and DESC as an optional description to be"
+	echo -e "              displayed for this key (unused yet)"
+	echo -e "-a \x1B[1mfilename\x1B[0m - add the specified file (AVM text format) to the list"
+	echo -e "-p \x1B[1mfilename\x1B[0m - add the specified file (PEM format) to the list"
+	echo -e "-d \x1B[1mfilename\x1B[0m - add the specified file (DER format) to the list"
+	echo -e "-s          - check, that the image file was signed with the RSA key from"
+	echo -e "              the box where we're running on (cannot be combined with other"
+	echo -e "              key sources)"
+	echo -e ""
+	echo -e "The first key from the specified sources (which are probed in the"
+	echo -e "given order) able to decode the signature file will be used for"
+	echo -e "signature verification."
+	echo -e ""
+	echo -e "Remark:"
+	echo -e "If you have an image file not signed by AVM, it may use better hash"
+	echo -e "algorithms from a limited set (md5, sha1, sha224, sha256, sha512,"
+	echo -e "whirlpool), as long as the openssl binary supports this algorithm."
+	echo -e "The algorithm used to create the signature (by the signer) is detected"
+	echo -e "while decoding the signature file in a first step (its format will be"
+	echo -e "checked too in this step)."
+	echo -e ""
+	echo -e "\x1B[1;31mWARNING:\x1B[0m"
+	echo -e "Because the lines from a 'raw file' (used with option 'c') are read"
+	echo -e "and simply 'eval'uated as commands (leading to assignments for the"
+	echo -e "values on each line), NEVER use this option with an input file from"
+	echo -e "an untrusted source or check the content thoroughly, before you use"
+	echo -e "it with this script."
+}
+####################################################################################
+#                                                                                  #
+# try to identify FRITZ!OS as runtime environment (not too sophisticated, but it   #
+# should be able to make this distinction)                                         #
+#                                                                                  #
+# The FRITZ!OS will be identified by looking for the environment variables:        #
+# HWRevision, CONFIG_ENVIRONMENT_PATH                                              #
+# If these values exist, the content of $CONFIG_ENVIRONMENT_PATH/environment is    #
+# searched for the value of HWRevision again, it is compared to the value from OS  #
+# environment and finally the content of 'prompt' is checked for 'Eva_AVM'         #
+#                                                                                  #
+####################################################################################
+is_fritzos_environment()
+{
+	local rc=1
+	[ ${#HWRevision} -eq 0 ] && return $rc
+	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && return $rc
+	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || return $rc
+	[ -f "$CONFIG_ENVIRONMENT_PATH/environment" ] || return $rc
+	local HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#HWRev} -eq 0 ] && return $rc
+	[ "$HWRev" != "$HWRevision" ] && return $rc
+	local prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
+	[ ${#prompt} -eq 0 ] && return $rc
+	[ "$prompt" != "$eva_prompt" ] && return $rc
+	return 0
+}
+####################################################################################
+#                                                                                  #
+# output the lines to use the builtin keys from the FRITZ!OS system, this script   #
+# is running on - any further search will be skipped, if the environment does not  #
+# match the usual characteristics of a FRITZ!Box router or a FRITZ!Repeater device #
+#                                                                                  #
+####################################################################################
+builtin_keys()
+{
+	local rc=13
+	is_fritzos_environment || return $rc
+	local f mod exp
+	rc=0
+	for f in $avm_default_files; do
+		if [ -f "$f" ]; then
+			mod=$(sed -n -e "1p" "$f")
+			exp=$(sed -n -e "2p" "$f")
+			[ ${#exp} -eq 0 ] && exp=010001
+			echo "DESC=\"current system\" SRC=\"$f\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+		fi
+	done
+	return $rc
+}
+####################################################################################
+#                                                                                  #
+# output the modulus from the RSA key in /var/flash/websrv_ssl_key.pem to the list #
+#                                                                                  #
+# We'll try to extract the modulus from the private key first, if we cannot read   #
+# this key due to missing or wrong password, we'll extract it from the X.509       #
+# certificate in /var/flash or /var/tmp.                                           #
+#                                                                                  #
+####################################################################################
+read_box_key()
+{
+	local rc=14 pkp found
+	pkp=$(which privatekeypassword)
+	found=$?
+	if [ $found -eq 0 ]; then
+		openssl rsa -in $box_key_name -pubout -passin pass:"$(privatekeypassword)" -out "$tmp/pubkey" 2>/dev/null
+		if [ $? -eq 0 ]; then
+			read_openssl_file "$tmp/pubkey" PEM "box key" "FRITZ!OS RSA key"
+			[ $? -ne 0 ] && found=1
+		else
+			found=1
+		fi
+	fi
+	if [ $found -ne 0 ]; then # try to use the certificate to get the public key
+		echo -en "Check \x1B[1mx509\x1B[0m command ... " 1>&2
+		echo "" | openssl x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2
+		rc=$?
+		if [ $rc -eq 0 ]; then
+			show_ok 
+		else
+			show_error
+			return 35
+		fi
+		if [ $rc -eq 0 ]; then
+			echo -ne "Trying to read public key from \x1B[1m$box_cert_name1\x1B[0m ... " 1>&2
+			openssl x509 -in $box_cert_name1 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
+			if [ $? -ne 0 ]; then
+				show_error
+				echo -ne "Trying to read public key from \x1B[1m$box_cert_name2\x1B[0m ... " 1>&2
+				openssl x509 -in $box_cert_name2 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
+				if [ $? -ne 0 ]; then
+					show_error 
+					rc=14
+				else
+					show_ok
+					rc=0
+				fi				
+			else
+				show_ok
+				rc=0
+			fi
+			if [ $rc -eq 0 ]; then
+				read_openssl_file "$tmp/pubkey" PEM "box certificate" "FRITZ!OS certificate"
+				rc=$?
+			fi
+		fi	
+	fi
+	return $rc
+}
+####################################################################################
+#                                                                                  #
+# helper to convert from hexadecimal dumped modulus to DER format, look at         #
+# avm_pubkey_to_pkcs8 for a version with comments                                  #
+#                                                                                  #
+####################################################################################
+modulus_to_der()
+{
+	local mod="$1" exp="${2:-010001}"
+	local t_int=02 t_seq=30 t_bstr=03 t_oid=06 t_null=0500
+	local m_len e_len pk_c pk_len pk_seq pk_bit bits oid o_enc o_alg o_seq der res
+
+	asn1_len()
+	{
+		x()
+		{
+			local v=$1 l
+			l=$(printf %x $v)
+			[ $(( ${#l} % 2 )) -ne 0 ] && l="0$l"
+			echo $l
+		}
+
+		local l=0 v=$1 i
+		l=$(( ${#v} / 2 ))
+		if [ $l -gt 127 ]; then
+			i=$(x $l)
+			l=$(( ( ${#i} / 2 ) + 128 ))
+			echo $(x $l)$i
+		else
+			echo $(x $l)
+		fi
+	}
+
+	m_len=$t_int$(asn1_len "$mod")
+	e_len=$t_int$(asn1_len "$exp")
+	pk_c=$m_len$mod$e_len$exp
+	pk_len=$(asn1_len "$pk_c")
+	pk_seq=$t_seq$pk_len$pk_c
+	pk_bit=00$pk_seq
+	bits=$t_bstr$(asn1_len "$pk_bit")$pk_bit
+	oid=2A864886F70D010101
+	o_enc=$t_oid$(asn1_len "$oid")$oid
+	o_alg=$o_enc$t_null
+	o_seq=$t_seq$(asn1_len "$o_alg")$o_alg
+	der=$t_seq$(asn1_len "$o_seq$bits")
+	res=$der$o_seq$bits
+	while [ ${#res} -gt 0 ]; do
+		printf "\x${res:0:2}"
+		res=${res:2}
+	done
+}
+####################################################################################
+#                                                                                  #
+# helper to convert from openssl public key format (PEM or DER) to intermediate    #
+# text format ... it's an unnecessary conversion, but it makes handling easier, if #
+# we 'normalize' such keys to the intermediate format, even if the final format is #
+# the original again while calling openssl binary                                  #
+#                                                                                  #
+####################################################################################
+read_openssl_file()
+{
+	local file="$1" format="$2" desc="${3:-$format key}" display="${4:-$file}" rc=12 line MODULUS EXPONENT Modulus
+	line=$(openssl rsa -in "$file" -pubin -inform $format -modulus -noout 2>/dev/null)
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		echo -e "Unable to read RSA key ($format) from input file \x1B[1m$file\x1B[0m." 1>&2
+		return $rc
+	else
+		eval $line
+		MODULUS="$(echo "$Modulus" | sed -e "y/ABCDEF/abcdef/")"
+		if [ ${#MODULUS} -eq 0 ]; then
+			echo "Unable to read RSA key ($format) from input file \x1B[1m$file\x1B[0m." 1>&2
+			return $rc
+		fi
+		first=${MODULUS:0:1}
+		[ "${first/[89a-f]/}" != "$first" ] && MODULUS="00$MODULUS"
+		openssl rsa -in "$file" -pubin -inform $format -text -noout 2>/dev/null |
+		grep -q "^Exponent: 65537 (0x10001)\$" 2>/dev/null 1>&2
+		if [ $? -ne 0 ]; then # different exponent, read it from the output
+			EXPONENT=$(openssl rsa -in "$file" -pubin -inform $format -text -noout |
+			sed -n -e "s|^Exponent: [0-9]* (\(0x[0-9a-fA-F]*\))\$|\1|p")
+			if [ ${#EXPONENT} -eq 0 ]; then
+				echo "Unexpected output from public key file \x1B[1m$file\x1B[0m ($format)." 1>&2
+				return $rc
+			fi
+			EXPONENT=$(printf "%016x" $(( EXPONENT )))
+			while [ ${EXPONENT:0:1} == 0 ]; do
+				EXPONENT=${EXPONENT:1}
+			done
+			[ $(( ${#EXPONENT} % 2 )) -ne 0 ] && EXPONENT=0$EXPONENT
+		else
+			EXPONENT=010001
+		fi
+		echo "DESC=\"$desc\" SRC=\"$display\" MOD=$MODULUS EXP=$EXPONENT"
+	fi
+}
+####################################################################################
+#                                                                                  #
+# check image file                                                                 #
+#                                                                                  #
+####################################################################################
+if [ -z $1 ]; then
+		usage 1>&2
+		exit 2
+else
+	image_file="$1"
+fi
+if ! [ -f "$image_file" ]; then
+	echo -e "The specified image file \x1B[1m$image_file\x1B[0m does not exist." 1>&2
+	exit 3
+fi
+####################################################################################
+#                                                                                  #
+# prepare a temporary directory and cleanup on exit                                #
+#                                                                                  #
+####################################################################################
+tmp=$(mktemp -d)
+if [ $? -eq 127 ] || [ ${#tmp} -eq 0 ]; then
+	tmp="/tmp/tmp.$(date +%s).$$"
+	mkdir -p "$tmp"
+fi
+trap "rm -r \"$tmp\"" EXIT HUP INT
+####################################################################################
+#                                                                                  #
+# check OpenSSL presence and version                                               #
+#                                                                                  #
+####################################################################################
+show_version
+[ $? -ne 0 ] && exit 32
+cnf="$(openssl version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
+if [ -n "$cnf" ]; then # configuration file missing
+	touch $tmp/openssl.cnf
+	export OPENSSL_CONF=$tmp/openssl.cnf
+fi
+echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
+echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 33
+fi
+echo -en "Check \x1B[1mrsautl\x1B[0m command ... " 1>&2
+echo "" | openssl rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2
+rc=$?
+if [ $rc -eq 0 ]; then
+	show_ok 
+else
+	show_error
+	exit 34
+fi
+####################################################################################
+#                                                                                  #
+# If the signature isn't the last file (we've checked the length already), we have #
+# to find the offset of the last member with the signature name - the last one is  #
+# important, because the archive may contain more than one member with the same    #
+# name and the last one will overwrite all previously extracted files.             #
+#                                                                                  # 
+# Here we could try to find the member name in the file content, but this would be #
+# impossible with "normal" commands (I don't know any applet, which may find a     #
+# string in a binary file and return the offsets of these strings) and searching   #
+# a hexdump output is really boring and much too slow.                             #
+#                                                                                  #
+# A better approach should be to count the archive members from start of file and  #
+# to compute their respective offsets - we're interested in the last occurence of  #
+# ./var/signature only.                                                            #
+# We compute the offset and size of every member here, it makes things easier      #
+# while checking signature's presence and format.                                  #
+#                                                                                  #
+####################################################################################
+offset=0
+tar -t -v -f "$image_file" | 
+sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
+while read line; do
+	eval $line
+	file_offset=$offset
+	file_start=$(( file_offset + 512 ))
+	file_end=$(( file_start + SIZE ))
+	offset=$(( ( ( file_end + 511 ) / 512 ) * 512 ))
+	echo "HEADER=$file_offset START=$file_start END=$file_end SIZE=$SIZE BLOCKS=$(( ( offset - file_offset ) / 512 )) MEMBER=\"$MEMBER\"" >>"$tmp/image_members"
+done
+####################################################################################
+#                                                                                  #
+# get the signature file from the image and check that it is in the expected       #
+# format, before we waste a lot of time with checking an invalid signature file    #
+#                                                                                  #
+####################################################################################
+last_sig=0
+i=0
+while read line; do
+	i=$(( i + 1 ))
+	eval $line
+	if [ "$MEMBER" == "./var/signature" ]; then
+		last_sig=$i
+	fi
+done <"$tmp/image_members"
+if [ $last_sig -eq 0 ]; then
+	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains no signature file." 1>&2
+	exit 4
+fi
+eval "$(sed -n -e "${last_sig}p" "$tmp/image_members")"
+if [ $SIZE -eq 0 -o $SIZE -gt 512 ]; then
+	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
+	exit 5
+fi
+tar -x -f "$image_file" -C "$tmp" ./var/signature 2>/dev/null
+fs=$(stat -c %s "$tmp/var/signature")
+if [ $fs -ne 128 -a $fs -ne 256 -a $fs -ne 512 ]; then
+	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
+	exit 5
+fi
+seek_image=$(( HEADER / 512 ))
+skip_blocks=$BLOCKS
+####################################################################################
+#                                                                                  #
+# copy the specified public keys from different sources to our temporary key list  #
+#                                                                                  #
+####################################################################################
+touch "$tmp/public_keys"
+shift
+if [ -z $1 ]; then
+	usage 1>&2
+	exit 2
+fi
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		"-f")
+			if [ -z "$2" ]; then
+				echo -e "Missing filename after \x1B[1m-f\x1B[0m option." 1>&2
+				exit 2
+			fi
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key files list \x1B[1m$2\x1B[0m does not exist." 1>&2
+				exit 6
+			fi
+			while read filename; do
+				if [ -f "$filename" ]; then
+					mod=$(sed -n -e "1p" "$filename")
+					exp=$(sed -n -e "2p" "$filename")
+					[ ${#exp} -eq 0 ] && exp=010001
+					echo "DESC=\"\" SRC=\"$filename\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+				fi
+			done <"$2"
+			shift 2
+			;;
+		"-b")
+			builtin_keys >>"$tmp/public_keys"
+			rc=$?
+			if [ $rc -ne 0 ]; then
+				echo -e "The option \x1B[1m-b\x1B[0m may only be used on a FRITZ!OS device." 1>&2
+				exit $rc
+			fi
+			shift
+			;;	
+		"-c")
+			if [ -z "$2" ]; then
+				echo -e "Missing filename after \x1B[1m-c\x1B[0m option." 1>&2
+				exit 2
+			fi
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m (raw format) does not exist." 1>&2
+				exit 6
+			fi
+			cat "$2" 2>/dev/null >>"$tmp/public_keys"
+			shift 2
+			;;
+		"-a")
+			if [ -z "$2" ]; then
+				echo -e "Missing filename after \x1B[1m-a\x1B[0m option." 1>&2
+				exit 2
+			fi
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m (AVM format) does not exist." 1>&2
+				exit 6
+			fi
+			mod=$(sed -n -e "1p" "$2")
+			exp=$(sed -n -e "2p" "$2")
+			if [ ${#mod} -gt 0 ]; then
+				[ ${#exp} -eq 0 ] && exp=010001
+				echo "DESC=\"command line\" SRC=\"$2\" MOD=$mod EXP=$exp" >>"$tmp/public_keys"
+			fi
+			shift 2
+			;;
+		"-p"|"-d")
+			if [ -z "$2" ]; then
+				echo -e "Missing filename after \x1B[1m$1\x1B[0m option." 1>&2
+				exit 2
+			fi
+			[ "$1" == "-p" ] && format="PEM" || format="DER"
+			if ! [ -f "$2" ]; then
+				echo -e "The specified public key file \x1B[1m$2\x1B[0m ($format format) does not exist." 1>&2
+				exit 6
+			fi
+			read_openssl_file "$2" "$format" >>"$tmp/public_keys"
+			if [ $? -ne 0 ]; then
+				exit 12
+			fi
+			shift 2
+			;;
+		"-s")
+			if ! [ -z "$2" ]; then
+				echo -e "Extra data specified after \x1B[1m$1\x1B[0m option." 1>&2
+				exit 2
+			fi
+			if ! is_fritzos_environment; then
+				echo -e "The option \x1B[1m-s\x1B[0m may only be used on a FRITZ!OS device." 1>&2
+				exit 2
+			fi
+			if [ -s "$tmp/public_keys" ]; then
+				cat $tmp/public_keys
+				echo -e "The option \x1B[1m-s\x1B[0m may only be used without any other keys." 1>&2
+				exit 2
+			fi
+			read_box_key >>"$tmp/public_keys"
+			rc=$?
+			if [ $rc -ne 0 ]; then
+				echo -e "Unable to read the RSA key from the FRITZ!OS device." 1>&2
+				exit $rc
+			fi
+			shift
+			;;
+		*)
+			echo -e "Unknown option \x1B[1m$1\x1B[0m specified on command line." 1>&2
+			usage 1>&2
+			exit 1
+			;;
+	esac
+done
+if ! [ -s "$tmp/public_keys" ]; then
+	echo -e "None of the specified public key files could be loaded." 1>&2
+	exit 11
+fi
+####################################################################################
+#                                                                                  #
+# determine the used private key ... try to decode the signature file with every   #
+# public key specified, until the usable was found or the end of list is reached   #
+#                                                                                  #
+####################################################################################
+if [ $(sed -n -e "\$=" "$tmp/public_keys") -gt 1 ]; then
+	echo -e "Trying to determine the correct key now ..." 1>&2
+fi
+key_found=0
+valid_algo=0
+algo=""
+while read line; do
+	eval $line
+	echo -en "Checking the public key from \x1B[1m$SRC\x1B[0m ... " 1>&2
+	modulus_to_der $MOD $EXP >"$tmp/pubkey.der"
+	output="$(openssl rsautl -verify -pubin -inkey "$tmp/pubkey.der" -keyform der -asn1parse -in "$tmp/var/signature" 2>&1)"
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		key_found=1
+		show_ok
+		algo=$(echo "$output" | sed -n -e "s|^.*OBJECT.*:\(.*\)\$|\1|p" 2>/dev/null)
+		if [ ${#algo} -gt 0 ]; then
+			echo -en "Checking support for the used hash algorithm \x1B[1m$algo\x1B[0m ... " 1>&2
+			valid_algo=0
+			for a in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
+				if [ "$a" == "$algo" ]; then
+					valid_algo=1
+					break
+				fi
+			done
+			if [ $valid_algo -eq 1 ]; then
+				echo "" | openssl dgst -$algo 2>&1 2>/dev/null 1>&2
+				rc=$?
+				if [ $rc -eq 0 ]; then
+					show_ok
+					break
+				else
+					show_error
+					exit 10
+				fi
+			else
+				show_error
+				exit 9
+			fi
+		else
+			show_error
+			exit 8
+		fi
+	else
+		show_error
+	fi
+done <"$tmp/public_keys"
+if [ $key_found -eq 0 ]; then
+	echo -e "No usable public key was found." 1>&2
+	exit 7
+fi
+####################################################################################
+#                                                                                  #
+# now we check the signature with the openssl binary, we prepare the changed image #
+# file in a subshell and pipe its output to openssl                                #
+#                                                                                  #
+####################################################################################
+res="$( ( dd if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
+dd if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
+dd if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) |
+openssl dgst -$algo -verify "$tmp/pubkey.der" -keyform der -signature "$tmp/var/signature")"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo -e "Signature verification failed." 1>&2
+	exit 64
+fi
+####################################################################################
+#                                                                                  #
+# all done                                                                         #
+#                                                                                  #
+####################################################################################
+echo -e "Verification succeeded." 1>&2
+exit 0
+####################################################################################
+#                                                                                  #
+# end of file                                                                      #
+#                                                                                  #
+####################################################################################
