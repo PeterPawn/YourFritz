@@ -19,7 +19,7 @@ backup()
 		checkempty $td/cdev >/dev/null 2>&1
 		if [ $? -ne 0 ]; then
 			if grep -q '$$$$[A-Z1-6]*' $td/cdev 2>/dev/null; then
-				if find_executable "decode_secrets" then
+				if find_executable "decode_secrets"; then
 					printf "\x1B[5m decoding content\x1B[25m" 1>&2
 					decode_secrets $td/cdev >$td/$minor
 					decoded=",decoded=1"
