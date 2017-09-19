@@ -38,6 +38,6 @@ yf_substring()
 	[ -z $len ] || [ $len -gt $(( ${#in} - start )) ] && len=$(( ${#in} - start ))
 	len="\{$len\}"
 	[ $start -gt 0 ] && mask=".\{$start\}\(.$len\).*" || mask="\(.$len\).*"
-	expr -- "$in" : "$mask"
+	expr \( "$in" : "$mask" \)
 	return 0
 )
