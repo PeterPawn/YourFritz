@@ -1,0 +1,860 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+#######################################################################################################
+#                                                                                                     #
+# check firmware versions from AVM's JUIS                                                             #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# juis_check, version 0.3                                                                             #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2010-2017 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This is another rewritten version ... the original script gots more attention than ever expected    #
+# and is used in different environments. To make it more flexible, it's now able to run under a bunch #
+# of shell hosts, from 'bash' over BusyBox' 'ash' to the very limited 'dash' from Debian based        #
+# distributions.                                                                                      #
+#                                                                                                     #
+# As long as a 'bash' host is used, the network communication is done via the integrated TCP/UDP      #
+# support. In all other cases, a 'netcat' version is needed (reachable via the command name 'nc') to  #
+# handle network I/O.                                                                                 #
+#                                                                                                     #
+# Each other command used within this script, should be available on each *nix-based system, from a   #
+# native Linux installation (Desktop, Embedded, One-Chip like RasPi) over a BSD-like system (e.g.     #
+# MacOS X) up to Canonical's 'bash' on Windows 10 installations.                                      #                                                                              
+#                                                                                                     #
+#######################################################################################################
+usage_text()
+{
+	if [ $__language__ = de ]; then
+		__purpose_hdr
+		__nl "Die deutsche Version ist noch nicht fertig, nachfolgend der englische Text:\n"
+		__nl "This script may be used to query AVM's update information service (JUIS) for new versions.\n"
+		__nl "Due to the ability to configure many (or most) parameters of such a query manually, it is"
+		__nl "possible to look for fresh firmware for nearly all AVM devices.\n"
+		__nl "Nevertheless it's still possible to call the script only with the IP address of an existing"
+		__nl "(and locally reachable) FRITZ!OS-based router - then it simply will try to get all needed"
+		__nl "parameters for the query from this device.\n"
+		__nl "So it's still as easy as possible to look regularly, if a new firmware for your \"beloved"
+		__nl "router\" was published meanwhile - even from outside of this device and if you want to avoid"
+		__nl "any automatic discovery and installation of newer firmware versions, e.g. due to (reasonable)"
+		__nl "security concerns."
+		__usage_hdr
+		__usage_opt "options"; __usage_opt_end; __usage_opt "optional parameters"
+		__usage_end
+		__options_hdr
+		__option_debug 24
+		__option_help 24
+		__option_version 24
+		__options_end
+		__nl "The script attempts to read a configuration file with its own name (or better expressed:"
+		__nl "with the name, that was used to call it, because this may be a symbolic link, too) from"
+		__nl "the same location, where the script itself was found. This file will be \"included\" with a"
+		__nl "'.' (dot) command and may contain any shell statement - please be aware, that this may lead"
+		__nl "to a severe security threat, if anyone else may modify this file without your knowledge.\n"
+		__nl "This configuration file may be used to set one or more of the needed settings (see below)"
+		__nl "from positional parameters on the command line and has to use the \"shift\" statement to"
+		__nl "remove any processed entries from the parameters collection.\n"
+		__nl "Any remaining values from command line are expected to be a name/value pair for one of the"
+		__nl "following settings:\n"
+		__nl "name       meaning\n"
+		__nl "Serial     the serial number of the FRITZ!Box device (usually the same as \"maca\")"
+		__nl "Version    the firmware version to be assumed as the currently running one"
+		__nl "Name       the product name"
+		__nl "HW         the hardware revision"
+		__nl "OEM        the OEM value used (also known as the \"branding\")"
+		__nl "Lang       the current language set"
+		__nl "Annex      the used annex for the DSL modem or \"Kabel\" for DOCSIS devices"
+		__nl "Country    the ITU recommended country code (E.164)"
+		__nl "Public     '1' to check only for public versions, '0' to accept 'inhouse builds' instead"
+		__nl "Flag       a comma-delimited list of flags to be used for the request\n"
+		__nl "If any of the above values isn't set after the configuration file was processed, the 'Box'"
+		__nl "value has to be present - either containing an IP address or a DNS name of a FRITZ!Box"
+		__nl "device, which will be accessed to retrieve missing values. Only if all of the values above"
+		__nl "are already present, this read attempt will be skipped and the 'Box' value will be ignored.\n"
+		__nl "If no configuration file was found, a file containing the lines:\n"
+		__nl "Box=\$1"
+		__nl "shift\n"
+		__nl "is assumed instead - this means, the script expects the name or address of a FRITZ!OS device"
+		__nl "as first (and only) parameter and tries to read all other settings from the specified device.\n"
+		__nl "Each setting may be specified with the keyword \"detect\" (it has the same meaning as a missing"
+		__nl "entry), a setting with this state will be read from the FRITZ!OS device. If the keyword \"empty\""
+		__nl "is used, the parameter will be set to an empty string, but is seen as \"present\" and not read"
+		__nl "from the device. If the keyword \"fixed:\" is used at the beginning of the value (or if any"
+		__nl "other keyword is absent), the string after the colon is used as value. If you want to use a"
+		__nl "parameter starting with the string \"detect\", you have to use \"fixed:detect\" to specify it"
+		__nl "in the right way.\n"
+		__nl "If you need to specify a setting with a value, which contains characters from the IFS value"
+		__nl "(it's used for field splitting from POSIX-compatible shells), it may be a bit tricky ... the"
+		__nl "value will be used in an 'eval' statement somewhere in the script and you have to escape such"
+		__nl "characters with double-backslashes in the value - e.g. you have to use this line:\n"
+		__nl "Name=\"FRITZ!Box\\\\\\ 7490\"\n"
+		__nl "to get a single space in the final request."
+	else
+		__purpose_hdr
+		__nl "This script may be used to query AVM's update information service (JUIS) for new versions.\n"
+		__nl "Due to the ability to configure many (or most) parameters of such a query manually, it is"
+		__nl "possible to look for fresh firmware for nearly all AVM devices.\n"
+		__nl "Nevertheless it's still possible to call the script only with the IP address of an existing"
+		__nl "(and locally reachable) FRITZ!OS-based router - then it simply will try to get all needed"
+		__nl "parameters for the query from this device.\n"
+		__nl "So it's still as easy as possible to look regularly, if a new firmware for your \"beloved"
+		__nl "router\" was published meanwhile - even from outside of this device and if you want to avoid"
+		__nl "any automatic discovery and installation of newer firmware versions, e.g. due to (reasonable)"
+		__nl "security concerns."
+		__usage_hdr
+		__usage_opt "options"; __usage_opt_end; __usage_opt "optional parameters"
+		__usage_end
+		__options_hdr
+		__option_debug 24
+		__option_help 24
+		__option_version 24
+		__options_end
+		__nl "The script attempts to read a configuration file with its own name (or better expressed:"
+		__nl "with the name, that was used to call it, because this may be a symbolic link, too) from"
+		__nl "the same location, where the script itself was found. This file will be \"included\" with a"
+		__nl "'.' (dot) command and may contain any shell statement - please be aware, that this may lead"
+		__nl "to a severe security threat, if anyone else may modify this file without your knowledge.\n"
+		__nl "This configuration file may be used to set one or more of the needed settings (see below)"
+		__nl "from positional parameters on the command line and has to use the \"shift\" statement to"
+		__nl "remove any processed entries from the parameters collection.\n"
+		__nl "Any remaining values from command line are expected to be a name/value pair for one of the"
+		__nl "following settings:\n"
+		__nl "name       meaning\n"
+		__nl "Serial     the serial number of the FRITZ!Box device (usually the same as \"maca\")"
+		__nl "Version    the firmware version to be assumed as the currently running one"
+		__nl "Name       the product name"
+		__nl "HW         the hardware revision"
+		__nl "OEM        the OEM value used (also known as the \"branding\")"
+		__nl "Lang       the current language set"
+		__nl "Annex      the used annex for the DSL modem or \"Kabel\" for DOCSIS devices"
+		__nl "Country    the ITU recommended country code (E.164)"
+		__nl "Public     '1' to check only for public versions, '0' to accept 'inhouse builds' instead"
+		__nl "Flag       a comma-delimited list of flags to be used for the request\n"
+		__nl "If any of the above values isn't set after the configuration file was processed, the 'Box'"
+		__nl "value has to be present - either containing an IP address or a DNS name of a FRITZ!Box"
+		__nl "device, which will be accessed to retrieve missing values. Only if all of the values above"
+		__nl "are already present, this read attempt will be skipped and the 'Box' value will be ignored.\n"
+		__nl "If no configuration file was found, a file containing the lines:\n"
+		__nl "Box=\$1"
+		__nl "shift\n"
+		__nl "is assumed instead - this means, the script expects the name or address of a FRITZ!OS device"
+		__nl "as first (and only) parameter and tries to read all other settings from the specified device.\n"
+		__nl "Each setting may be specified with the keyword \"detect\" (it has the same meaning as a missing"
+		__nl "entry), a setting with this state will be read from the FRITZ!OS device. If the keyword \"empty\""
+		__nl "is used, the parameter will be set to an empty string, but is seen as \"present\" and not read"
+		__nl "from the device. If the keyword \"fixed:\" is used at the beginning of the value (or if any"
+		__nl "other keyword is absent), the string after the colon is used as value. If you want to use a"
+		__nl "parameter starting with the string \"detect\", you have to use \"fixed:detect\" to specify it"
+		__nl "in the right way.\n"
+		__nl "If you need to specify a setting with a value, which contains characters from the IFS value"
+		__nl "(it's used for field splitting from POSIX-compatible shells), it may be a bit tricky ... the"
+		__nl "value will be used in an 'eval' statement somewhere in the script and you have to escape such"
+		__nl "characters with double-backslashes in the value - e.g. you have to use this line:\n"
+		__nl "Name=\"FRITZ!Box\\\\\\ 7490\"\n"
+		__nl "to get a single space in the final request."
+	fi
+}
+#######################################################################################################
+#                                                                                                     #
+# L10N strings                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+languages="en de"
+L10N_DBG_001_en="Reading and interpreting configuration file '%%s' with content:\\\\n"
+L10N_DBG_001_de="Verarbeiten der Konfigurationsdatei '%%s' mit folgendem Inhalt:\\\\n"
+L10N_DBG_002_en="Configuration file processing finished.\\\\n"
+L10N_DBG_002_de="Ende der Verarbeitung der Konfigurationsdatei\\\\n"
+L10N_DBG_003_en="Variables set:\\\\n"
+L10N_DBG_003_de="Werte der Variablen:\\\\n"
+L10N_DBG_004_en="Sent request:\\\\n"
+L10N_DBG_004_de="Gesendete Abfrage:\\\\n"
+L10N_DBG_005_en="Received response:\\\\n"
+L10N_DBG_005_de="Empfangene Antwort:\\\\n"
+L10N_DBG_006_en="Reading values from '%%s:%%s/%%s': "
+L10N_DBG_006_de="Lesen der Parameter von '%%s:%%s/%%s': "
+L10N_DBG_007_en="Read response from device:\\\\n"
+L10N_DBG_007_de="Antwort vom Gerät:\\\\n"
+L10N_DBG_008_en="Reading response from '%%s:%%s': "
+L10N_DBG_008_de="Lesen der Antwort von '%%s:%%s': "
+L10N_ERR_001_en="Missing configuration file and first parameter (the IP address of a reachable FRITZ!Box) at the same time."
+L10N_ERR_001_de="Die Konfigurationsdatei wurde nicht gefunden und gleichzeitig fehlt der erste Parameter (die IP-Adresse der FRITZ!Box) beim Aufruf."
+L10N_ERR_002_en="Missing FRITZ!Box IP address or DNS name."
+L10N_ERR_002_de="Die IP-Adresse oder der DNS-Name der FRITZ!Box fehlt in den Parametern."
+L10N_ERR_003_en="Error reading '%%s' from FRITZ!Box device with address '%%s:%%s'."
+L10N_ERR_003_de="Fehler beim Lesen der Geräteparameter (%%s) von der FRITZ!Box mit der Adresse '%%s:%%s'."
+L10N_ERR_004_en="'Public' item may only be empty or set to a fixed value."
+L10N_ERR_004_de="Der Wert für 'Public' muß leer sein oder fest auf '0' oder '1' gesetzt werden."
+L10N_ERR_005_en="Unknown setting '%%s' found at command line."
+L10N_ERR_005_de="Der Parameter '%%s' ist unbekannt."
+L10N_ERR_006_en="The 'Public' item has to be set to '0' for 'inhouse versions' or '1' for others."
+L10N_ERR_006_de="Der Wert für 'Public' kann nur '0' für die Suche nach internen Versionen sein, ansonsten ist '1' die einzige gültige Alternative und auch der Standardwert."
+L10N_ERR_007_en="Unexpected data received from network."
+L10N_ERR_007_de="Es wurden Daten mit einem unerwarteten Format empfangen vom Server."
+L10N_ERR_008_en="Unexpected error code %s returned from %s."
+L10N_ERR_008_de="Es wurde ein unerwarteter Statuscode (%%s) von %%s gesendet."
+L10N_ERR_009_en="No newer version found, check was made with source version '%%s'."
+L10N_ERR_009_de="Es wurde keine neue Version gefunden, die Prüfung erfolgte ausgehend von der Version '%%s'."
+L10N_ERR_010_en="Missing 'procfs' mounted on '/proc'."
+L10N_ERR_010_de="Unter '/proc' muss ein 'procfs' verfügbar sein für die korrekte Funktion dieses Skripts."
+L10N_INF_001_en="Found newer version: %%s"
+L10N_INF_001_de="Neue Version gefunden: %%s"
+#######################################################################################################
+#                                                                                                     #
+# usage and display helpers from YourFritz framework (included to get a single file to copy/install)  #
+#                                                                                                     #
+#######################################################################################################
+__bold__="$(printf "\033[1m")"
+__undl__="$(printf "\033[4m")"
+__red__="$(printf "\033[1m\033[31m")"
+__gren__="$(printf "\033[1m\033[32m")"
+__yllw__="$(printf "\033[1m\033[33m")"
+__blue__="$(printf "\033[1m\033[34m")"
+__rset__="$(printf "\033[0m")"
+__bold() { printf "$__bold__"; printf -- "$@"; printf "$__rset__"; }
+__undl() { printf "$__undl__"; printf -- "$@"; printf "$__rset__"; }
+__show_script_name()
+{
+	printf "%s${0#*/}\033[0m: " "$1"
+}
+__get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d'
+}
+__license()
+{
+	__get_script_lines "LIC"
+}
+__version()
+{
+	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__\1$__rset__,\2|"
+}
+__copyright()
+{
+	__get_script_lines "CPY"
+}
+__get_language()
+{
+	__get_language_code()
+	{
+		printf "%s\n" "$1" | sed -n -e "s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
+	}
+	local lang="$1"
+	shift
+	local check
+	local l
+	if ! [ -z "$LC_ALL" ]; then
+		check=$(__get_language_code "$LC_ALL")
+	else
+		[ -z "$LANG" ] || check=$(__get_language_code "$LANG")
+	fi
+	if ! [ -z "$check" ]; then
+		[ "$lang" = "$check" ] || \
+		for l in $*; do
+			[ "$l" = "$check" ] && lang="$l" && break
+		done
+	fi
+	printf "%s" "$lang"
+}
+__language__="$(eval __get_language $languages)"
+__get_localized()
+{
+	eval printf "\"\$L10N_${1}_${__language__}\""	
+}
+__emsg()
+{
+	__show_script_name "$__red__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\a\n" "$@" 1>&2
+}
+__info()
+{
+	__show_script_name "$__gren__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\n" "$@" 1>&2
+}
+__check_option()
+{
+	o="$1"
+	shift
+	for v in $*; do
+		[ "$o" = "$v" ] && printf 1 && return 0
+	done
+	printf 0
+	return 1
+}
+__is_option()
+{
+	[ "$(expr -- "$1" : "\(.\).*")" = "-" ] && return 0 || return 1
+}
+__is_last_option()
+{
+	[ "$1" = "--" ] && return 0 || return 1
+}
+__options_end__="eval while __is_option \"\$1\"; do __is_last_option \"\$1\" && shift && break;\
+	__emsg \"Unknown option '%s'.\" \"\$1\"; exit 1; done;"
+__version_option()
+{
+	if __check_option "$1" "-V" "--version" >/dev/null; then
+		__version
+		__copyright
+		__license
+		printf "\n"
+		exit 1
+	fi
+	return 1
+}
+__version_option__="eval __version_option \$@ && exit 0"
+__help_option()
+{
+	if __check_option "$1" "-h" "--help" >/dev/null; then
+		__usage
+		exit 1
+	fi
+}
+__help_option__="eval __help_option \$@"
+__debug_option()
+{
+	__check_option "$1" "-d" "--debug" && return 0
+	return 1
+}
+__debug_option__="eval __debug_set__=\$(__debug_option \$1) && __debug_text__=\"\$1\" && shift"
+__debug_on__="eval __debug_set__=1; __debug_text__=\"-d\";"
+__is_debug() { [ $__debug_set__ -eq 1 ] && return 0 || return 1; }
+__debug()
+{
+	[ $__debug_set__ -eq 1 ] || return;
+	mask="$1"
+	shift
+	printf "%sdebug%s: " "$__yllw__" "$__rset__" 1>&2
+	printf -- "$mask" "$@" 1>&2
+}
+__usage()
+(
+	indent=0
+	__indent_on() { indent=$(( indent + 4 )); }
+	__indent_off() { indent=$(( indent - 4 )); }
+	__indent() { [ $indent -gt 0 ] && printf "%0${indent}s" " "; };
+	__nl() { printf "\n%s" "$(__indent)"; printf -- "$1"; }
+	__purpose_hdr() { __nl; __bold "Purpose:"; printf "\n"; }
+	__usage_name() { __bold "${0#*/}"; }
+	__usage_hdr() { printf "\n"; __nl; __bold "Usage:\n"; __indent_on; __nl "$(__usage_name)"; }
+	__usage_end() { __indent_off; printf "\n"; }
+	__usage_opt_int() { v="$1"; shift; [ $# ] && m="$@"; printf -- "[ %s%s ]" "$(__undl "$v")" "$m"; unset m v; };
+	__usage_opt_end() { printf -- " [ -- ]"; }
+	__usage_opt() { printf -- " %s" "$(__usage_opt_int "$@")"; }
+	__usage_arg() { printf -- " %s" "$(__undl "$1")"; }
+	__options_hdr() { __nl "Supported "; __undl "options"; printf " are:\n"; }
+	__options_end() { printf "\n"; }
+	__option_show_opt() {
+		printf -- "%s, %s" "$2" "$3"
+		__l4__=${#4}
+		[ $__l4__ -gt 0 ] && printf " %s%s%s" "$__undl__" "$4" "$__rset__" && __l4__=$(( __l4__ + 1 ))
+		printf "%0$(( $1 - ${#2} - ${#3} - __l4__ - 3 ))s" " "
+		unset __l4__
+	}
+	__option_show_desc() { printf -- "- %s" "$@"; }
+	__option_debug() { __nl; __option_show_opt ${1:-15} "-d" "--debug"; __option_show_desc "display debug info on STDERR; must prefix all other options, if used"; }
+	__option_help()	{ __nl; __option_show_opt ${1:-15} "-h" "--help"; __option_show_desc "show this information (must be the first option)"; }
+	__option_version()	{ __nl; __option_show_opt ${1:-15} "-V" "--version"; __option_show_desc "show version and exit (must be the first option)"; }
+	__end() { printf "\n%s\n" "$__rset__"; }
+
+	__version
+	__copyright
+	__license
+	usage_text
+	__end
+)
+__set_base_dir__="eval [ \"\$(expr \"\$0\" : \".*\(/\).*\")\" = \"/\" ] && __base_dir__=\"\${0%/*}\" || __base_dir__=\".\""
+__set_base_dir() { __set_base_dir__="$1"; }
+__check_required_scripts()
+{
+	d="$1"
+	shift
+	for n in $@; do
+		eval $n="$d/$n"
+		eval f="\$$n"
+		if ! [ -x "$f" ]; then
+			__emsg "Missing another needed executable: %s." "$n"
+			return 1
+		fi
+		printf "$n=%s\n" $f
+	done
+	return 0
+}
+__check_required_scripts__="eval __scripts__=\"\$(__check_required_scripts \"\$__base_dir__\" \"\$__required_scripts\")\" && \
+	eval \$__scripts__ || exit 1"
+__check_required_commands()
+{
+	for n in $@; do
+		command -v $n 2>/dev/null 1>&2 && continue
+		__emsg "Missing a required command: %s." "$n"
+		return 1
+	done
+	return 0
+}
+__check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
+__check_terminal()
+{
+	[ -t $1 ] || return 1
+	if [ $1 -eq 0 ]; then
+		fd="STDIN"
+	elif [ $1 -eq 1 ]; then
+		fd="STDOUT"
+	else
+		fd="FILE ($1)"
+	fi
+	shift
+	__emsg "%s is a terminal device. %s" "$fd" "$@"
+}
+
+__required_commands="sed base64 dd mknod cat rm mkdir touch stat"
+__required_scripts=""
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+$__help_option__
+$__version_option__
+$__debug_option__
+while [ $# -gt 0 ]; do
+	__is_option "$1" || break
+	__is_last_option "$1" && shift && break
+	__emsg "Unknown option '%s'." "$1" && exit 1
+done
+#######################################################################################################
+#                                                                                                     #
+# check environment                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+$__set_base_dir__
+$__check_required_commands__
+#$__check_required_scripts__
+if [ -d /proc/$$ ]; then
+	__emsg "$(__get_localized ERR_010)"
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+settings="Serial Version Name HW OEM Lang Annex Country Public"
+variables="Serial Major Minor Patch Build Name HW OEM Lang Annex Country Public"
+hostbase="fritz.box"
+juisport=80
+boxport=1012
+boxinfo1="juis_boxinfo.xml"
+boxinfo2="jason_boxinfo.xml"
+juisurl="/Jason/UpdateInfoService"
+contenttype="text/xml; charset=\"utf-8\""
+headerline_0="POST %s HTTP/1.1\r\n"
+headerline_1="Host: %s:%u\r\n"
+headerline_2="Content-Length: %u\r\n"
+headerline_3="Content-Type: %s\r\n"
+headerline_4="Connection: close\r\n"
+body_tmpl="\
+<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soap-enc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:e=\"http://juis.avm.de/updateinfo\" xmlns:q=\"http://juis.avm.de/request\">\n\
+  <soap:Header/>\n\
+  <soap:Body>\n\
+    <e:BoxFirmwareUpdateCheck>\n\
+      <e:RequestHeader>\n\
+        <q:Nonce>%s</q:Nonce>\n\
+        <q:UserAgent>Box</q:UserAgent>\n\
+        <q:ManualRequest>true</q:ManualRequest>\n\
+      </e:RequestHeader>\n\
+      <e:BoxInfo>\n\
+        <q:Name>%s</q:Name>\n\
+        <q:HW>%s</q:HW>\n\
+        <q:Major>%s</q:Major>\n\
+        <q:Minor>%s</q:Minor>\n\
+        <q:Patch>%s</q:Patch>\n\
+        <q:Buildnumber>%s</q:Buildnumber>\n\
+        <q:Buildtype>%s</q:Buildtype>\n\
+        <q:Serial>%s</q:Serial>\n\
+        <q:OEM>%s</q:OEM>\n\
+        <q:Lang>%s</q:Lang>\n\
+        <q:Country>%s</q:Country>\n\
+        <q:Annex>%s</q:Annex>\n\
+        <q:Flag>%s</q:Flag>\n\
+        <q:UpdateConfig>1</q:UpdateConfig>\n\
+        <q:Provider>oma_lan</q:Provider>\n\
+      </e:BoxInfo>\n\
+    </e:BoxFirmwareUpdateCheck>\n\
+  </soap:Body>\n\
+</soap:Envelope>\n\
+"
+remote_timeout=20
+local_timeout=10
+delimiter_line="-------------------------------------------------------\n"
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# read data from a TCP connection - use native /dev/tcp, if we're running from a 'bash' instance or   #
+# use a 'netcat' version (called with 'nc') for any other host shell                                  #
+#                                                                                                     #
+#######################################################################################################
+tcp_read()
+{
+#	if [ -z "$BASH_VERSION" ]; then
+		run_nc $1 $2 "$3" $4
+#	fi
+}
+#######################################################################################################
+#                                                                                                     #
+# run 'nc' applet/command - if the server needs some time to answer, we've to use more sophisticated  #
+# logic to detect a complete answer                                                                   #
+#                                                                                                     #
+#######################################################################################################
+run_nc()
+{
+	local hostname="$1"
+	local port="$2"
+	local out="$3"
+	local timeout="$4"
+	local pin="$(mktmp -p $td)" 
+	local i=0
+	local ncpid
+	exec 7>&2
+	exec 2>/dev/null
+	rm "$pin"
+	mknod "$pin" p
+	exec 6<>"$pin"
+	nc $hostname $port >"$out" <"$pin" &
+	ncpid=$!
+	cat - 1>&6
+	while ! [ -s "$out" ] && [ -d /proc/$ncpid ]; do
+		i=$(( i + 1 ))
+		__is_debug && printf "." 1>&7
+		[ $i -gt $timeout ] && break
+		sleep 1
+	done
+	__is_debug && printf "\n" 1>&7
+	sleep 1
+	exec 6>&-
+	[ -d /proc/$ncpid ] && kill $ncpid
+	rm "$pin" 2>/dev/null
+	exec 2>&7
+}
+#######################################################################################################
+#                                                                                                     #
+# extract result variables from JUIS answer                                                           #
+#                                                                                                     #
+#######################################################################################################
+extract_xml()
+{
+	local input="$1"
+	local ns="$2"
+	local tag="$3"
+	sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input
+}
+#######################################################################################################
+#                                                                                                     #
+# read device parameters from a FRITZ!Box                                                             #
+#                                                                                                     #
+#######################################################################################################
+device_read()
+{
+	local ip="$1"
+	local port="$2"
+	local file="$3"
+	local out="$(mktmp -p $td)"
+	local rc
+	__debug "$delimiter_line"
+	__debug "$(__get_localized DBG_006)" "$ip" "$port" "$file"
+	printf "GET /%s HTTP/1.0\r\n\r\n" "$file" | tcp_read $ip $port "$out" $local_timeout
+	if [ -s "$out" ]; then
+		if __is_debug; then
+			__debug "$(__get_localized DBG_007)"
+			__debug "$delimiter_line"
+			sed -e "s|^|       |" "$out" 1>&2
+			printf "\n" 1>&2
+		fi
+		cat "$out"
+		rc=0
+	else
+		rc=1
+	fi
+	rm "$out" 2>/dev/null
+	return $rc
+}
+#######################################################################################################
+#                                                                                                     #
+# make temporary directory or file, emulate 'mktemp' if it's missing                                  #
+#                                                                                                     #
+#######################################################################################################
+mktmp()
+{
+	local name="$(mktemp $* 2>/dev/null)"
+	if [ $? -eq 127 ] || [ -z $name ]; then 
+		# mktemp is missing, emulation needed
+		local dir 
+		local tmp="$TMPDIR"
+		[ "$1" = "-d" ] && dir=1 || dir=0
+		[ "$1" = "-p" ] && tmp="$2"
+		[ -z "$tmp" ] && tmp="/tmp"
+		name="$tmp/$(date +%s)_$$"
+		if [ $dir -eq 1 ]; then
+			[ -d "$name" ] && name="${name}_$(sleep 1; date +%s)"
+			mkdir -p "$name" 2>/dev/null
+		else
+			touch $name 2>/dev/null
+		fi
+	fi
+	printf "$name"
+}
+#######################################################################################################
+#                                                                                                     #
+# now it's time to do something useful                                                                #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# prepare temporary directory and cleanup on exit                                                     #
+#                                                                                                     #
+#######################################################################################################
+td="$(mktmp -d)"
+trap 'rm -rf "$td" 2>/dev/null' EXIT INT HUP
+#######################################################################################################
+#                                                                                                     #
+# process configuration file                                                                          #
+#                                                                                                     #
+#######################################################################################################
+if [ -f "${0}.cfg" ]; then
+	if __is_debug; then
+		__debug "$(__get_localized DBG_001)" "$(realpath "${0}.cfg")"
+		__debug "$delimiter_line"
+		sed -e "\${/^\$/d}" "${0}.cfg" | sed -e "s|^|       |" 1>&2
+		__debug "$delimiter_line"
+	fi
+	. "${0}.cfg"
+	__debug "$(__get_localized DBG_002)" 
+else
+	if [ -z "$1" ]; then
+		__emsg "$(__get_localized ERR_001)"
+		exit 1
+	fi
+	Box="$1"
+	shift
+fi
+#######################################################################################################
+#                                                                                                     #
+# check and set parameters                                                                            #
+#                                                                                                     #
+#######################################################################################################
+detect=0
+for n in $settings; do
+	[ $n = Public ] && continue
+	eval var="\$$n"
+	if [ -z "$var" ] || [ "$var" = "detect" ]; then
+		detect=1
+		break
+	fi
+done
+if [ $detect -eq 1 ]; then
+	if [ -z "$Box" ]; then
+		__emsg "$(__get_localized ERR_002)"
+		exit 1
+	fi
+	boxinfo="$(mktmp -p $td)"
+	device_read "$Box" $boxport "$boxinfo1" >"$boxinfo"
+	if [ $? -ne 0 ]; then
+		__emsg "$(__get_localized ERR_003)" "$boxinfo1" "$Box" "$boxport"
+		exit 3
+	fi
+fi
+for n in $settings; do
+	eval var="\$$n"
+	# missing definitions will be auto-detected
+	if [ "$var" = "empty" ]; then
+		[ $n = Public ] && Public=1 || eval $n=""
+	elif ! [ "${var#fixed:}" = "$var" ]; then
+		eval $n="${var#fixed:}"
+	elif [ $n = Public ]; then
+		if ! [ -z "$var" ]; then
+			if ! [ "$var" = "0" ] && ! [ "$var" = "1" ]; then
+				__emsg "$(get_localized ERR_004)"
+				exit 1
+			else
+				Public=$var
+			fi
+		else
+			Public=1
+		fi
+	elif [ -z "$var" ] || [ "$var" = "detect" ]; then
+		val="$(extract_xml "$boxinfo" "j" $n)"
+	 	eval $n='$val'	
+	else
+		eval $n="$var"
+	fi
+	if [ $n = Version ]; then
+		Major="${Version%%.*}"
+		Minor="${Version#*.}"
+		Patch="${Minor#*.}"
+		Build="${Patch#*-}"
+		[ "$Build" = "$Patch" ] && Build="" || Patch="${Patch%%-*}"
+		Minor=$(( ${Minor%%.*} ))
+		[ -z "$Build" ] && [ $detect -eq 1 ] && Build="$(extract_xml "$boxinfo" "j" Revision)"
+	fi
+done
+#######################################################################################################
+#                                                                                                     #
+# process additional command line settings                                                            #
+#                                                                                                     #
+# - configuration file options may be overwritten with "name=value" tupels from command line          #
+#                                                                                                     #
+#######################################################################################################
+for nv in $*; do
+	name="${nv%%=*}"
+	value="${nv#*=}"
+	valid=0
+	for n in $settings; do
+		if [ $n = "$name" ]; then
+			if [ "$value" = "empty" ]; then
+				eval $n=""
+			else
+				eval $n="$value"
+			fi
+			valid=1
+			break
+		fi
+	done
+	if [ $valid -eq 0 ]; then
+		__emsg "$(__get_localized ERR_005)" "$name"
+		exit 1
+	fi
+	if [ $name = Version ]; then
+		Major="${Version%%.*}"
+		Minor="${Version#*.}"
+		Patch="${Minor#*.}"
+		Build="${Patch#*-}"
+		Patch="${Patch%%-*}"
+		Minor=$(( ${Minor%%.*} ))
+	fi
+done
+#######################################################################################################
+#                                                                                                     #
+# prepare additional variables                                                                        #
+#                                                                                                     #
+#######################################################################################################
+if ! [ "$Public" = "0" ] && ! [ "$Public" = "1" ]; then
+	__emsg "$(__get_localized ERR_006)"
+	exit 1
+fi
+type="100$Public"
+hostname=$HW.$hostbase
+nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
+#######################################################################################################
+#                                                                                                     #
+# show debug info regarding final variable content                                                    #
+#                                                                                                     #
+#######################################################################################################
+if __is_debug; then
+	__debug "$delimiter_line"
+	__debug "$(__get_localized DBG_003)"
+	__debug "$delimiter_line"
+	for n in $variables type hostname nonce; do
+		__debug "%s=\"%s\"\n" "$n" "$(eval printf "%s" \"\$$n\")"
+	done
+	__debug "$delimiter_line"
+fi
+#######################################################################################################
+#                                                                                                     #
+# prepare temporary files for the check request                                                       #
+#                                                                                                     #
+#######################################################################################################
+body="$(mktmp -p $td)"
+header="$(mktmp -p $td)"
+response="$(mktmp -p $td)"
+printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Build" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" | \
+	sed -e "s|\t|  |g" >>"$body"
+len=$(stat -c %s "$body")
+printf "$headerline_0" "$juisurl" >>"$header"
+printf "$headerline_1" "$hostname" $juisport >>"$header"
+printf "$headerline_2" $len >>"$header"
+printf "$headerline_3" "$contenttype" >>"$header"
+printf "$headerline_4" >>"$header"
+if __is_debug; then
+	__debug "$(__get_localized DBG_004)" 
+	__debug "$delimiter_line"
+	sed -e "s|^|       |" "$header" 1>&2
+	printf "\r\n" 1>&2
+	sed -e "s|^|       |" "$body" 1>&2
+	__debug "$delimiter_line"
+fi
+#######################################################################################################
+#                                                                                                     #
+# execute SOAP request                                                                                #
+#                                                                                                     #
+#######################################################################################################
+__debug "$(__get_localized DBG_008)" "$hostname" "$juisport"
+( cat "$header"; printf "\r\n"; cat "$body" ) | tcp_read $hostname $juisport "$response" $remote_timeout
+if __is_debug; then
+	__debug "$(__get_localized DBG_005)"
+	__debug "$delimiter_line"
+	sed -e "s|^|       |" "$response" 1>&2
+	printf "\n" 1>&2
+	__debug "$delimiter_line"
+fi
+#######################################################################################################
+#                                                                                                     #
+# examine the status code                                                                             #
+#                                                                                                     #
+#######################################################################################################
+status="$(sed -n -e "1p" "$response" | sed -n -e "s|HTTP/1.1 \([0-9]*\) OK.*|\1|p")"
+if [ -z "$status" ]; then
+	__emsg "$(__get_localized ERR_007)"
+	exit 4
+elif ! [ "$status" = "200" ]; then
+	__emsg "$(__get_localized ERR_008)" "$status" "$hostname"
+	exit 4
+fi
+#######################################################################################################
+#                                                                                                     #
+# examine the response and show the result                                                            #
+#                                                                                                     #
+#######################################################################################################
+xmlresp="$(mktmp -p $td)"
+sed -n -e "\$p" "$response" >"$xmlresp"
+found="$(extract_xml "$xmlresp" "ns3" "Found")"
+if ! [ "$found" = "true" ]; then
+	__emsg "$(__get_localized ERR_009)" "$Version"
+	exit 2
+fi
+URL="$(extract_xml "$xmlresp" "ns3" "DownloadURL")"
+delay="$(sed -n -e "s|^Download-Delay: \([0-9]*\)|\1|p" "$response")"
+Version="$(extract_xml "$xmlresp" "ns3" "Version")"
+__info "$(__get_localized INF_001)" "$Version" 1>&2
+printf "URL=%s\n" "$URL"
+[ -z "$delay" ] || printf "DelayDownload=%s\n" "$delay"
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit 0
