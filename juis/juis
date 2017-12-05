@@ -453,7 +453,7 @@ done
 $__set_base_dir__
 $__check_required_commands__
 #$__check_required_scripts__
-if [ -d /proc/$$ ]; then
+if ! [ -d /proc/$$ ]; then
 	__emsg "$(__get_localized ERR_010)"
 	exit 1
 fi
@@ -466,7 +466,7 @@ settings="Serial Version Name HW OEM Lang Annex Country Public"
 variables="Serial Major Minor Patch Build Name HW OEM Lang Annex Country Public"
 hostbase="fritz.box"
 juisport=80
-boxport=1012
+boxport=80
 boxinfo1="juis_boxinfo.xml"
 boxinfo2="jason_boxinfo.xml"
 juisurl="/Jason/UpdateInfoService"
@@ -546,13 +546,13 @@ run_nc()
 	rm "$pin"
 	mknod "$pin" p
 	exec 6<>"$pin"
-	nc $hostname $port >"$out" <"$pin" &
+	nc "$hostname" "$port" >"$out" <"$pin" &
 	ncpid=$!
 	cat - 1>&6
 	while ! [ -s "$out" ] && [ -d /proc/$ncpid ]; do
 		i=$(( i + 1 ))
 		__is_debug && printf "." 1>&7
-		[ $i -gt $timeout ] && break
+		[ $i -gt "$timeout" ] && break
 		sleep 1
 	done
 	__is_debug && printf "\n" 1>&7
@@ -588,7 +588,7 @@ device_read()
 	local rc
 	__debug "$delimiter_line"
 	__debug "$(__get_localized DBG_006)" "$ip" "$port" "$file"
-	printf "GET /%s HTTP/1.0\r\n\r\n" "$file" | tcp_read $ip $port "$out" $local_timeout
+	printf "GET /%s HTTP/1.0\r\n\r\n" "$file" | tcp_read "$ip" "$port" "$out" $local_timeout
 	if [ -s "$out" ]; then
 		if __is_debug; then
 			__debug "$(__get_localized DBG_007)"
@@ -624,7 +624,7 @@ mktmp()
 			[ -d "$name" ] && name="${name}_$(sleep 1; date +%s)"
 			mkdir -p "$name" 2>/dev/null
 		else
-			touch $name 2>/dev/null
+			touch "$name" 2>/dev/null
 		fi
 	fi
 	printf "$name"
@@ -682,7 +682,7 @@ if [ $detect -eq 1 ]; then
 		exit 1
 	fi
 	boxinfo="$(mktmp -p $td)"
-	device_read "$Box" $boxport "$boxinfo1" >"$boxinfo"
+	device_read "$Box" "$boxport" "$boxinfo1" >"$boxinfo"
 	if [ $? -ne 0 ]; then
 		__emsg "$(__get_localized ERR_003)" "$boxinfo1" "$Box" "$boxport"
 		exit 3
@@ -710,7 +710,7 @@ for n in $settings; do
 		val="$(extract_xml "$boxinfo" "j" $n)"
 	 	eval $n='$val'	
 	else
-		eval $n="$var"
+		eval $n='$var'
 	fi
 	if [ $n = Version ]; then
 		Major="${Version%%.*}"
@@ -736,9 +736,9 @@ for nv in $*; do
 	for n in $settings; do
 		if [ $n = "$name" ]; then
 			if [ "$value" = "empty" ]; then
-				eval $n=""
+				eval $n=''
 			else
-				eval $n="$value"
+				eval $n='$value'
 			fi
 			valid=1
 			break
@@ -748,7 +748,7 @@ for nv in $*; do
 		__emsg "$(__get_localized ERR_005)" "$name"
 		exit 1
 	fi
-	if [ $name = Version ]; then
+	if [ "$name" = Version ]; then
 		Major="${Version%%.*}"
 		Minor="${Version#*.}"
 		Patch="${Minor#*.}"
@@ -767,7 +767,7 @@ if ! [ "$Public" = "0" ] && ! [ "$Public" = "1" ]; then
 	exit 1
 fi
 type="100$Public"
-hostname=$HW.$hostbase
+hostname="$HW.$hostbase"
 nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 #######################################################################################################
 #                                                                                                     #
@@ -778,7 +778,7 @@ if __is_debug; then
 	__debug "$delimiter_line"
 	__debug "$(__get_localized DBG_003)"
 	__debug "$delimiter_line"
-	for n in $variables type hostname nonce; do
+	for n in $variables type "hostname" nonce; do
 		__debug "%s=\"%s\"\n" "$n" "$(eval printf "%s" \"\$$n\")"
 	done
 	__debug "$delimiter_line"
@@ -795,7 +795,7 @@ printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Build" "
 	sed -e "s|\t|  |g" >>"$body"
 len=$(stat -c %s "$body")
 printf "$headerline_0" "$juisurl" >>"$header"
-printf "$headerline_1" "$hostname" $juisport >>"$header"
+printf "$headerline_1" "$hostname" "$juisport" >>"$header"
 printf "$headerline_2" $len >>"$header"
 printf "$headerline_3" "$contenttype" >>"$header"
 printf "$headerline_4" >>"$header"
@@ -813,7 +813,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 __debug "$(__get_localized DBG_008)" "$hostname" "$juisport"
-( cat "$header"; printf "\r\n"; cat "$body" ) | tcp_read $hostname $juisport "$response" $remote_timeout
+( cat "$header"; printf "\r\n"; cat "$body" ) | tcp_read "$hostname" "$juisport" "$response" "$remote_timeout"
 if __is_debug; then
 	__debug "$(__get_localized DBG_005)"
 	__debug "$delimiter_line"
