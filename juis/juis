@@ -152,6 +152,8 @@ L10N_DBG_009_en="Setting '%%s' to '%%s' from command line parameter\\\\n"
 L10N_DBG_009_de="Setzen des Parameters '%%s' auf '%%s' entsprechend der Angabe auf der Kommandozeile\\\\n"
 L10N_DBG_010_en="Splitting compound version number '%%s' to:\\\\n"
 L10N_DBG_010_de="Zerlegen der zusammengesetzten Versionsnummer '%%s' in die Teile:\\\\n"
+L10N_DBG_011_en="Compound version number used for request: '%%s'\\\\n"
+L10N_DBG_011_de="Zusammengesetzte Versionsnummer für die Prüfung: '%%s'\\\\n"
 L10N_ERR_001_en="Missing configuration file and first parameter (the IP address of a reachable FRITZ!Box) at the same time."
 L10N_ERR_001_de="Die Konfigurationsdatei wurde nicht gefunden und gleichzeitig fehlt der erste Parameter (die IP-Adresse der FRITZ!Box) beim Aufruf."
 L10N_ERR_002_en="Missing FRITZ!Box IP address or DNS name."
@@ -763,12 +765,14 @@ for nv in $*; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
-	for n in $names; do
+	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			__debug "$(__get_localized DBG_009)" "$n" "$value"
 			if [ "$value" = "empty" ]; then
 				eval $n=''
 			else
+				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
 				eval $n=\'$value\'
 			fi
 			valid=1
@@ -886,11 +890,13 @@ for nv in $*; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
-	for n in $names; do
+	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			if [ "$value" = "empty" ]; then
 				eval $n=''
 			else
+				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
 				eval $n=\'$value\'
 			fi
 			valid=1
@@ -928,6 +934,12 @@ eval type="100\$$inhouse_option_name"
 hostname="$HW.$hostbase"
 nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 eval $version_name="$version_string"
+__debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
+Flag_XML=""
+for f in $Flag; do
+	[ ${#Flag_XML} -gt 0 ] && Flag_XML="$(printf "%s</q:Flag><q:Flag>" "$Flag_XML")"
+	Flag_XML="$Flag_XML$f"
+done
 #######################################################################################################
 #                                                                                                     #
 # show debug info regarding final variable content                                                    #
@@ -951,7 +963,7 @@ fi
 body="$(mktmp -p "$td")"
 header="$(mktmp -p "$td")"
 response="$(mktmp -p "$td")"
-printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" | \
+printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" | \
 	sed -e "s|\t|  |g" >>"$body"
 len=$(stat -c %s "$body")
 printf "$headerline_0" "$juisurl" >>"$header"
