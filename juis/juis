@@ -97,7 +97,7 @@ usage_text()
 		__nl "Country     the ITU recommended country code (E.164)"
 		__nl "Flag        a comma-delimited list of flags to be included into the request"
 		__nl "-----------------------------------------------------------------------------------------------"
-		__nl "Public      '1' to check only for public versions, '0' to accept 'inhouse builds' instead\n"
+		__nl "$inhouse_option_name      '1' to check only for public versions, '0' to accept 'inhouse builds' instead\n"
 		__nl "The values for 'Major', 'Minor', 'Patch' and 'Buildnumber' may not be set from the command"
 		__nl "line, only from a configuration file. If you want to set a different version number while"
 		__nl "calling the script, use positional parameters with an appropriate configuration file or use"
@@ -123,7 +123,17 @@ usage_text()
 		__nl "value will be used in an 'eval' statement somewhere in the script and you have to escape such"
 		__nl "characters with double-backslashes in the value - e.g. you have to use this line:\n"
 		__nl "Name=\"FRITZ!Box\\\\\\ 7490\"\n"
-		__nl "to get a single space in the final request."
+		__nl "to get a single space in the final request.\n"
+		__nl "The exit code of this script may be used to distinguish between the results, the following"
+		__nl "values are used:\n"
+		__nl "$(__bold "value  meaning\n")"
+		__nl "0      new firmware found in vendor's answer, URL written to STDOUT"
+		__nl "1      error during call (missing 'Box' value, invalid parameter, missing programs, etc.)"
+		__nl "2      no newer firmware found, but processing finished without errors"
+		__nl "3      incomplete parameters (usually an unreachable device with address from 'Box')"
+		__nl "4      wrong SOAP call built with specified and/or read parameters - it's the inference based"
+		__nl "       on a missing answer, a status code other than '200 OK' from AVM or a malformed answer,"
+		__nl "       which has to be a valid SOAP response in case of success"
 	fi
 }
 #######################################################################################################
@@ -154,6 +164,8 @@ L10N_DBG_010_en="Splitting compound version number '%%s' to:\\\\n"
 L10N_DBG_010_de="Zerlegen der zusammengesetzten Versionsnummer '%%s' in die Teile:\\\\n"
 L10N_DBG_011_en="Compound version number used for request: '%%s'\\\\n"
 L10N_DBG_011_de="Zusammengesetzte Versionsnummer für die Prüfung: '%%s'\\\\n"
+L10N_DBG_012_en="Respawning script with Bash as shell, calling: %%s\\\\n"
+L10N_DBG_012_de="Neustart des Skripts mit einer Bash-Shell mit dem Kommando: %%s\\\\n"
 L10N_ERR_001_en="Missing configuration file and first parameter (the IP address of a reachable FRITZ!Box) at the same time."
 L10N_ERR_001_de="Die Konfigurationsdatei wurde nicht gefunden und gleichzeitig fehlt der erste Parameter (die IP-Adresse der FRITZ!Box) beim Aufruf."
 L10N_ERR_002_en="Missing FRITZ!Box IP address or DNS name."
@@ -394,36 +406,8 @@ __check_terminal()
 }
 
 __required_commands="sed base64 dd mknod cat rm mkdir touch stat"
+[ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
 __required_scripts=""
-#######################################################################################################
-#                                                                                                     #
-# check parameters                                                                                    #
-#                                                                                                     #
-#######################################################################################################
-$__help_option__
-$__version_option__
-$__debug_option__
-while [ $# -gt 0 ]; do
-	__is_option "$1" || break
-	__is_last_option "$1" && shift && break
-	__emsg "Unknown option '%s'." "$1" && exit 1
-done
-#######################################################################################################
-#                                                                                                     #
-# check environment                                                                                   #
-#                                                                                                     #
-#######################################################################################################
-$__set_base_dir__
-$__check_required_commands__
-#$__check_required_scripts__
-if ! [ -d /proc/$$ ]; then
-	__emsg "$(__get_localized ERR_010)"
-	exit 1
-fi
-if ! [ -c /dev/urandom ]; then
-	__emsg "$(__get_localized ERR_011)"
-	exit 1
-fi
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -444,8 +428,9 @@ alt_names="$version_name:Major $version_name:Minor $version_name:Patch $version_
 flags_name="Flag"
 # special 'boolean' option, usable to retrieve internal updates from AVM' servers, if they're published 
 # via JUIS - finally it modifies the 'buildtype' parameter of our SOAP request
-# name and meaning are a little bit confusing, but really 'true' or 'false' in shell syntax  ... a value 
-# of "1" means "no inhouse version" (or 'inhouse=false') and "0" searches for non-public versions
+# the (variable's) name and meaning are a little bit confusing, but really 'true' or 'false' in shell 
+# syntax  ... a value of "1" means "no inhouse version" (or 'inhouse=false') and "0" searches for non-public
+# versions
 inhouse_option_name="Public"
 # local file retrieval constants
 boxport=80
@@ -501,6 +486,44 @@ body_tmpl="\
 delimiter_line="-------------------------------------------------------\n"
 #######################################################################################################
 #                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+$__help_option__
+$__version_option__
+$__debug_option__
+if [ -z "${BASH_VERSION}" ]; then
+	bash="$(command -v bash 2>/dev/null)"
+	if ! [ -z "$bash" ]; then
+		__debug "$(__get_localized DBG_012)" "command bash $0 -d $*"
+		__is_debug && dbg="-d" || dbg=""
+		command bash $0 $dbg $*
+		exit $?
+	fi
+fi
+while [ $# -gt 0 ]; do
+	__is_option "$1" || break
+	__is_last_option "$1" && shift && break
+	__emsg "Unknown option '%s'." "$1" && exit 1
+done
+#######################################################################################################
+#                                                                                                     #
+# check environment                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+$__set_base_dir__
+$__check_required_commands__
+#$__check_required_scripts__
+if ! [ -d /proc/$$ ]; then
+	__emsg "$(__get_localized ERR_010)"
+	exit 1
+fi
+if ! [ -c /dev/urandom ]; then
+	__emsg "$(__get_localized ERR_011)"
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
 # subfunctions                                                                                        #
 #                                                                                                     #
 #######################################################################################################
@@ -511,9 +534,51 @@ delimiter_line="-------------------------------------------------------\n"
 #######################################################################################################
 tcp_read()
 {
-#	if [ -z "$BASH_VERSION" ]; then
+	local rc=0
+	if [ -z "${BASH_VERSION}" ]; then
 		run_nc $1 $2 "$3" $4
-#	fi
+		rc=$?
+	else
+		use_devtcp $1 $2 "$3" $4
+		rc=$?
+	fi
+	return $rc
+}
+#######################################################################################################
+#                                                                                                     #
+# use /dev/tcp to access the server                                                                   #
+#                                                                                                     #
+#######################################################################################################
+use_devtcp()
+{
+	local host="$1"
+	local port="$2"
+	local out="$3"
+	local timeout="$4"
+	local catpid
+	local i=0
+	exec 7>&2
+	local trap
+	__is_debug && trap='printf\ "\\\\n"\ 1\>\&7\;exec\ 2\>\&7' || trap='exec\ 2\>\&7'
+	eval trap "$trap" EXIT
+	exec 2>/dev/null
+	exec 5<>/dev/tcp/$host/$port
+	cat <&5 >"$out" &
+	catpid=$!
+	cat >&5
+	while ! [ -s "$out" ] && [ -d /proc/$catpid ]; do
+		i=$(( i + 1 ))
+		__is_debug && printf "." 1>&7
+		[ $i -gt $timeout ] && break
+		sleep 1
+	done
+	sleep 1
+	exec 5>&-
+	sleep 1
+	[ -d /proc/$catpid ] && kill $catpid
+	trap '' EXIT
+	exec 2>&7
+	__is_debug && printf "\n" 1>&2
 }
 #######################################################################################################
 #                                                                                                     #
@@ -548,7 +613,7 @@ run_nc()
 	exec 6>&-
 	sleep 1
 	[ -d /proc/$ncpid ] && kill $ncpid
-	rm "$pin" 2>/dev/null
+	rm "$pin"
 	exec 2>&7
 }
 #######################################################################################################
@@ -814,9 +879,11 @@ if [ $detect -eq 1 ]; then
 	device_read "$Box" "$boxport" "$boxinfo1" >"$boxinfo"
 	if [ $? -ne 0 ]; then
 		__debug "$(__get_localized ERR_003)\n" "$boxinfo1" "$Box" "$boxport"
+		rm "$boxinfo" 2>/dev/null
 		device_read "$Box" "$boxport" "$boxinfo2" >"$boxinfo"
 		if [ $? -ne 0 ]; then
 			__emsg "$(__get_localized ERR_003)" "$boxinfo2" "$Box" "$boxport"
+			exit 3
 		else
 			names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
 			ns="j"
@@ -849,10 +916,10 @@ for n in $names; do
 	elif [ "$n" = "$inhouse_option_name" ]; then
 		if ! [ -z "$var" ]; then
 			d="$(printf -- "%s\n" "$var" | sed -e "y/AEFLRSTU/aeflrstu/")"
-			[ "$(printf -- "%s\n" "$var" | sed -n -e "s|^false\$|0|p")" = "0" ] && var=0
-			[ "$var" = "0" ] || [ "$(printf -- "%s\n" "$var" | sed -n -e "s|^true\$|1|p")" = "1" ] && var=1
+			[ "$(printf -- "%s\n" "$d" | sed -n -e "s|^false\$|0|p")" = "0" ] && var=0
+			[ "$(printf -- "%s\n" "$d" | sed -n -e "s|^true\$|1|p")" = "1" ] && var=1
 			if ! [ "$var" = "0" ] && ! [ "$var" = "1" ]; then
-				__emsg "$(get_localized ERR_004)" "$inhouse_option_name"
+				__emsg "$(__get_localized ERR_004)" "$inhouse_option_name"
 				exit 1
 			else
 				eval $inhouse_option_name=$var
@@ -890,7 +957,8 @@ for nv in $*; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
-	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+	[ "$name" = "$inhouse_option_name" ] && continue
+	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name"
 	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			if [ "$value" = "empty" ]; then
@@ -937,7 +1005,7 @@ eval $version_name="$version_string"
 __debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
 Flag_XML=""
 for f in $Flag; do
-	[ ${#Flag_XML} -gt 0 ] && Flag_XML="$(printf "%s</q:Flag><q:Flag>" "$Flag_XML")"
+	[ ${#Flag_XML} -gt 0 ] && Flag_XML="$(printf "%s</q:$flags_name><q:$flags_name>" "$Flag_XML")"
 	Flag_XML="$Flag_XML$f"
 done
 #######################################################################################################
