@@ -37,7 +37,7 @@
 #                                                                                                     #
 # Each other command used within this script, should be available on each *nix-based system, from a   #
 # native Linux installation (Desktop, Embedded, One-Chip like RasPi) over a BSD-like system (e.g.     #
-# MacOS X) up to Canonical's 'bash' on Windows 10 installations.                                      #                                                                              
+# MacOS X) up to Canonical's 'bash' on Windows 10 installations.                                      #
 #                                                                                                     #
 # If the script was launched from a 'non-bash' shell (due to its SheBang of '/bin/sh') and a Bash     #
 # shell seems to be available (looked-up with 'command'), the script tries to respawn itself with a   #
@@ -90,7 +90,7 @@ usage_text()
 		__nl "Werte aus einer FRITZ!Box erforderlich ist.\n"
 		__nl "Wird keine Konfigurationsdatei (mit dem automatisch gebildeten Namen) gefunden und wurde ihre"
 		__nl "Verarbeitung nicht über die o.a. Option unterdrückt, wird folgener Inhalt angenommen:\n"
-		__nl "Box=\$1" 
+		__nl "Box=\$1"
 		__nl "shift\n"
 		__nl "- damit wird also als erster und einziger Parameter die Angabe des DNS-Namens oder der IP-"
 		__nl "Adresse der FRITZ!Box erwartet, von der weitere Einstellungen zu lesen wären. Gleichzeitig"
@@ -468,7 +468,7 @@ __get_language()
 __language__="$(eval __get_language $languages)"
 __get_localized()
 {
-	eval printf "\"\$L10N_${1}_${__language__}\""	
+	eval printf "\"\$L10N_${1}_${__language__}\""
 }
 __emsg()
 {
@@ -640,9 +640,9 @@ boxinfo2_replace_names="Revision:Buildnumber"
 alt_names="$version_name:Major $version_name:Minor $version_name:Patch $version_name:$buildnumber_name"
 # flag option name, may contain more than one value (delimited by comma), will be splitted to multiple XML entities
 flags_name="Flag"
-# special 'boolean' option, usable to retrieve internal updates from AVM' servers, if they're published 
+# special 'boolean' option, usable to retrieve internal updates from AVM' servers, if they're published
 # via JUIS - finally it modifies the 'buildtype' parameter of our SOAP request
-# the (variable's) name and meaning are a little bit confusing, but really 'true' or 'false' in shell 
+# the (variable's) name and meaning are a little bit confusing, but really 'true' or 'false' in shell
 # syntax  ... a value of "1" means "no inhouse version" (or 'inhouse=false') and "0" searches for non-public
 # versions
 inhouse_option_name="Public"
@@ -916,9 +916,9 @@ device_read()
 mktmp()
 {
 	local name="$(mktemp $* 2>/dev/null)"
-	if [ $? -eq 127 ] || [ -z $name ]; then 
+	if [ $? -eq 127 ] || [ -z $name ]; then
 		# mktemp is missing, emulation needed
-		local dir 
+		local dir
 		local tmp="$TMPDIR"
 		[ "$1" = "-d" ] && dir=1 || dir=0
 		[ "$1" = "-p" ] && tmp="$2"
@@ -1049,7 +1049,7 @@ if [ $__no_cfgfile -eq 0 ]; then
 			__debug "$delimiter_line"
 		fi
 		. "$cfg"
-		__debug "$(__get_localized DBG_002)" 
+		__debug "$(__get_localized DBG_002)"
 	else
 		if [ -z "$1" ]; then
 			__emsg "$(__get_localized ERR_001)"
@@ -1288,7 +1288,7 @@ printf "$headerline_2" $len >>"$header"
 printf "$headerline_3" "$contenttype" >>"$header"
 printf "$headerline_4" >>"$header"
 if __is_debug; then
-	__debug "$(__get_localized DBG_004)" 
+	__debug "$(__get_localized DBG_004)"
 	__debug "$delimiter_line"
 	sed -e "s|^|       |" "$header" 1>&2
 	printf "\r\n" 1>&2
