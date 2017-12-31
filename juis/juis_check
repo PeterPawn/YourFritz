@@ -39,6 +39,11 @@
 # native Linux installation (Desktop, Embedded, One-Chip like RasPi) over a BSD-like system (e.g.     #
 # MacOS X) up to Canonical's 'bash' on Windows 10 installations.                                      #                                                                              
 #                                                                                                     #
+# If the script was launched from a 'non-bash' shell (due to its SheBang of '/bin/sh') and a Bash     #
+# shell seems to be available (looked-up with 'command'), the script tries to respawn itself with a   #
+# 'bash' instance, due to the expected network support (using /dev/tcp) from this shell. Respawning   #
+# may be blocked by an option.                                                                        #
+#                                                                                                     #
 #######################################################################################################
 usage_text()
 {
