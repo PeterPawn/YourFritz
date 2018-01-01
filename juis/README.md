@@ -68,6 +68,7 @@ following known settings:
 | Public | | ```1``` to check only for public versions, ```0``` to accept "inhouse builds" instead |
 | | | |
 | Nonce | | this parameter is strictly optional, its absence will not trigger any attempt to read from the ```Box``` device and its value isn't checked further (has to be a Base64 representation of 16 bytes with (preferably) random content; it may be used to set a caller specified ```nonce``` to randomize the SOAP response signature - this is required, if the caller wants to save the whole SOAP response (with ```-s``` option) and check its signature externally |
+| | | |
 | Box | | this variable can't be set from a name/value pair on the command line, but it's possible to define it in the (shell) environment for the script or it has to be set from a configuration file; if any parameter for the SOAP request is missing, after all name/value pairs from command line were set and the configuration file was processed, this variable has to contain the address of a FRITZ!Box device, which must provide further settings/parameters for the request |
 
 The values for ```Major```, ```Minor```, ```Patch``` and ```Buildnumber``` may not be set from the command line, only from a configuration file. If you want to set a different version number while calling the script, use positional parameters with an appropriate configuration file or use
