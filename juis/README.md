@@ -50,7 +50,7 @@ Any remaining values from command line are expected to be a name/value pair for 
 following known settings:
 
 name | | meaning
---|--
+--|--|--
 Version | | the firmware version to be assumed as the currently running one - this is the  combined version string, which overrules any of the following partial values:
 | Major | model-specific firmware version, usually it's ```HW``` minus 72, someone has told me
 | Minor | main version number of FRITZ!OS
