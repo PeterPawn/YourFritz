@@ -36,15 +36,15 @@ Egal, auf welchem Weg man jetzt die notwendigen Parameter bereitstellt (ob berei
 
 | Name | | Bedeutung/Inhalt |
 | :---: | :---: | :--- |
-| Version | | die Version der Firmware, die als Basis für die Suche nach einer **neuen** Version benutzt werden soll - das ist die kombinierte Versionsnummer aus den folgenden Variablen und ihr Wert 'überstimmt' mit jedem dort enthaltenen 'Einzelwert' alle anderen Angaben, unabhängig von ihrer Quelle: |
+| Version | | die Version der Firmware, die als Basis für die Suche nach einer **neuen** Version benutzt werden soll - das ist die kombinierte Versionsnummer aus den folgenden Variablen und ihr Wert _überstimmt_ mit jedem dort enthaltenen Einzelwert alle anderen Angaben, unabhängig von ihrer Quelle: |
 | | Major | die modellspezifische Firmware-Version ... üblicherweise ist das der Wert von ```HW``` (also der ```HWRevision``` der Box) minus 72, wie man mir mal irgendwo geschrieben hat |
-| | Minor | die 'Hauptversion' des FRITZ!OS |
-| | Patch | die 'Unterversion' des FRITZ!OS |
+| | Minor | die _Hauptversion_ des FRITZ!OS |
+| | Patch | die _Unterversion_ des FRITZ!OS |
 | | Buildnumber | eine immer weiter ansteigende Zahl, die vermutlich eine fortlaufende Nummerierung für die komplettierten Durchläufe zum Erstellen einer Firmware bei AVM darstellt und über alle Modelle _hochgezählt_ wird; in älteren Firmware-Versionen (und in der ```jason_boxinfo.xml```) lief das noch unter dem Namen ```Revision``` |
 | Serial | | die _Seriennummer_ der FRITZ!Box, üblicherweise ist das aber in Wirklichkeit der Wert von ```maca``` (also der MAC-Adresse auf dem LAN-Interface) und nicht der Wert von ```SerialNumber``` aus dem FRITZ!Box-Environment im TFFS |
 | Name | | der Produktname der FRITZ!Box (```CONFIG_PRODUKT```), kann auch Leerzeichen enthalten |
 | HW | | der Wert von ```HWRevision``` aus dem FRITZ!Box-Environment im TFFS |
-| OEM | | der Wert für das _Branding_, hiermit wird bei Boxen, die speziell für bestimmte ISPs produziert wurden, eine providerspezifische Konfiguration eingestellt; bei den Geräten, die sich direkt als ***AVM FRITZ!Box*** zu erkennen geben, steht dort ```avm``` für Geräte mit deutscher Firmware und ```avme``` für solche, die eine Version der Firmware für internationale Verwendung installiert haben (oder hatten) |
+| OEM | | der Wert für das _Branding_, hiermit wird bei Boxen, die speziell für bestimmte ISPs produziert wurden, eine providerspezifische Konfiguration eingestellt; bei den Geräten, die sich direkt als *AVM FRITZ!Box* zu erkennen geben, steht dort ```avm``` für Geräte mit deutscher Firmware und ```avme``` für solche, die eine Version der Firmware für internationale Verwendung installiert haben (oder hatten) |
 | Lang | | die in der Firmware eingestellte Sprache, wenn die Firmware mehrere Sprachversionen unterstützt oder einfach ```de``` für die deutsche Version |
 | Annex | | das vom zuletzt verwendeten DSL-Anschluss genutzte Schema für die Belegung der Frequenzen (bei DSL-Boxen) oder ```Kabel``` bei den DOCSIS-Boxen |
 | Country | | der in der Box eingestellte Ländercode (nach ITU-Empfehlung - E.164) |
@@ -73,7 +73,7 @@ Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Inform
 | Wert | Bedeutung |
 | :---: | :--- |
 | 0 | neue Firmware gefunden, die URL zum Download wurde nach STDOUT geschrieben |
-| 1 | Fehler beim Aufruf des Skripts, z.B. fehlender Wert für die 'Box'-Variable, ungültige Parameter beim Aufruf, fehlende Programme, usw. | 
+| 1 | Fehler beim Aufruf des Skripts, z.B. fehlender Wert für die ```Box```-Variable, ungültige Parameter beim Aufruf, fehlende Programme, usw. | 
 | 2 | keine neue Firmware gefunden, aber die Abfrage bei AVM war erfolgreich |
 | 3 | unvollständige Parameter, i.d.R. auch das Ergebnis einer nicht erreichbaren FRITZ!Box beim Versuch, fehlende Werte von dort zu lesen |
 | 4 | die Abfrage bei AVM war falsch, das kann an fehlenden oder falschen Parametern liegen und ist am Ende nur eine Schlussfolgerung aus der Tatsache, dass es gar keine Antwort vom AVM-Server innerhalb der Timeout-Zeitspanne gab (der könnte aber auch ganz simpel mal ausgefallen sein), die Antwort nicht von ```200 OK``` als Status-Code begleitet ist oder in der Antwort nicht die erwarteten Felder - das wären ```Found``` und ```DownloadURL``` im XML-Namespace ```ns3``` (```http://juis.avm.de/response```) - vorhanden sind |
