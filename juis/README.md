@@ -49,24 +49,26 @@ remove any processed entries from the parameters collection.
 Any remaining values from command line are expected to be a name/value pair for one of the
 following known settings:
 
-name | | meaning
---|--|--
-Version | | the firmware version to be assumed as the currently running one - this is the  combined version string, which overrules any of the following partial values:
-| Major | model-specific firmware version, usually it's ```HW``` minus 72, someone has told me
-| Minor | main version number of FRITZ!OS
-| Patch | second part of version number
-| Buildnumber | an incrementing value, presumably the consecutive number for a whole build process, it's called ```Revision``` in older firmware (and in the ```jason_boxinfo.xml``` file)
-Serial | | the serial number of the FRITZ!Box device (usually the same as ```maca```)
-Name | | the product name
-HW | | the hardware revision
-OEM | | the OEM value used (also known as the "branding")
-Lang | | the current language set
-Annex | | the used annex for the DSL modem or ```Kabel``` for DOCSIS devices
-Country | | the ITU recommended country code (E.164)
-Flag | | a comma-delimited list of flags to be included into the request
-Public | | ```1``` to check only for public versions, ```0``` to accept "inhouse builds" instead
-Nonce | | this parameter is strictly optional, its absence will not trigger any attempt to read from the ```Box``` device and its value isn't checked further (has to be a Base64 representation of 16 bytes with (preferably) random content; it may be used to set a caller specified ```nonce``` to randomize the SOAP response signature - this is required, if the caller wants to save the whole SOAP response (with ```-s``` option) and check its signature externally
-Box | | this variable can't be set from a name/value pair on the command line, but it's possible to define it in the (shell) environment for the script or it has to be set from a configuration file; if any parameter for the SOAP request is missing, after all name/value pairs from command line were set and the configuration file was processed, this variable has to contain the address of a FRITZ!Box device, which must provide further settings/parameters for the request
+| name | | meaning |
+| :---: | :---: | :--- |
+| Version | | the firmware version to be assumed as the currently running one - this is the  combined version string, which overrules any of the following partial values: |
+| - | Major | model-specific firmware version, usually it's ```HW``` minus 72, someone has told me |
+| - | Minor | main version number of FRITZ!OS |
+| - | Patch | second part of version number |
+| - | Buildnumber | an incrementing value, presumably the consecutive number for a whole build process, it's called ```Revision``` in older firmware (and in the ```jason_boxinfo.xml``` file) |
+| Serial | | the serial number of the FRITZ!Box device (usually the same as ```maca```) |
+| Name | | the product name |
+| HW | | the hardware revision |
+| OEM | | the OEM value used (also known as the "branding") |
+| Lang | | the current language set |
+| Annex | | the used annex for the DSL modem or ```Kabel``` for DOCSIS devices |
+| Country | | the ITU recommended country code (E.164) |
+| Flag | | a comma-delimited list of flags to be included into the request |
+| | | |
+| Public | | ```1``` to check only for public versions, ```0``` to accept "inhouse builds" instead |
+| | | |
+| Nonce | | this parameter is strictly optional, its absence will not trigger any attempt to read from the ```Box``` device and its value isn't checked further (has to be a Base64 representation of 16 bytes with (preferably) random content; it may be used to set a caller specified ```nonce``` to randomize the SOAP response signature - this is required, if the caller wants to save the whole SOAP response (with ```-s``` option) and check its signature externally |
+| Box | | this variable can't be set from a name/value pair on the command line, but it's possible to define it in the (shell) environment for the script or it has to be set from a configuration file; if any parameter for the SOAP request is missing, after all name/value pairs from command line were set and the configuration file was processed, this variable has to contain the address of a FRITZ!Box device, which must provide further settings/parameters for the request |
 
 The values for ```Major```, ```Minor```, ```Patch``` and ```Buildnumber``` may not be set from the command line, only from a configuration file. If you want to set a different version number while calling the script, use positional parameters with an appropriate configuration file or use
 the compound value ```Version``` to specify all parts at once.
@@ -99,10 +101,10 @@ to get a single space in the final request.
 The exit code of this script may be used to distinguish between the results, the following
 values are used:
 
-value | meaning
---|--
-0 | new firmware found in vendor's answer, URL written to STDOUT
-1 | error during call (missing 'Box' value, invalid parameter, missing programs, etc.)
-2 | no newer firmware found, but processing finished without errors
-3 | incomplete parameters (usually an unreachable device with address from 'Box')
-4 | wrong SOAP call built with specified and/or read parameters - it's the inference based on a missing answer, a status code other than '200 OK' from AVM or a malformed answer, which has to be a valid SOAP response in case of success
+| value | meaning |
+|:--:|:--|
+| 0 | new firmware found in vendor's answer, URL written to STDOUT |
+| 1 | error during call (missing 'Box' value, invalid parameter, missing programs, etc.) |
+| 2 | no newer firmware found, but processing finished without errors |
+| 3 | incomplete parameters (usually an unreachable device with address from 'Box') |
+| 4 | wrong SOAP call built with specified and/or read parameters - it's the inference based on a missing answer, a status code other than '200 OK' from AVM or a malformed answer, which has to be a valid SOAP response in case of success |
