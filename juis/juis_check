@@ -519,7 +519,7 @@ __version_option__="eval __version_option \$@ && exit 0"
 __help_option()
 {
 	if __check_option "$1" "-h" "--help" >/dev/null; then
-		command -v less >/dev/null && (__usage | less) || __usage
+		[ -t 1 ] && command -v less >/dev/null && (__usage | less) || __usage
 		exit 1
 	fi
 }
