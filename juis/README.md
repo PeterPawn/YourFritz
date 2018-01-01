@@ -1,3 +1,5 @@
+Hier geht es zu einer deutschen Version dieser Datei: https://github.com/PeterPawn/YourFritz/blob/master/juis/README_de.md
+
 **Purpose:**
 
 This script may be used to query AVM's update information service (JUIS) for new versions.
