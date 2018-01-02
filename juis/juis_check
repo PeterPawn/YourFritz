@@ -455,9 +455,9 @@ __get_language()
 	local check
 	local l
 	if ! [ -z "$LC_ALL" ]; then
-		check=$(__get_language_code "$LC_ALL")
+		check="$(__get_language_code "$LC_ALL")"
 	else
-		[ -z "$LANG" ] || check=$(__get_language_code "$LANG")
+		[ -z "$LANG" ] || check="$(__get_language_code "$LANG")"
 	fi
 	if ! [ -z "$check" ]; then
 		[ "$lang" = "$check" ] || \
