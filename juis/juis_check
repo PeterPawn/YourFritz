@@ -448,7 +448,7 @@ __get_language()
 {
 	__get_language_code()
 	{
-		printf "%s\n" "$1" | sed -n -e "s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
+		printf "%s\n" "$1" | sed -n -e "1s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
 	}
 	local lang="$1"
 	shift
