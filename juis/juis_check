@@ -386,6 +386,8 @@ L10N_ERR_012_en="Error saving SOAP response to '%%s'."
 L10N_ERR_012_de="Fehler beim Speichern der Antwort in der Datei '%%s'."
 L10N_ERR_013_en="Missing file name after option '%%s'."
 L10N_ERR_013_de="Der Option '%%s' muss ein Dateiname folgen."
+L10N_ERR_014_en="Missing 'HW' value after processing all settings, it's part of AVM' server name and MUST be present."
+L10N_ERR_014_de="Der Wert für 'HW' fehlt für die Abfrage bei AVM - er ist Bestandteil des Servernamens und MUSS vorhanden sein."
 L10N_INF_001_en="Found newer version: %%s"
 L10N_INF_001_de="Neue Version gefunden: %%s"
 L10N_HLP_PUR_en="Purpose"
@@ -916,7 +918,7 @@ device_read()
 mktmp()
 {
 	local name="$(mktemp $* 2>/dev/null)"
-	if [ $? -eq 127 ] || [ -z $name ]; then
+	if [ $? -eq 127 ] || [ -z "$name" ]; then
 		# mktemp is missing, emulation needed
 		local dir
 		local tmp="$TMPDIR"
@@ -928,6 +930,9 @@ mktmp()
 			[ -d "$name" ] && name="${name}_$(sleep 1; date +%s)"
 			mkdir -p "$name" 2>/dev/null
 		else
+			while [ -e "$name" ]; do
+				name="${name}_$$"
+			done
 			touch "$name" 2>/dev/null
 		fi
 	fi
@@ -958,7 +963,7 @@ get_names()
 }
 #######################################################################################################
 #                                                                                                     #
-# replace occurences of a template with another string in a file                                      #
+# replace occurrences of a template with another string in a file                                     #
 #                                                                                                     #
 #######################################################################################################
 replace_in_file()
@@ -1247,6 +1252,10 @@ if ! [ "$(eval printf "%s" "\$$inhouse_option_name")" = "0" ] && ! [ "$(eval pri
 	exit 1
 fi
 eval type="100\$$inhouse_option_name"
+if [ -z "$HW" ]; then
+	__emsg "$(__get_localized ERR_014)"
+	exit 4
+fi
 hostname="$HW.$hostbase"
 [ -z "$nonce" ] && nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
 eval $version_name="$version_string"
