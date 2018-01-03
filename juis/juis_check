@@ -1085,7 +1085,7 @@ for nv in $*; do
 		if [ "$n" = "$name" ]; then
 			__debug "$(__get_localized DBG_009)" "$n" "$value"
 			if [ "$value" = "empty" ]; then
-				eval $n=''
+				eval $n='$$_empty'
 			else
 				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
 				eval $n=\'$value\'
@@ -1159,7 +1159,7 @@ fi
 #######################################################################################################
 for n in $names; do
 	eval var="\$$n"
-	if [ "$var" = "empty" ]; then
+	if [ "$var" = "$$_empty" ]; then
 		[ "$n" = "$inhouse_option_name" ] && eval ${inhouse_option_name}=1 || eval $n=""
 	elif ! [ "${var#fixed:}" = "$var" ]; then
 		eval $n="${var#fixed:}"
@@ -1213,7 +1213,7 @@ for nv in $*; do
 		if [ "$n" = "$name" ]; then
 			if [ "$value" = "empty" ]; then
 				eval $n=''
-			else
+			elif ! [ "$value" = "detect" ]; then
 				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
 				eval $n=\'$value\'
 			fi
