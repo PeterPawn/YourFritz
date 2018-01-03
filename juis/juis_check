@@ -739,6 +739,8 @@ while [ $# -gt 0 ]; do
 			parameters="$*"
 			continue
 		fi
+	else
+		$__options_end__
 	fi
 done
 __is_debug && options="--debug${options:+ $options}"
