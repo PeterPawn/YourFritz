@@ -23,7 +23,7 @@
 # related to our RSA key                                 #
 #                                                        #
 ##########################################################
-name_prefix="$HOME/image_signing"
+name_prefix="${name_prefix:-$HOME/image_signing}"
 ##########################################################
 #                                                        #
 # the extension of the private key file - PEM format,    #
