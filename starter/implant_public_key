@@ -19,15 +19,29 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# This script may inject an own public key for image signature verification in two different ways.    #
+# This script may inject an own public key for image signature verification in three different ways.  #
 #                                                                                                     #
-# The first option is to create a copy of the '/etc' directory in an own tmpfs part and mount this    #
-# subtree over the '/etc' directory to get a writable place, where one or more of the supported key   #
-# files (avm_firmware_public_key[1-9] and plugin_global_key.pem) may be added or replaced. This way   #
-# needs a huge amount of additional memory, because a complete, recursive copy of the '/etc' subtree  #
-# contains up to 5 MB of data.                                                                        #
+# The first and most effective approach is to use an overlay file-system, if the kernel supports this #
+# option. The script creates an own tmpfs part, mounts it on a free subdirectory from a list of       #
+# candidates and creates another subdirectory for the key location. This directory will be mounted as #
+# 'upperdir' with a 'lowerdir' from the current key location and their union (they get merged) is     #
+# mounted on the current key location.                                                                #
 #                                                                                                     #
-# The second option needs far less storage, but it has to overload one of the keys from AVM - as a    #
+# If the key location is the '/etc' directory, a symbolic link from '/proc/mounts' will be created as #
+# 'mtab' in the 'upperdir' location, because the mount operation has to save the current state to     #
+# '/etc/mtab' and this would create a new regular file 'mtab' in 'upperdir', if this link does not    #
+# exits.                                                                                              #
+#                                                                                                     #
+# If the needed overlayfs driver isn't available, the script switches automatically to the second     #
+# approach.                                                                                           #
+#                                                                                                     #
+# This second option is to create a copy of the key location directory in an own tmpfs part and mount #
+# this subtree over the original key location directory to get a writable place, where one or more of #
+# the supported key files (avm_firmware_public_key[1-9] and plugin_global_key.pem) may be added or    #
+# replaced. This way needs a huge amount of additional memory, because a complete, recursive copy of  #
+# the usual key location directory '/etc' contains up to 5 MB of data.                                #
+#                                                                                                     #
+# The third option needs far less storage, but it has to overload one of the keys from AVM - as a     #
 # result, updates can't be installed any longer, if they were signed with the - now invisible - key.  #
 # Because the plugin singning key (if present) is urgently needed to bring the original plugins to    #
 # run, it will never be overloaded by this script. The avm_firmware_public_key3 file is usually used  #
@@ -37,16 +51,21 @@
 # an index of 9 and counting down to 1. The first file found will be overloaded, because only an      #
 # existing file inode may be replaced with another one by a mount operation with option 'bind'.       #
 #                                                                                                     #
-# If the first approach is used, the first name of a missing public key file will be used to add the  #
-# own key - it doesn't matter from the view of libfwsign.so, which file contains the key for the      #
-# currently processed file. Here the plugin signing key is included in the search order - at the very #
-# first position, because most firmware versions don't use an own file here and there're best chances #
-# for a 'first hit'.                                                                                  #
+# If the first or second approach is used, the first name of a missing public key file will be used   #
+# to add the own key - it doesn't matter from the view of libfwsign.so, which file contains the key   #
+# for a currently processed file. Here the plugin signing key is included in the search order - at    #
+# the very first position, because most firmware versions don't use an own file here and there are    #
+# best chances for a 'first hit' on first attempt.                                                    #
 #                                                                                                     #
-# The first command line parameter selects the 'operation mode' and has to be 'replace' or 'overload' #
-# for the first or second approach. Each following command line parameter is expected to be a 'big    #
-# number' string with the modulus of the new public key - the exponent is always assumed to be 65537  #
-# (decimal, it will be written to the file as 010001 in hexadecimal).                                 #
+# The first command line parameter selects the 'operation mode' and has to be 'overlay', 'replace' or #
+# 'overload' for the approaches from above. Each following command line parameter is expected to be a #
+# 'big number' string with the modulus of the new public key - the exponent is always assumed to be   #
+# 65537 in decimal, it will be written to the file as 010001 in hexadecimal.                          #
+#                                                                                                     #
+# If the key location directory is already writable, the script switches immediately to the search    #
+# mode of the first and second approach and looks for the first free key file name; but if key file   #
+# names are exhausted and each of them is already in use, it will not switch back to overload one of  #
+# of the existing files.                                                                              #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -58,11 +77,17 @@ pubkey_min=1
 pubkey_max=9
 pubkey_forbidden="3"
 plugin_pubkey_mask="plugin_global_key.pem"
-mode_replace="replace"
 mode_overlay="overlay"
+mode_replace="replace"
+mode_overload="overload"
 key_location="/etc"
+write_check="$key_location/.modified"
 overlay_storage="/var/flash"
-possible_mountpoints="mnt filesystem var/etc"
+possible_mountpoints="mnt filesystem data var/media/ftp/YourFritz var/etc"
+overlayfs_name="overlayfs"
+procfs_filesystems="/proc/filesystems"
+procfs_mounts="/proc/mounts"
+mtab_name="/etc/mtab"
 #######################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
@@ -85,6 +110,17 @@ check_modulus()
 	if [ "$(expr \( "$modulus" : "\([0-9a-f]*\)" \) )" = "$modulus" ]; then
 		return 0
 	fi
+	return 1
+}
+#######################################################################################################
+#                                                                                                     #
+# find free directory                                                                                 #
+#                                                                                                     #
+#######################################################################################################
+is_directory_a_mountpoint()
+{
+	local dir="$1"
+	[ "$(sed -n -e "s|^[^ ]* \($dir\) .*$|\1|p" $procfs_mounts)" = "$dir" ] && return 0
 	return 1
 }
 #######################################################################################################
@@ -118,8 +154,10 @@ get_key_index()
 		while [ $index -ge $pubkey_min ]; do
 			name="$(printf "$pubkey_mask" $index)"
 			if [ -f $key_location/$name ] && ! [ -h $key_location/$name ]; then
-				printf "%u" $index
-				return 0
+				if ! [ "$(sed -n -e "s|^[^ ]* \($key_location/$name\) .*|\1|p" $procfs_mounts)" = "$key_location/$name" ]; then
+					printf "%u" $index
+					return 0
+				fi
 			fi
 			index=$(( index - 1 ))
 			for i in $pubkey_forbidden; do
@@ -142,8 +180,9 @@ mode="$1"
 if [ -z "$mode" ]; then
 	printf "Missing 'mode' parameter and any modulus value(s).\n" 1>&2
 	exit 1
-elif [ "$mode" = "$mode_replace" ] || [ "$mode" = "$mode_overlay" ]; then
-	[ "$mode" = "$mode_replace" ] && overlay=0 || overlay=1
+elif [ "$mode" = "$mode_overlay" ] || [ "$mode" = "$mode_replace" ] || [ "$mode" = "$mode_overload" ]; then
+	[ "$mode" = "$mode_overload" ] && overload=1 || overload=0
+	[ "$mode" = "$mode_overlay" ] && overlay=1 || overlay=0
 	shift
 	if [ $# -eq 0 ]; then
 		printf "Missing any modulus value(s) for '%s' mode.\n" "$mode" 1>&2
@@ -158,26 +197,47 @@ fi
 # prepare a tmpfs stored copy of the key location, if necessary                                       #
 #                                                                                                     #
 #######################################################################################################
-if [ $overlay -eq 0 ]; then
+if [ $overload -eq 0 ]; then
 	mountpoint=""
-	for candidate in $possible_mountpoints; do
-		if [ -d /$candidate ]; then
+	mounted=0
+	if [ "$(sed -n -e "s|^$overlayfs_name \($key_location\) .*|\1|p" $procfs_mounts)" = "$key_location" ]; then
+		mounted=1
+	elif [ "$(sed -n -e "s|^tmpfs \($key_location\) .*|\1|p" $procfs_mounts)" = "$key_location" ]; then
+		mounted=1
+	fi
+	if [ $mounted -eq 0 ]; then
+		for candidate in $possible_mountpoints; do
+			if [ -d /$candidate ]; then
+				if ! is_directory_a_mountpoint /$candidate; then
+					mountpoint=/$candidate
+					break
+				fi
+			fi
+		done
+		if [ -z "$mountpoint" ]; then
+			mkdir -p /$candidate
 			mountpoint=/$candidate
-			break
 		fi
-	done
-	if [ -z "$mountpoint" ]; then
-		mkdir -p /$candidate
-		mountpoint=/$candidate
+		mount -t tmpfs tmpfs $mountpoint
+		if [ $overlay -eq 1 ]; then
+			if [ "$(sed -n -e "s|^.*[ \t]*\($overlayfs_name\)|\1|p" $procfs_filesystems)" = "$overlayfs_name" ]; then
+				mkdir -p $mountpoint$key_location 2>/dev/null
+				ln -sf $procfs_mounts $mountpoint$mtab_name
+				mount -t overlayfs -o upperdir=$mountpoint$key_location,lowerdir=$key_location overlayfs $key_location && mounted=1
+			fi
+		fi
+		if [ $mounted -eq 0 ]; then
+			if cp -a $key_location/* $mountpoint; then
+				mount -o move $mountpoint $key_location
+			else
+				umount $mountpoint
+				printf "Error creating a copy of key-file location '%s'.\n" "$key_location" 1>&2
+				exit 1
+			fi
+		fi
 	fi
-	mount -t tmpfs tmpfs $mountpoint
-	if cp -a $key_location/* $mountpoint; then
-		mount -o move $mountpoint $key_location
-	else
-		umount $mountpoint
-		printf "Error creating a copy of key-file location '%s'.\n" "$key_location" 1>&2
-		exit 1
-	fi
+else
+	touch $write_check 2>/dev/null && overload=0 && overlay=0
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -189,7 +249,7 @@ while [ $# -gt 0 ]; do
 	modulus="$1"
 	shift
 	if check_modulus "$modulus"; then
-		key_index=$(get_key_index $overlay $key_index)
+		key_index=$(get_key_index $overload $key_index)
 		if [ $key_index -lt 0 ]; then
 			printf "Unable to find a usable key file name.\n" 1>&2
 			exit 1
@@ -200,7 +260,7 @@ while [ $# -gt 0 ]; do
 				key_name="$(printf "$pubkey_mask" $key_index)"
 			fi
 			file_name=$key_location/$key_name
-			if [ $overlay -eq 1 ]; then
+			if [ $overload -eq 1 ]; then
 				touch $overlay_storage/$key_name
 				mount -o bind $overlay_storage/$key_name $file_name
 			fi
