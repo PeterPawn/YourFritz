@@ -270,8 +270,8 @@ done
 #
 ###########################################################################
 if [ $socat_set -ne 1 ]; then
-	socat="$(which socat)"
-	if [ $? -eq 127 ]; then
+	socat="$(which socat 2>/dev/null)"
+	if [ $? -eq 127 ] || [ -z "$socat" ]; then
 		orgifs="$IFS"
 		IFS=:
 		set -- $PATH
@@ -282,6 +282,7 @@ if [ $socat_set -ne 1 ]; then
 				socat="$1/$socat"
 				break
 			fi
+			shift
 		done
 	fi
 fi
