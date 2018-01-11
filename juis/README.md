@@ -111,3 +111,9 @@ values are used:
 | 2 | no newer firmware found, but processing finished without errors |
 | 3 | incomplete parameters (usually an unreachable device with address from 'Box') |
 | 4 | wrong SOAP call built with specified and/or read parameters - it's the inference based on a missing answer, a status code other than '200 OK' from AVM or a malformed answer, which has to be a valid SOAP response in case of success |
+
+---
+If you've a license to use MS Office (the Desktop version, because the cloud-based variant doesn't support macros, as far as I know), you could also use the Excel-based version of this check (by @Chatty): https://github.com/TheChatty/JUISinExcel
+
+---
+Possibly I'll provide a PowerShell version, too - it's the "remaining gap" in coverage for todays mainstream OS versions (a MS Office license isn't free of charge) and I'm thinking about closing this gap.
