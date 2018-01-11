@@ -77,3 +77,6 @@ Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Inform
 | 2 | keine neue Firmware gefunden, aber die Abfrage bei AVM war erfolgreich |
 | 3 | unvollständige Parameter, i.d.R. auch das Ergebnis einer nicht erreichbaren FRITZ!Box beim Versuch, fehlende Werte von dort zu lesen |
 | 4 | die Abfrage bei AVM war falsch, das kann an fehlenden oder falschen Parametern liegen und ist am Ende nur eine Schlussfolgerung aus der Tatsache, dass es gar keine Antwort vom AVM-Server innerhalb der Timeout-Zeitspanne gab (der könnte aber auch ganz simpel mal ausgefallen sein), die Antwort nicht von ```200 OK``` als Status-Code begleitet ist oder in der Antwort nicht die erwarteten Felder - das wären ```Found``` und ```DownloadURL``` im XML-Namespace ```ns3``` (```http://juis.avm.de/response```) - vorhanden sind |
+
+---
+Wer eine Lizenz für MS Office hat, kann auch die Version in Excel von @Chatty benutzen: https://github.com/TheChatty/JUISinExcel
