@@ -1,0 +1,28 @@
+#! /bin/sh
+tmp="$(mktemp)"
+numcerts=0
+nl=""
+infile=0
+while read line; do
+	[ "${#line}" -eq 0 ] && continue
+	if [ "$line" = "-----BEGIN CERTIFICATE-----" ]; then
+		printf "%s\n" "$line" >"$tmp"
+		infile=1
+		numcerts=$(( numcerts + 1 ))
+	elif [ "$line" = "-----END CERTIFICATE-----" ]; then
+		printf "%s\n" "$line" >>"$tmp"
+		infile=0
+		printf -- "%s-----------------------------------------------------------------------\n" "$nl"
+		openssl x509 -text -noout -in "$tmp"
+		nl="$(printf "\n")"
+	elif [ $infile -eq 1 ]; then
+		printf "%s\n" "$line" >>"$tmp"
+	else
+		[ "${#nl}" -eq 0 ] && continue
+		printf "Unexpected data found outside of PEM certificate lines.\n" 1>&2
+	fi
+done
+[ "${#nl}" -gt 0 ] && printf -- "%s-----------------------------------------------------------------------\n" "$nl"
+printf "%sFound %d certificate(s) on STDIN.\n" "$nl" $numcerts 1>&2
+rm "$tmp" 2>/dev/null
+exit 0
