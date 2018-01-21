@@ -13,7 +13,7 @@ while read line; do
 		printf "%s\n" "$line" >>"$tmp"
 		infile=0
 		printf -- "%s-----------------------------------------------------------------------\n" "$nl"
-		openssl x509 -text -noout -in "$tmp"
+		openssl x509 -noout -text -fingerprint -ocsp_uri -ocspid -pubkey -modulus -in "$tmp"
 		nl="$(printf "\n")"
 	elif [ $infile -eq 1 ]; then
 		printf "%s\n" "$line" >>"$tmp"
