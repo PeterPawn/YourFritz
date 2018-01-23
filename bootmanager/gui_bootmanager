@@ -552,7 +552,7 @@ html_display()
 						printf 'im Moment ist jedoch "%s" eingestellt.</h4>\n' $current_branding
 						printf 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig das Branding auf "%s" ge&auml;ndert.\n' $alternative_brandings	
 					fi
-					printf '<input type="hidden" name="alternative_branding" value="$alternative_brandings" />\n'
+					printf '<input type="hidden" name="alternative_branding" value="%s" />\n' "$alternative_brandings"
 				fi
 			fi
 			printf '</span>\n'
@@ -603,7 +603,7 @@ html_display()
 						printf 'but currently "%s" is in use.</h4>\n' $current_branding
 						printf 'Switching the system to the alternative partitions will also set the provider/OEM name to "%s" without further questions.\n' $alternative_brandings	
 					fi
-					printf '<input type="hidden" name="alternative_branding" value="$alternative_brandings" />\n'
+					printf '<input type="hidden" name="alternative_branding" value="%s" />\n' "$alternative_brandings"
 				fi
 			fi
 			printf '</span>\n'
