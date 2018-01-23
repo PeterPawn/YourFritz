@@ -168,7 +168,7 @@ get_key_index()
 				continue
 			fi
 			printf "%u" $index
-			return 0	
+			return 0
 		done
 		printf "-1"
 		return 1
@@ -188,7 +188,7 @@ get_key_index()
 					break
 				fi
 			done
-		done	
+		done
 	fi
 	printf "-1"
 	return 1
@@ -294,7 +294,7 @@ while [ $# -gt 0 ]; do
 		fi
 	else
 		printf "Invalid modulus content or length, this one was skipped.\n" 1>&2
-	fi	
+	fi
 done
 #######################################################################################################
 #                                                                                                     #
