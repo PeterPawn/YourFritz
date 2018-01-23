@@ -36,8 +36,8 @@
 # handle network I/O.                                                                                 #
 #                                                                                                     #
 # Each other command used within this script, should be available on each *nix-based system, from a   #
-# native Linux installation (Desktop, Embedded, One-Chip like RasPi) over a BSD-like system (e.g.     #
-# MacOS X) up to Canonical's 'bash' on Windows 10 installations.                                      #
+# native Linux installation (Desktop, Embedded, One-Chip like RasPi) over a BSD-like system (not on   #
+# MacOS X, the 'procfs' support is missing there) up to Canonical's 'bash' on Win10 installations.    #
 #                                                                                                     #
 # If the script was launched from a 'non-bash' shell (due to its SheBang of '/bin/sh') and a Bash     #
 # shell seems to be available (looked-up with 'command'), the script tries to respawn itself with a   #
