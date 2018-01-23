@@ -1,0 +1,108 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+#######################################################################################################
+#                                                                                                     #
+# create a SquashFS image from data at a specified filesystem directory                               #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# pack_squashfs, version 0.2                                                                          #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2018 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Calling:                                                                                            #
+#                                                                                                     #
+# pack_squashfs <image-filename> [ <source-directory> ]                                               #
+#                                                                                                     #
+# The script takes the following environment variables into account:                                  #
+#                                                                                                     #
+# YF_UNPACK_FILESYSTEM_TARGET - the location of source data, if second argument is omitted, defaults  #
+#                               to '/filesystem'                                                      #
+# YF_MKSQUASHFS_BIN           - the filename of the 'mksquashfs' utility to use, if it's not located  #
+#                               in a directory mentioned in the PATH variable                         #
+# YF_TMPDIR                   - a working directory location (writable), defaults to '/var'           #
+# YF_PROGRESS                 - the destination (filename or handle) for progress messages            #
+#                                                                                                     #
+# Error messages are written to STDERR handle and if the variable 'YF_PROGRESS' is set to any non-    #
+# empty value, it has to be the name of a file (or a handle) to be used for progress messages, so     #
+# they may be distinguished from error messages.                                                      #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+source="${YF_UNPACK_FILESYSTEM_TARGET:-/filesystem}"
+mksquashfs_binary="${YF_MKSQUASHFS_BIN:-mksquashfs}"
+mksquashfs_command="\"%s\" -dest \"%s\" -no-progress -force %s \"%s\""
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# display progress messages, if YF_PROGRESS is present                                                #
+#                                                                                                     #
+#######################################################################################################
+progress()
+{
+	[ -z "$YF_PROGRESS" ] || cat >>"$YF_PROGRESS"
+}
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+[ -z "$1" ] && printf "Missing image filename as first parameter.\n" 1>&2 && exit 1
+target="$1"
+shift
+! [ -z "$1" ] && source="$1" && shift
+printf "Source of pack operation is now '%s'.\n" "$source" | progress
+printf "Output image filename is now '%s'.\n" "$target" | progress
+#######################################################################################################
+#                                                                                                     #
+# check, if a binary for mksquashfs is present                                                        #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -x "$mksquashfs_binary" ]; then
+	if ! command -v "$mksquashfs_binary" 2>/dev/null 1>&2; then
+		printf "Missing '%s' binary.\n" "$mksquashfs_binary" 1>&2
+		exit 1
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# pack source data to a new image                                                                     #
+#                                                                                                     #
+#######################################################################################################
+cmd="$(printf "$mksquashfs_command" "$mksquashfs_binary" "$source" "$target")"
+printf "Packing data to SquashFS image now ...\n" | progress
+eval $cmd 2>&1 | progress
+rc=$?
+#######################################################################################################
+#                                                                                                     #
+# finish and regular exit                                                                             #
+#                                                                                                     #
+#######################################################################################################
+exit $rc
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################

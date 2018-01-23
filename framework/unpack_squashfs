@@ -1,0 +1,339 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+#######################################################################################################
+#                                                                                                     #
+# unpack a specified filesystem image, handle different sources for VR9, GRX5 and Puma6 based devices #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# unpack_squashfs, version 0.2                                                                        #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2018 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script hides any differences between VR9, GRX5 and Puma6 models while unpacking a SquashFS     #
+# image and is a part of a toolchain to modify firmware content on the FRITZ!Box router itself,       #
+# before it gets packed again.                                                                        #
+#                                                                                                     #
+# The supported sources for unpacking are:                                                            #
+#                                                                                                     #
+# - the root filesystem of the currently running version (mode 'active')                              #
+# - the root filesystem of the currently inactive version (mode 'inactive')                           #
+# - a filesystem image from a regular update image, usually /var/tmp/filesystem.image, but this may   #
+#   vary for Puma6 models (mode 'update')                                                             #
+# - a specified image file (mode 'file') - this may be any SquashFS image file, perhaps from a plugin #
+#   unpacked with 'tr069fwupdate packet' or from a (pseudo) update file for DECT devices on an USB    #
+#   storage device                                                                                    #
+#                                                                                                     #
+# Calling:                                                                                            #
+#                                                                                                     #
+# unpack_squashfs [ active | inactive | update | file <filename> ]                                    #
+#                                                                                                     #
+# In all cases, the target path for unpacked directory tree is a 'common location' (usually the       #
+# sub-directory '/filesystem', which is present in nearly each firmware version, probably it remains  #
+# from buildroot toolchain usage), but this target location will be overwritten by an existing        #
+# variable with name 'YF_UNPACK_FILESYSTEM_TARGET'.                                                   #
+#                                                                                                     #
+# To make clean-up easier and minimize access to NAS flash storage or USB storage volumes (most users #
+# have USB sticks with limited life-time attached there), a fresh copy of a 'tmpfs' filesystem is     #
+# mounted there and an already mounted filesystem (its type doesn't really matter here) will be       #
+# dismounted first (its content may get lost, if it'a a volatile type of filesystem).                 #
+#                                                                                                     #
+# The script takes the following environment variables into account:                                  #
+#                                                                                                     #
+# YF_UNPACK_FILESYSTEM_TARGET - the location for unpacked data, defaults to '/filesystem'             #
+# YF_UNSQUASHFS_BIN           - the filename of the 'unsquashfs' utility to use, if it's not located  #
+#                               in a directory mentioned in the PATH variable                         #
+# YF_TMPDIR                   - a working directory location (writable), defaults to '/var'           #
+# YF_PROGRESS                 - the destination (filename or handle) for progress messages            #
+#                                                                                                     #
+# In case of an error, the exit code will be set to anything other than zero. If the unpack operation #
+# succeeds, no other changes to the current state of the system than the newly mounted and filled     #
+# 'tmpfs' copy remain. All intermediate results will be cleared, to keep the resources footprint as   #
+# low as possible.                                                                                    #
+#                                                                                                     #
+# You may simply dismount this 'tmpfs' copy to free-up all of the used memory.                        #
+#                                                                                                     #
+# Error messages are written to STDERR handle and if the variable 'YF_PROGRESS' is set to any non-    #
+# empty value, it has to be the name of a file (or a handle) to be used for progress messages, so     #
+# they may be distinguished from error messages.                                                      #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+puma_helper="/etc/puma6_helper.sh"
+puma_prefix="/var/remote"
+puma_partitions="/proc/avm_partitions"
+puma_filesystem_name_active="filesystem_ATOM"
+puma_filesystem_name_inactive="filesystem_reserved_ATOM"
+update_filesystem_x86="/var/tmp/x86/filesystem.image"
+update_filesystem="/var/tmp/filesystem.image"
+plugin_filesystem="/var/packet/var/%s.image"
+vr9_wrapper="/wrapper"
+vr9_root_filesystem="filesystem_core.squashfs"
+mtd_block_name="/dev/mtdblock%d"
+active_prefix=""
+inactive_prefix="reserved-"
+filesystem_name="%sfilesystem"
+tmpfs_mountpoint="${YF_UNPACK_FILESYSTEM_TARGET:-/filesystem}"
+unsquashfs_binary="${YF_UNSQUASHFS_BIN:-unsquashfs}"
+unsquashfs_command="\"%s\" -dest \"%s\" -no-progress -force %s \"%s\""
+mount_info="/proc/self/mountinfo"
+cpu_info="/proc/cpuinfo"
+mtd_info="/proc/mtd"
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# display progress messages, if YF_PROGRESS is present                                                #
+#                                                                                                     #
+#######################################################################################################
+progress()
+{
+	[ -z "$YF_PROGRESS" ] || cat >>"$YF_PROGRESS"
+}
+#######################################################################################################
+#                                                                                                     #
+# (safe) detection of Puma6 and Puma7 devices, only ATOM core supported - runs in a sub-shell         #
+#                                                                                                     #
+#######################################################################################################
+is_puma_based_device()
+(
+	[ -f "$puma_helper" ] || exit 1
+	. "$puma_helper"
+	if type is_puma7 2>/dev/null 1>&2; then
+		[ "$IS_ATOM" = "y" ] || exit 1
+	else
+		is_puma_atom || exit 1
+	fi
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# check, if the specified directory is an active mount-point for any filesystem                       #
+#                                                                                                     #
+#######################################################################################################
+is_active_mountpoint()
+{
+	local line
+	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
+	[ ${#line} -eq 0 ] && return 1 || return 0
+}
+#######################################################################################################
+#                                                                                                     #
+# return the device name (or filesystem type) for the specified mount-point                           #
+#                                                                                                     #
+#######################################################################################################
+get_filesystem_device()
+{
+	local line
+	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
+	[ ${#line} -eq 0 ] && exit 1
+	set -- $line
+	while [ $# -gt 0 ]; do
+		[ "$1" = "-" ] && printf "%s" "$3" && exit 0
+		shift
+	done
+	exit 1
+}
+#######################################################################################################
+#                                                                                                     #
+# find system type or model name                                                                      #
+#                                                                                                     #
+#######################################################################################################
+get_system_type()
+{
+	sed -n -e "s|^system type[ \t]*: \([^ \t]*\).*|\1|p" "$cpu_info"
+}
+#######################################################################################################
+#                                                                                                     #
+# find partition number with given name                                                               #
+#                                                                                                     #
+#######################################################################################################
+get_mtd_number()
+{
+	sed -n -e "s|^mtd\([0-9]*\): [^ ]* [^ ]* \"$1\"\$|\1|p" "$mtd_info"
+}
+#######################################################################################################
+#                                                                                                     #
+# find the file name of the update image for the device, we're running on                             #
+#                                                                                                     #
+#######################################################################################################
+get_update_image_name()
+{
+	if is_puma_based_device; then
+		printf "%s%s" "$puma_prefix" "$update_filesystem_x86"
+	else
+		printf "%s" "$update_filesystem"
+	fi
+}
+#######################################################################################################
+#                                                                                                     #
+# locate the flash device (MTD or eMMC) or root image file for the active or alternative system       #
+#                                                                                                     #
+#######################################################################################################
+get_filesystem()
+{
+	local name
+	local mtd
+	if is_puma_based_device; then
+		eval name="\$puma_filesystem_name_$1"
+		sed -n -e "s|^${name}=\(.*\)|\1|p" "$puma_partitions"
+		return 0
+	elif [ "$(get_system_type)" = "VR9" ]; then
+		if [ -d "$vr9_wrapper" ]; then
+			if [ "$1" = "active" ]; then
+				printf "%s/%s" "$vr9_wrapper" "$vr9_root_filesystem"
+				return 0
+			elif [ "$1" = "inactive" ]; then
+				name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
+				mtd="$(printf "$mtd_block_name" "$(get_mtd_number "$name")")"
+				printf "mount:%s:%s" "$mtd" "$vr9_root_filesystem"
+				return 0
+			fi
+		else
+			printf "Missing YAFFS2 wrapper directory for VR9-based device.\n" 1>&2
+			exit 1
+		fi
+	elif [ "$(get_system_type)" = "GRX500" ]; then
+		name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
+		printf "$mtd_block_name" "$(get_mtd_number "$name")"
+		return 0
+	fi
+	printf "Unknown and therefore unsupported system found.\n" 1>&2
+	exit 1
+}
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+[ -z "$1" ] && printf "Missing unpack mode as first parameter.\n" 1>&2 && exit 1
+mode="$1"
+shift
+case "$mode" in
+	("update")
+		source="$(get_update_image_name)"
+		if ! [ -f "$source" ]; then
+			printf "File '%s' does not exist.\n" "$source" 1>&2
+			exit 1
+		fi
+		;;
+	("active")
+		source="$(get_filesystem active)"
+		;;
+	("inactive")
+		source="$(get_filesystem inactive)"
+		;;
+	("file")
+		[ -z "$1" ] && printf "Missing file name for unpack mode '%s'.\n" "$mode" 1>&2 && exit 1
+		source="$1"
+		shift
+		;;
+	(*)
+		printf "Invalid mode '%s' for unpack script.\n" "$mode" 1>&2
+		exit 1
+		;;
+esac
+printf "Source of unpack operation (%s) is now '%s'.\n" "$mode" "$source" | progress
+#######################################################################################################
+#                                                                                                     #
+# check, if a binary for unsquashfs is present                                                        #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -x "$unsquashfs_binary" ]; then
+	if ! command -v "$unsquashfs_binary" 2>/dev/null 1>&2; then
+		printf "Missing '%s' binary.\n" "$unsquashfs_binary" 1>&2
+		exit 1
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# mount a tmpfs copy on our unpack location to simplify later clean-up                                #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -d "$tmpfs_mountpoint" ]; then
+	printf "Target location for unpack operations (%s) isn't a directory.\n" "$tmpfs_mountpoint" 1>&2
+	exit 1
+fi
+printf "Target location for unpack operations is now '%s'.\n" "$tmpfs_mountpoint" | progress
+if is_active_mountpoint "$tmpfs_mountpoint"; then
+	printf "Unmounting '%s' filesystem first from our designated unpack location.\n" "$(get_filesystem_device "$tmpfs_mountpoint")" | progress
+	umount "$tmpfs_mountpoint"
+	if is_active_mountpoint "$tmpfs_mountpoint"; then
+		printf "Unmounting filesystem failed, aborting unpack operation.\n" 1>&2
+		exit 1
+	fi
+fi
+mount -t tmpfs tmpfs "$tmpfs_mountpoint" || exit 1
+printf "Mounted tmpfs on unpack location.\n" | progress
+#######################################################################################################
+#                                                                                                     #
+# check, if we have to mount a wrapper filesystem first                                               #
+#                                                                                                     #
+#######################################################################################################
+if ! [ "${source#mount:*}" = "$source" ]; then
+	mountpoint="${YF_TMPDIR:-/var}/mp_$$"
+	mkdir "$mountpoint"
+	device="$(printf "%s\n" "$source" | sed -n -e "s|^[^:]*:\([^:]*\):.*\$|\1|p")"
+	source="$mountpoint/$(printf "%s\n" "$source" | sed -n -e "s|^[^:]*:[^:]*:\(.*\)\$|\1|p")"
+	mount -o ro,noexec,nosuid,nodev "$device" "$mountpoint" 2>/dev/null
+	if ! is_active_mountpoint "$mountpoint"; then
+		printf "Unable to mount '%s' to '%s'.\n" "$device" "$mountpoint" 1>&2
+		exit 1
+	else
+		printf "Mounted wrapper filesystem '%s' on '%s'.\n" "$device" "$mountpoint" | progress
+	fi
+	unmount=1
+else
+	unmount=0
+fi
+#######################################################################################################
+#                                                                                                     #
+# unpack source image to the new tmpfs                                                                #
+#                                                                                                     #
+#######################################################################################################
+error_exit="$($unsquashfs_binary 2>&1 | sed -n -e "s|.*\(-exit-on-\(decomp-\)\?error\).*|\1|p")"
+cmd="$(printf "$unsquashfs_command" "$unsquashfs_binary" "$tmpfs_mountpoint" "$error_exit" "$source")"
+printf "Unpacking SquashFS image from '%s' to '%s'.\n" "$source" "$tmpfs_mountpoint" | progress
+eval $cmd 2>&1 | progress
+rc=$?
+#######################################################################################################
+#                                                                                                     #
+# unmount any wrapper, if necessary                                                                   #
+#                                                                                                     #
+#######################################################################################################
+if [ $unmount -eq 1 ]; then
+	printf "Unmounting wrapper filesystem from '%s'.\n" "$mountpoint" | progress
+	umount "$mountpoint" 2>/dev/null && rmdir "$mountpoint" 2>/dev/null
+fi
+#######################################################################################################
+#                                                                                                     #
+# finish and regular exit                                                                             #
+#                                                                                                     #
+#######################################################################################################
+exit $rc
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
