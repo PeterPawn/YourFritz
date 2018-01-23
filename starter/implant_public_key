@@ -76,6 +76,10 @@
 # names are exhausted and each of them is already in use, it will not switch back to overload one of  #
 # the existing files.                                                                                 #
 #                                                                                                     #
+# Error messages are written to STDERR handle and if the variable 'YF_PROGRESS' is set to any non-    #
+# empty value, it has to be the name of a file (or a handle) to be used for progress messages, so     #
+# they may be distinguished from error messages.                                                      #
+#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -101,6 +105,15 @@ mtab_name="/etc/mtab"
 #                                                                                                     #
 # subfunctions                                                                                        #
 #                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# display progress messages, if YF_PROGRESS is present                                                #
+#                                                                                                     #
+#######################################################################################################
+progress()
+{
+	[ -z "$YF_PROGRESS" ] || cat >>"$YF_PROGRESS"
+}
 #######################################################################################################
 #                                                                                                     #
 # check the specified modulus for valid content and length                                            #
@@ -276,7 +289,7 @@ while [ $# -gt 0 ]; do
 				mount -o bind $overlay_storage/$key_name $file_name
 			fi
 			printf "%s\n010001\n" "$modulus" >$file_name
-			printf "Installed public key to file '%s'.\n" $key_name 1>&2
+			printf "Installed public key to file '%s'.\n" $key_name | progress
 			key_index=$(( key_index - 1 ))
 		fi
 	else
