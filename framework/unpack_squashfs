@@ -60,6 +60,7 @@
 # YF_UNSQUASHFS_BIN           - the filename of the 'unsquashfs' utility to use, if it's not located  #
 #                               in a directory mentioned in the PATH variable                         #
 # YF_TMPDIR                   - a working directory location (writable), defaults to '/var'           #
+# YF_PROGRESS                 - the destination (filename or handle) for progress messages            #
 #                                                                                                     #
 # In case of an error, the exit code will be set to anything other than zero. If the unpack operation #
 # succeeds, no other changes to the current state of the system than the newly mounted and filled     #
