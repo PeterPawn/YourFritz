@@ -598,7 +598,7 @@ __check_required_commands()
 }
 __check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
 
-__required_commands="sed dd mkfifo:mknod cat rm mkdir touch wc cmp date"
+__required_commands="sed mkfifo:mknod cat rm mkdir touch wc cmp date"
 [ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
 #######################################################################################################
 #                                                                                                     #
@@ -941,10 +941,16 @@ get_nonce()
 		__base64_append eof
 	}
 
-	zeros="$(mktmp -p "$td")"
-	printf "\000" | dd bs=16 count=2 conv=sync 2>/dev/null >"$zeros"
-	printf "%s\377" "$(date +%T%D)" | command cmp -l -- "$zeros" - 2>/dev/null | __base64_read_octal
-	rm "$zeros" 2>/dev/null
+	zeros_1="$(mktmp -p "$td")"
+	zeros_2="$(mktmp -p "$td")"
+	printf "\000" >"$zeros_1"
+	cat "$zeros_1" "$zeros_1" >"$zeros_2"
+	cat "$zeros_2" "$zeros_2" >"$zeros_1"
+	cat "$zeros_1" "$zeros_1" >"$zeros_2"
+	cat "$zeros_2" "$zeros_2" >"$zeros_1"
+	cat "$zeros_1" "$zeros_1" >"$zeros_2"
+	printf "%s\377" "$(date +%T%D)" | command cmp -l -- "$zeros_2" - 2>/dev/null | __base64_read_octal
+	rm "$zeros_1" "$zeros_2" 2>/dev/null
 	exit $rc
 )
 #######################################################################################################
