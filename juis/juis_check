@@ -578,52 +578,28 @@ __usage()
 	usage_text
 	__end
 )
-__set_base_dir__="eval [ \"\$(expr \"\$0\" : \".*\(/\).*\")\" = \"/\" ] && __base_dir__=\"\${0%/*}\" || __base_dir__=\".\""
-__set_base_dir() { __set_base_dir__="$1"; }
-__check_required_scripts()
-{
-	d="$1"
-	shift
+__check_required_command()
+(
+	IFS=:
+	set -- $1
 	for n in $@; do
-		eval $n="$d/$n"
-		eval f="\$$n"
-		if ! [ -x "$f" ]; then
-			__emsg "$(__get_localized ERR_SCR)" "$n"
-			return 1
-		fi
-		printf "$n=%s\n" $f
+		command -v $n 2>/dev/null 1>&2 && exit 0
 	done
-	return 0
-}
-__check_required_scripts__="eval __scripts__=\"\$(__check_required_scripts \"\$__base_dir__\" \"\$__required_scripts\")\" && \
-	eval \$__scripts__ || exit 1"
+	exit 1
+)
 __check_required_commands()
 {
 	for n in $@; do
-		command -v $n 2>/dev/null 1>&2 && continue
-		__emsg "$(__get_localized ERR_EXC)" "$n"
+		__check_required_command $n && continue
+		__emsg "$(__get_localized ERR_EXC)" "$(printf "%s\n" "$n" | sed -e "s|:| or |g")"
 		return 1
 	done
 	return 0
 }
 __check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
-__check_terminal()
-{
-	[ -t $1 ] || return 1
-	if [ $1 -eq 0 ]; then
-		fd="STDIN"
-	elif [ $1 -eq 1 ]; then
-		fd="STDOUT"
-	else
-		fd="FILE ($1)"
-	fi
-	shift
-	__emsg "%s is a terminal device. %s" "$fd" "$@"
-}
 
-__required_commands="sed dd mknod cat rm mkdir touch stat cmp date"
+__required_commands="sed dd mkfifo:mknod cat rm mkdir touch stat cmp date"
 [ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
-__required_scripts=""
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -759,7 +735,6 @@ fi
 # check environment                                                                                   #
 #                                                                                                     #
 #######################################################################################################
-$__set_base_dir__
 $__check_required_commands__
 #######################################################################################################
 #                                                                                                     #
@@ -833,7 +808,7 @@ run_nc()
 	exec 7>&2
 	exec 2>/dev/null
 	rm "$pin"
-	mknod "$pin" p
+	command -v mkfifo 2>/dev/null 1>&2 && mkfifo "$pin" || mknod "$pin" p
 	exec 6<>"$pin"
 	nc "$hostname" "$port" >"$out" <"$pin" &
 	ncpid=$!
