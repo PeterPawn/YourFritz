@@ -598,7 +598,7 @@ __check_required_commands()
 }
 __check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
 
-__required_commands="sed dd mkfifo:mknod cat rm mkdir touch stat cmp date"
+__required_commands="sed dd mkfifo:mknod cat rm mkdir touch wc cmp date"
 [ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
 #######################################################################################################
 #                                                                                                     #
@@ -1319,7 +1319,7 @@ header="$(mktmp -p "$td")"
 response="$(mktmp -p "$td")"
 printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" | \
 	sed -e "s|\t|  |g" >>"$body"
-len=$(stat -c %s "$body")
+len=$(wc -c <"$body")
 printf "$headerline_0" "$juisurl" >>"$header"
 printf "$headerline_1" "$hostname" "$juisport" >>"$header"
 printf "$headerline_2" $len >>"$header"
