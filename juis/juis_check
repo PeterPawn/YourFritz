@@ -1323,8 +1323,7 @@ fi
 body="$(mktmp -p "$td")"
 header="$(mktmp -p "$td")"
 response="$(mktmp -p "$td")"
-printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" | \
-	sed -e "s|\t|  |g" >>"$body"
+printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" >>"$body"
 len=$(wc -c <"$body")
 printf "$headerline_0" "$juisurl" >>"$header"
 printf "$headerline_1" "$hostname" "$juisport" >>"$header"
