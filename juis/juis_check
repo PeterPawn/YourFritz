@@ -378,10 +378,10 @@ L10N_ERR_008_en="Unexpected error code %s returned from %s."
 L10N_ERR_008_de="Es wurde ein unerwarteter Statuscode (%%s) von %%s gesendet."
 L10N_ERR_009_en="No newer version found, check was made with source version '%%s'."
 L10N_ERR_009_de="Es wurde keine neue Version gefunden, die Prüfung erfolgte ausgehend von der Version '%%s'."
-L10N_ERR_010_en="Missing 'procfs' mounted on '/proc'."
-L10N_ERR_010_de="Unter '/proc' muss ein 'procfs' verfügbar sein für die korrekte Funktion dieses Skripts."
-L10N_ERR_011_en="Missing '/dev/urandom' node, pointing to a random number generator."
-L10N_ERR_011_de="Die Datei '/dev/urandom' muß auf eine passende Quelle für Zufallszahlen zeigen."
+#L10N_ERR_010_en="Missing 'procfs' mounted on '/proc'."
+#L10N_ERR_010_de="Unter '/proc' muss ein 'procfs' verfügbar sein für die korrekte Funktion dieses Skripts."
+#L10N_ERR_011_en="Missing '/dev/urandom' node, pointing to a random number generator."
+#L10N_ERR_011_de="Die Datei '/dev/urandom' muß auf eine passende Quelle für Zufallszahlen zeigen."
 L10N_ERR_012_en="Error saving SOAP response to '%%s'."
 L10N_ERR_012_de="Fehler beim Speichern der Antwort in der Datei '%%s'."
 L10N_ERR_013_en="Missing file name after option '%%s'."
@@ -445,15 +445,15 @@ __copyright()
 	__get_script_lines "CPY"
 }
 __get_language()
-{
+(
 	__get_language_code()
 	{
 		printf "%s\n" "$1" | sed -n -e "1s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
 	}
-	local lang="$1"
+
+	lang="$1"
 	shift
-	local check
-	local l
+
 	if ! [ -z "$LC_ALL" ]; then
 		check="$(__get_language_code "$LC_ALL")"
 	else
@@ -466,7 +466,7 @@ __get_language()
 		done
 	fi
 	printf "%s" "$lang"
-}
+)
 __language__="$(eval __get_language $languages)"
 __get_localized()
 {
@@ -621,7 +621,7 @@ __check_terminal()
 	__emsg "%s is a terminal device. %s" "$fd" "$@"
 }
 
-__required_commands="sed base64 dd mknod cat rm mkdir touch stat realpath"
+__required_commands="sed dd mknod cat rm mkdir touch stat cmp date"
 [ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
 __required_scripts=""
 #######################################################################################################
@@ -761,15 +761,6 @@ fi
 #######################################################################################################
 $__set_base_dir__
 $__check_required_commands__
-#$__check_required_scripts__
-if ! [ -d /proc/$$ ]; then
-	__emsg "$(__get_localized ERR_010)"
-	exit 1
-fi
-if ! [ -c /dev/urandom ]; then
-	__emsg "$(__get_localized ERR_011)"
-	exit 1
-fi
 #######################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
@@ -781,8 +772,8 @@ fi
 #                                                                                                     #
 #######################################################################################################
 tcp_read()
-{
-	local rc=0
+(
+	rc=0
 	if [ -z "${BASH_VERSION}" ]; then
 		run_nc $1 $2 "$3" $4
 		rc=$?
@@ -790,23 +781,21 @@ tcp_read()
 		use_devtcp $1 $2 "$3" $4
 		rc=$?
 	fi
-	return $rc
-}
+	exit $rc
+)
 #######################################################################################################
 #                                                                                                     #
 # use /dev/tcp to access the server                                                                   #
 #                                                                                                     #
 #######################################################################################################
 use_devtcp()
-{
-	local host="$1"
-	local port="$2"
-	local out="$3"
-	local timeout="$4"
-	local catpid
-	local i=0
+(
+	host="$1"
+	port="$2"
+	out="$3"
+	timeout="$4"
+	i=0
 	exec 7>&2
-	local trap
 	__is_debug && trap='printf\ "\\\\n"\ 1\>\&7\;exec\ 2\>\&7' || trap='exec\ 2\>\&7'
 	eval trap "$trap" EXIT
 	exec 2>/dev/null
@@ -814,7 +803,7 @@ use_devtcp()
 	cat <&5 >"$out" &
 	catpid=$!
 	cat >&5
-	while ! [ -s "$out" ] && [ -d /proc/$catpid ]; do
+	while ! [ -s "$out" ] && kill -0 $catpid; do
 		i=$(( i + 1 ))
 		__is_debug && printf "." 1>&7
 		[ $i -gt $timeout ] && break
@@ -823,25 +812,24 @@ use_devtcp()
 	sleep 1
 	exec 5>&-
 	sleep 1
-	[ -d /proc/$catpid ] && kill $catpid
+	kill -0 $catpid && kill $catpid
 	trap '' EXIT
 	exec 2>&7
 	__is_debug && printf "\n" 1>&2
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # run 'nc' applet/command                                                                             #
 #                                                                                                     #
 #######################################################################################################
 run_nc()
-{
-	local hostname="$1"
-	local port="$2"
-	local out="$3"
-	local timeout="$4"
-	local pin="$(mktmp -p "$td")"
-	local i=0
-	local ncpid
+(
+	hostname="$1"
+	port="$2"
+	out="$3"
+	timeout="$4"
+	pin="$(mktmp -p "$td")"
+	i=0
 	exec 7>&2
 	exec 2>/dev/null
 	rm "$pin"
@@ -850,7 +838,7 @@ run_nc()
 	nc "$hostname" "$port" >"$out" <"$pin" &
 	ncpid=$!
 	cat - 1>&6
-	while ! [ -s "$out" ] && [ -d /proc/$ncpid ]; do
+	while ! [ -s "$out" ] && kill -0 $ncpid; do
 		i=$(( i + 1 ))
 		__is_debug && printf "." 1>&7
 		[ $i -gt $timeout ] && break
@@ -860,35 +848,33 @@ run_nc()
 	sleep 1
 	exec 6>&-
 	sleep 1
-	[ -d /proc/$ncpid ] && kill $ncpid
+	kill -0 $ncpid && kill $ncpid
 	rm "$pin"
 	exec 2>&7
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # extract result variables from XML answer                                                            #
 #                                                                                                     #
 #######################################################################################################
 extract_xml()
-{
-	local input="$1"
-	local ns="$2"
-	local tag="$3"
+(
+	input="$1"
+	ns="$2"
+	tag="$3"
 	sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # read device parameters from a FRITZ!Box                                                             #
 #                                                                                                     #
 #######################################################################################################
 device_read()
-{
-	local ip="$1"
-	local port="$2"
-	local file="$3"
-	local out="$(mktmp -p "$td")"
-	local rc
-	local answer
+(
+	ip="$1"
+	port="$2"
+	file="$3"
+	out="$(mktmp -p "$td")"
 	__debug "$delimiter_line"
 	__debug "$(__get_localized DBG_006)" "$ip" "$port" "$file"
 	printf "GET /%s HTTP/1.0\r\n\r\n" "$file" | tcp_read "$ip" "$port" "$out" $local_timeout
@@ -910,20 +896,93 @@ device_read()
 		rc=1
 	fi
 	rm "$out" 2>/dev/null
-	return $rc
-}
+	exit $rc
+)
+#######################################################################################################
+#                                                                                                     #
+# wrap 'realpath' call with never-failing code, if the native binary is missing (on MacOS X)          #
+#                                                                                                     #
+#######################################################################################################
+realpath()
+(
+	command realpath "$*" 2>/dev/null || printf "%s" "$*"
+)
+#######################################################################################################
+#                                                                                                     #
+# create a nonce value with our inline Base64 encoder, if no real 'base64' command exists             #
+#                                                                                                     #
+#######################################################################################################
+get_nonce()
+(
+	__base64_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+	__base64_append()
+	{
+		if ! [ $1 = eof ]; then
+			l=$(( l + 1 ))
+			v=$(( ( v << 8 ) + $1 ))
+		else
+			[ $l -eq 0 ] && return
+			v=$(( v << ( 8 * ( 3 - l ) ) ))
+		fi
+		if [ $l -eq 3 ] || [ $1 = eof ]; then
+			printf "%c" $(expr "${__base64_charset}" : ".\{$(( v >> 18 ))\}\(.\).*")
+			printf "%c" $(expr "${__base64_charset}" : ".\{$(( ( v >> 12 ) % 64 ))\}\(.\).*")
+			[ $l -eq 1 ] && printf "==" && return
+			printf "%c" $(expr "${__base64_charset}" : ".\{$(( ( v >> 6 ) % 64 ))\}\(.\).*")
+			[ $l -eq 2 ] && printf "=" && return
+			printf "%c" $(expr "${__base64_charset}" : ".\{$(( v % 64 ))\}\(.\).*")
+			l=0
+			v=0
+			k=$(( k + 1 ))
+			[ $k -eq 19 ] && printf "\n" && k=0
+		fi
+	}
+
+	__base64_read_octal()
+	{
+		i=1
+		l=0
+		v=0
+		k=0
+		ff=0
+		while read pos left right; do
+			while [ $i -lt $pos ]; do # zeros are equal for 'cmp'
+				if [ $ff -eq 1 ]; then
+					__base64_append 377
+					ff=0
+					i=$(( i + 1 ))
+				fi
+				__base64_append 0
+				i=$(( i + 1 ))
+			done
+			if [ $right = 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			__base64_append 0$right
+			i=$(( pos + 1 ))
+		done
+		__base64_append eof
+	}
+
+	zeros="$(mktmp -p "$td")"
+	printf "\000" | dd bs=16 count=2 conv=sync 2>/dev/null >"$zeros"
+	printf "%s\377" "$(date +%T%D)" | command cmp -l -- "$zeros" - 2>/dev/null | __base64_read_octal
+	rm "$zeros" 2>/dev/null
+	exit $rc
+)
 #######################################################################################################
 #                                                                                                     #
 # make temporary directory or file, emulate 'mktemp' if it's missing                                  #
 #                                                                                                     #
 #######################################################################################################
 mktmp()
-{
-	local name="$(mktemp $* 2>/dev/null)"
+(
+	name="$(mktemp $* 2>/dev/null)"
 	if [ $? -eq 127 ] || [ -z "$name" ]; then
 		# mktemp is missing, emulation needed
-		local dir
-		local tmp="$TMPDIR"
+		tmp="$TMPDIR"
 		[ "$1" = "-d" ] && dir=1 || dir=0
 		[ "$1" = "-p" ] && tmp="$2"
 		[ -z "$tmp" ] && tmp="/tmp"
@@ -939,19 +998,16 @@ mktmp()
 		fi
 	fi
 	printf "$name"
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # build a string with each valid variable name                                                        #
 #                                                                                                     #
 #######################################################################################################
 get_names()
-{
-	local l_names="$1"
-	local p
-	local i=$3
-	local l
-	local n
+(
+	l_names="$1"
+	i=$3
 	for n in $2; do
 		p=$(IFS=:; set -- $n; eval printf "%s" "\$${i}")
 		l_names="$l_names $p"
@@ -962,29 +1018,29 @@ get_names()
 		printf " %s" "$n"
 		last="$n"
 	done
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # replace occurrences of a template with another string in a file                                     #
 #                                                                                                     #
 #######################################################################################################
 replace_in_file()
-{
-	local file="$1"
-	local t="$2"
-	local r="$3"
-	local tmp="$(mktmp -p "$td")"
+(
+	file="$1"
+	t="$2"
+	r="$3"
+	tmp="$(mktmp -p "$td")"
 	cat "$file" >"$tmp"
 	sed -e "s|$t|$r|g" "$tmp" >"$file"
 	rm "$tmp" 2>/dev/null
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # split old style version number into parts with the new names                                        #
 #                                                                                                     #
 #######################################################################################################
 split_version_number()
-{
+(
 	__first_char()
 	{
 		expr \( "$1" : "\(.\).*" \)
@@ -993,13 +1049,9 @@ split_version_number()
 	{
 		expr \( "$1" : ".\(.*\)" \)
 	}
-	local v="$1"
-	local m="$version_parts"
-	local c
-	local n
-	local s=0
-	local o
-	local e
+	v="$1"
+	m="$version_parts"
+	s=0
 	while [ ${#v} -gt 0 ]; do
 		c="$(__first_char "$m")"
 		m="$(__remove_first_char "$m")"
@@ -1029,7 +1081,7 @@ split_version_number()
 			n="$n$c"
 		fi
 	done
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # now it's time to do something useful                                                                #
@@ -1259,7 +1311,7 @@ if [ -z "$HW" ]; then
 	exit 4
 fi
 hostname="$HW.$hostbase"
-[ -z "$nonce" ] && nonce=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | base64)
+[ -z "$nonce" ] && nonce=$(get_nonce)
 eval $version_name="$version_string"
 __debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
 Flag_XML=""
