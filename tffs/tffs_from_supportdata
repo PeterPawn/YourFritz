@@ -6,9 +6,24 @@ decode_to_tar()
 	local input="$1"
 	sed -e "1,/^$FIRST_LINE/d" "$input" | sed -e "/^$LAST_LINE/,\$d" | base64 -d
 }
+usage()
+{
+	printf "Extract a TFFS image dump from extended support data file.\n\n"
+	printf "Usage:\n\n"
+	printf "$0 <support-data-file> <output-dir> <tffs-index>\n\n"
+	printf "'support-data-file' is the name of an \"extended support data\" file,\n"
+	printf "which was created on a FRITZ!Box device. 'output-dir' is the name of\n"
+	printf "an existing sub-directory, where the extracted data will be stored.\n"
+	printf "'tffs-index' is the suffix of the TFFS image name ('1' or '2').\n\n"
+	printf "This script is not supposed to handle dumps from devices with a\n"
+	printf "NAND-based TFFS driver.\n\n"
+	printf "This script is only a proof-of-concept, how to extract the TFFS dump\n"
+	printf "from support data - it doesn't contain any sophisticated error handling.\n"
+}
 INPUT="$1"
 OUTPUT="$2"
 INDEX=$3
+[ $# -lt 3 ] && usage && exit 1
 tmp=$(mktemp)
 [ $? -ne 0 ] && tmp=/var/tmp/tmp.$(date +%s).$$
 trap "rm -r $tmp" EXIT HUP
@@ -22,7 +37,7 @@ for file in $(tar -t -f $tarfile); do
 	out=${out%.gz}
 	out=${out/\(/}
 	out=${out/\)/}
-	[ $(expr index $out $INDEX) -eq 0 ] && continue
+	[ -z "$(expr "$out" : ".*\($INDEX\).*")" ] && continue
 	tar -x -O -f $tarfile $file | gunzip -c >$OUTPUT/$out
 	break
 done
