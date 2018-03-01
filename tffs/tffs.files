@@ -88,7 +88,7 @@
 160 aura-usb
 161 configd
 162 ewnwstatus.cfg known LAN clients
-163 fwupdatetrace.cfg
+163 fwupdatetrace.cfg update history across reboots
 168 browser-data
 169 update-url.cfg
 176 dect_misc
