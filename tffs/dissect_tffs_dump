@@ -1,4 +1,5 @@
 #! /bin/sh
+# vim: set tabstop=4 syntax=sh :
 ##################################################################################
 #
 # dissect a TFFS dump into environment, counter, name table (if present) and 
@@ -71,17 +72,28 @@ while true; do
 	length="${header:4:4}"
 	len=$(yf_hex2dec $length)
 	if [ "$id" != "0000" ]; then
+		dec_id=$(yf_hex2dec $id)
 		start=$(( offset + 4 ))
 		if [ -f $tmpdir/$id.bin ]; then
 			echo "unexpected duplicate entry found for id 0x$id" 1>&2
 		else
-			dd if=$tffsdump of=$tmpdir/$id.bin bs=1 skip=$start count=$len 2>/dev/null
-			dec_id=$(yf_hex2dec $id)
-			if [ $dec_id -lt 256 -a $dec_id -gt 1 ]; then
-				printf "\x1f\x8b\x08\x00\x00\x00\x00\x00" | cat - $tmpdir/$id.bin | gzip -dc 2>/dev/null >$tmpdir/$id.inflated
-			fi
-			printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
-			[ $debug -eq 1 ] && printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len 1>&2
+			case "$dec_id" in
+				(511)
+					# TFFS name table
+					dd if=$tffsdump of=$tmpdir/$id.bin bs=1 skip=$start count=$len 2>/dev/null
+					[ -x ./name_table_from_tffs ] && ./name_table_from_tffs <$tmpdir/$id.bin >$tmpdir/nametable.txt
+					printf "NODE=%d OFFSET=%d LENGTH=%d - this is the name table\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
+					[ $debug -eq 1 ] && printf "NODE=%d OFFSET=%d LENGTH=%d - this is the name table\n" $(( 0x$id )) $offset $len 1>&2
+					;;
+				(*)
+					dd if=$tffsdump of=$tmpdir/$id.bin bs=1 skip=$start count=$len 2>/dev/null
+					if [ $dec_id -lt 256 -a $dec_id -gt 1 ]; then
+						printf "\x1f\x8b\x08\x00\x00\x00\x00\x00" | cat - $tmpdir/$id.bin | gzip -dc 2>/dev/null >$tmpdir/$id.inflated
+					fi
+					printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
+					[ $debug -eq 1 ] && printf "NODE=%d OFFSET=%d LENGTH=%d\n" $(( 0x$id )) $offset $len 1>&2
+					;;
+			esac
 		fi
 	fi
 	offset=$(( offset + 4 + $(( ( len + 3 ) & ~3 )) ))
