@@ -1,0 +1,46 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+##################################################################################
+#
+# extract text format of name table from the provided TFFS dump entry        
+#
+##################################################################################
+#
+# Name table entries consist of the ID as 32-bit integer and a NUL-terminated
+# string with the name value. The next entry starts at the next 32-bit boundary.
+#
+##################################################################################
+#
+# helper functions
+#
+##################################################################################
+. ${YF_SCRIPT_DIR:-.}/yf_helpers
+table="$(yf_bin2hex)"
+##################################################################################
+#
+# process name table and write entries to stdout
+#
+##################################################################################
+offset=0
+[ "$1" = "-d" ] && debug=1 || debug=0
+while [ $offset -lt ${#table} ]; do
+	start=$offset
+	id="$(yf_hex2dec "$(yf_substring "$table" $offset 8)")"
+	offset=$(( offset + 8 ))
+	name=""
+	while ! [ "$(yf_substring "$table" $offset 2)" = "00" ]; do
+		name="$name$(yf_substring "$table" $offset 2)"
+		offset=$(( offset + 2 ))
+	done
+	offset=$(( offset + 2 ))
+	[ $(( offset % 8 )) -ne 0 ] && offset=$(( offset + 8 - ( offset % 8 ) ))
+	n="$(printf "%s\n" "$name" | yf_hex2bin)"
+	[ $debug -eq 1 ] && printf "offset=%d id=%d name=%s\n" $start $id "$n" 1>&2
+	printf "%d %s\n" $id "$n"
+done 
+##################################################################################
+#
+# regular end of script reached
+#
+##################################################################################
+exit 0
