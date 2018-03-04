@@ -81,7 +81,7 @@ while true; do
 				(511)
 					# TFFS name table
 					dd if=$tffsdump of=$tmpdir/$id.bin bs=1 skip=$start count=$len 2>/dev/null
-					[ -x ./name_table_from_tffs ] && ./name_table_from_tffs <$tmpdir/$id.bin >$tmpdir/nametable.txt
+					[ -x ./name_table_from_tffs ] && ./name_table_from_tffs $([ $debug -eq 1 ] && printf -- "-d" ) <$tmpdir/$id.bin >$tmpdir/nametable.txt
 					printf "NODE=%d OFFSET=%d LENGTH=%d - this is the name table\n" $(( 0x$id )) $offset $len >>$tmpdir/nodelist
 					[ $debug -eq 1 ] && printf "NODE=%d OFFSET=%d LENGTH=%d - this is the name table\n" $(( 0x$id )) $offset $len 1>&2
 					;;
