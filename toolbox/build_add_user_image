@@ -57,7 +57,10 @@
 #                                                                                                     #
 #######################################################################################################
 tmpdir="/tmp"
-toolbox_scripts="get_file_from_image add_user_to_fritzos"
+binaries="../bin/mips"
+image_get_file="image/get_file_from_image"
+payload_script_1="scripts/add_user_to_fritzos"
+toolbox_scripts="$image_get_file $payload_script_1"
 create_inodes="$(cat <<'EOT'
 d /bin 700 0 0
 d /dev 700 0 0
@@ -86,7 +89,7 @@ c /dev/urandom 666 0 0 1 9
 c /dev/ttyS0 555 0 0 4 64
 EOT
 )"
-busybox_source="../bin/mips/busybox"
+busybox_source="$binaries/busybox"
 busybox_applets="$(cat <<'eot'
 bin/ash
 bin/cat
@@ -250,7 +253,7 @@ trap 'housekeeping $name' HUP EXIT INT
 # extract kernel image                                                                                #
 #                                                                                                     #
 #######################################################################################################
-if ! $SHELL get_file_from_image $dbgopt "$src" kernel.image >"$name/kernel"; then
+if ! $SHELL $image_get_file $dbgopt "$src" kernel.image >"$name/kernel"; then
 	[ $debug -eq 1 ] && printf "Error extracting kernel image from firmware image file '%s'.\n" "$src" 1>&2
 	exit 1
 fi
@@ -265,7 +268,7 @@ fi
 # extract first 256 byte of filesystem image and check the presence of the dummy signature            #
 #                                                                                                     #
 #######################################################################################################
-if ! $SHELL get_file_from_image $dbgopt -k "$src" filesystem.image | dd bs=256 count=1 2>/dev/null >"$name/header"; then
+if ! $SHELL $image_get_file $dbgopt -k "$src" filesystem.image | dd bs=256 count=1 2>/dev/null >"$name/header"; then
 	[ $debug -eq 1 ] && printf "Error extracting filesystem image (header only) from firmware image file '%s'.\n" "$src" 1>&2
 	exit 1
 fi
@@ -368,22 +371,22 @@ done
 # add files needed to fulfill our function                                                            #
 #                                                                                                     #
 #######################################################################################################
-cp add_user_to_fritzos $base/sbin/
+cp $payload_script_1 $base/sbin/
 cat >"$base/sbin/rc.init" <<EOS
 #! /bin/sh
 /bin/mount -t proc proc /proc
 /bin/mount -t tmpfs tmpfs /tmp
 export PATH=/sbin:/bin
-/bin/sh /sbin/add_user_to_fritzos $username $password
+/bin/sh /sbin/${payload_script_1##*/} $username $password
 /sbin/reboot
 EOS
 cat >"$base/etc/inittab" <<EOF
 /dev/ttyS0::sysinit:/bin/sh /sbin/rc.init
 EOF
-chmod 777 "$base/sbin/rc.init" "$base/sbin/add_user_to_fritzos"
+chmod 777 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}"
 chmod 666 "$base/etc/inittab"
-chown 0 "$base/sbin/rc.init" "$base/sbin/add_user_to_fritzos" "$base/etc/inittab"
-chgrp 0 "$base/sbin/rc.init" "$base/sbin/add_user_to_fritzos" "$base/etc/inittab"
+chown 0 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}" "$base/etc/inittab"
+chgrp 0 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}" "$base/etc/inittab"
 #######################################################################################################
 #                                                                                                     #
 # dismount then new filesystem image                                                                  #
