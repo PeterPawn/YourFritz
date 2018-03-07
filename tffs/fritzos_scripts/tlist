@@ -227,7 +227,7 @@ display()
 			fsize=0
 		fi
 		used=$(( used + fsize ))
-		line=$(grep "^$minor " $mydir/tffs.files 2>/dev/null)
+		line=$(grep "^$minor " $mydir/tlist.files 2>/dev/null)
 		if [ -n "$line" ]; then
 			comment=$(printf "$line\n" | sed -n -e 's/^[^ ]* [^ ]* *\(.*\)$/\1/p')
 			if [ -z "$comment" ]; then
