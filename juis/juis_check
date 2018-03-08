@@ -1088,7 +1088,21 @@ if [ $__no_cfgfile -eq 0 ]; then
 			sed -e "\${/^\$/d}" "$cfg" | sed -e "s|^|       |" 1>&2
 			__debug "$delimiter_line"
 		fi
+		[ ${#Version} -gt 0 ] && save_version="$Version" || unset save_version
+		unset Version
 		. "$cfg"
+		if [ ${#Version} -eq 0 ]; then
+			if [ ${#save_version} -gt 0 ]; then
+				Version="${save_version}"
+				unset save_version
+			fi
+		fi
+		if [ ${#Version} -gt 0 ]; then
+			spl="$(mktmp -p "$td")"
+			split_version_number "$Version" >"$spl"
+			. "$spl"
+			rm "$spl" 2>/dev/null
+		fi
 		__debug "$(__get_localized DBG_002)"
 	else
 		if [ -z "$1" ]; then
