@@ -1,0 +1,87 @@
+#! /bin/sh
+#####################################################################################
+#                                                                                   #
+# our service definitions                                                           #
+#                                                                                   #
+#####################################################################################
+my_service="shellinaboxd"
+my_display="Shell in a Box"
+my_executable="/wrapper/sbin/shellinaboxd"
+my_pidfile="/var/run/${my_service}.pid"
+my_executable_params="--user=0 --group=0"
+my_executable_params="$my_executable_params --cert-from-box"
+my_executable_params="$my_executable_params --background"
+my_executable_params="$my_executable_params --pidfile=$my_pidfile"
+my_executable_params="$my_executable_params --no-sni"
+my_executable_params="$my_executable_params --disable-ssl-menu"
+my_executable_params="$my_executable_params --service=/:0:0:\$CFG_HOMEDIR:\$CFG_LOGIN"
+my_executable_params="$my_executable_params --port=\$CFG_PORT"
+#####################################################################################
+#                                                                                   #
+# our configuration variables, feel free to set them from other sources             #
+#                                                                                   #
+#####################################################################################
+CFG_PORT=@CFG_PORT@
+CFG_HOMEDIR=@CFG_HOMEDIR@
+CFG_LOGIN=@CFG_LOGIN@
+CFG_SHELL=@CFG_SHELL@
+#####################################################################################
+#                                                                                   #
+# internal subfunctions                                                             #
+#                                                                                   #
+#####################################################################################
+#                                                                                   #
+# start our service(s)                                                              #
+#                                                                                   #
+#####################################################################################
+start_service()
+{
+	mkdir -p $CFG_HOMEDIR
+	sed -e "s|^\(root\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\(.*\)\$|\1:\2:\3:\4:\5:$CFG_HOMEDIR:$CFG_SHELL|" -i $(realpath /etc/passwd)
+	eval $my_executable $my_executable_params
+	[ "$(ctlmgr_ctl r box status/signed_firmware)" = "0" ] && echo clear_id 87 >/proc/tffs
+}
+#####################################################################################
+#                                                                                   #
+# stop our service(s)                                                               #
+#                                                                                   #
+#####################################################################################
+stop_service()
+{
+	local pid=$(cat $my_pidfile 2>/dev/null)
+	if [ ${#pid} -gt 0 ]; then
+		if [ -d /proc/$pid ]; then
+			kill $pid
+			wait $pid
+		fi
+	fi
+	rm $my_pidfile 2>/dev/null
+}
+#####################################################################################
+#                                                                                   #
+# end of internal subfunctions                                                      #
+#                                                                                   #
+#####################################################################################
+#                                                                                   #
+# check our parameters                                                              #
+#                                                                                   #
+#####################################################################################
+op="$1"
+shift
+case "$op" in
+	start)
+		start_service $*
+		;;
+	stop)
+		stop_service $*
+		;;
+	restart)
+		stop_service $*
+		start_service $*
+		;;
+	*)
+		echo "Unknown parameter '$1' specified." 1>&2
+		exit 1
+		;;
+esac
+exit 0
