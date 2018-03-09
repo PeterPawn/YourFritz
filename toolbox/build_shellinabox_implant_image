@@ -46,7 +46,6 @@
 #                                                                                                     #
 # You may use these 'key' names: LOGIN, SHELL, PORT, HOMEDIR - the default settings used are as       #
 # follows: 'LOGIN=/sbin/ar7login', 'SHELL=/bin/sh', 'PORT=8010' and 'HOMEDIR=/var/home'.              # 
-# 'LOGIN=/sbin/ar7login', 'SHELL=/bin/sh', 'PORT=8010' and 'HOMEDIR=/var/home'.                       #
 #                                                                                                     #
 # It should be safe to boot a box more than once with the generated image (or an updated version),    #
 # the additions take an already existing entry into account and try to replace it.                    #
