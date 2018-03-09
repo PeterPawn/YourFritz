@@ -1,0 +1,15 @@
+#! /bin/sh
+[ $# -lt 2 ] && printf "Usage: %s <image> <mountpoint>\n" $0 1>&2 && exit 1
+image=$1
+mp=$2
+devname=$(losetup -j $image | sed -n -e "s|^\(/dev/loop[0-9]*\):.*\$|\1|p")
+for dev in $devname; do
+	umount $dev 2>/dev/null && losetup -d $dev 2>/dev/null
+done
+[ "$mp" = "-" ] && exit
+offset=$(( 0x$(hexdump -C $image | sed -n -e "s|^\([0-9a-fA-F]*\)  73 71 73 68 \(00 \)\{4\} \(00 \)\{8\}.*\$|\1|p") + 256 ))
+losetup -f -o $offset $image
+mkdir -p $mp
+umount $mp 2>/dev/null
+devname=$(losetup -j $image | sed -n -e "s|^\(/dev/loop[0-9]*\):.*\$|\1|p")
+mount $devname $mp
