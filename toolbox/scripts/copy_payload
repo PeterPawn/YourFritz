@@ -1,0 +1,27 @@
+#! /bin/sh
+src="$1"
+tgt="$2"
+shift 2
+check=""
+rm -f /tmp/subst_payload
+touch /tmp/subst_payload
+for v in $*; do
+	printf "s|@CFG_${v%%=*}@|${v#*=}|g\n" >> /tmp/subst_payload
+	check="$check ${v%%=*}"
+done
+for d in $(find "$src" -type d); do
+	[ -z ${d#$src} ] && continue
+	mkdir -p $tgt${d#$src}
+done
+for f in $(find "$src" -type f); do
+	subst=0
+	for v in $check; do
+		grep -q "@CFG_${v}@" $f && subst=1 && break
+	done
+	if [ $subst -eq 1 ]; then
+		sed -f /tmp/subst_payload $f >$tgt${f#$src}
+		chmod 555 $tgt${f#$src}
+	else
+		cp -a $f $tgt${f#$src}
+	fi
+done
