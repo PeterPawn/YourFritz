@@ -28,7 +28,7 @@ outstream=7
 instream=8
 upstream=9
 logstream=3
-logfile=$0.log
+logfile=${EVA_LOG:-$0.log}
 envfile=$tmpdir/env
 startaddress=0x80000000
 #
@@ -178,7 +178,7 @@ upload_image()
 			cat $file >$storefifo
 			line="$(read_ftp_response $instream $log)"
 			ec=${line:0:3}
-			if [ x$ec == x226 ]; then
+			if [ x$ec == x226 ] || [ x$ec == x553 ]; then
 				if [ -d /proc/$data_connection ]; then
 					kill $data_connection 2>/dev/null &
 					wait $data_connection 2>/dev/null
