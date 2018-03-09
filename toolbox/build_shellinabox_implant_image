@@ -18,32 +18,37 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# This script takes an original firmware image from AVM and extracts the kernel image file.           #
+# This script takes an original firmware image from AVM and extracts the kernel image file, to build  #
+# an own bootable firmware image with this kernel as base.                                            #
 #                                                                                                     #
 # This step is necessary, because newer kernels contain a hardware-specific payload with variable     #
-# configuration data and it's not sure, that an 'one size fits all'-kernel may be used on each VR9-   #
+# configuration data and it's not sure, that any 'one size fits all'-kernel may be used on each VR9-  #
 # based model.                                                                                        #
 #                                                                                                     #
-# Therefore you need an image file from the vendor and we will use the kernel within it. At the same  #
+# That's why we need an image file from vendor and we will extract the kernel from it. At the same    #
 # time the contained filesystem image is checked to assure, that this model uses a wrapper partition  #
 # to store the SquashFS image file for the real root filesystem - in this case it's able to use an    #
-# ext2 image as root filesystem on boot-time.                                                         #
+# 'ext2' image as root filesystem on boot-time.                                                       #
 #                                                                                                     #
 # The name of the firmware image file has to be specified as first argument, the created bootable     #
 # image will be written to STDOUT and the caller is responsible for the proper redirection.           #
 #                                                                                                     #
-# The bootable image will implant a Shell-in-a-Box executable (from the 'binaries' branch), an init-  #
-# script to control this service and an (very early executed) script to add own init-scripts to the   #
-# original 'rc.S' processing from FRITZ!OS.                                                           #
+# The bootable image will add the following to the 'wrapper' partition of the active system:          #
 #                                                                                                     #
-# The init-script will modify the '/etc/passwd' file entry for user 'root' and set a new shell and a  #
-# new home directory. The values used therefor and the used 'login' program may be specified to this  #
-# script as key/value pairs at the time, the image file is generated.                                 #
+# - a Shell-in-a-Box executable (from the 'binaries' branch),                                         #
+# - an init-script to control this service and                                                        #
+# - a (very early executed) script to add own init-scripts to the original processing of FRITZ!OS     #
+#   (using a bind-mounted copy of the 'rc.S' file)                                                    #
 #                                                                                                     #
-# You may use these 'key' names: LOGIN, SHELL, PORT, HOMEDIR - the default settings used are:         #
+# The init-script will modify the '/etc/passwd' entry for user 'root' and set a new shell and a new   #
+# home directory. The values used therefor and the used 'login' program may be specified to this      #
+# generator script as key/value pairs (on the command line) at invocation time.                       #
+#                                                                                                     #
+# You may use these 'key' names: LOGIN, SHELL, PORT, HOMEDIR - the default settings used are as       #
+# follows: 'LOGIN=/sbin/ar7login', 'SHELL=/bin/sh', 'PORT=8010' and 'HOMEDIR=/var/home'.              # 
 # 'LOGIN=/sbin/ar7login', 'SHELL=/bin/sh', 'PORT=8010' and 'HOMEDIR=/var/home'.                       #
 #                                                                                                     #
-# It should be save to boot a box more than once with the generated image (or an updated version),    #
+# It should be safe to boot a box more than once with the generated image (or an updated version),    #
 # the additions take an already existing entry into account and try to replace it.                    #
 #                                                                                                     #
 # In a last step the init-script checks the flag for the 'unauthorized changes to the firmware'       #
@@ -470,9 +475,9 @@ fi
 cat "$name/kernel"
 cat "$name/header"
 cat "$name/ext2_image"
+exit 0
 #######################################################################################################
 #                                                                                                     #
 # end of script, temporary directory will be removed by 'trap' command on exit                        #
 #                                                                                                     #
 #######################################################################################################
-exit 0
