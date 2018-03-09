@@ -16,6 +16,12 @@ This image will add a new user account with the name "YourFritz" and the passwor
 
 This image will reset the 'tainted' flag in node 87 of the TFFS device. As a result, the GUI doesn't show a warning anymore and the support file doesn't contain a hint for 'unsupported changes' any longer.
 
+- implant_siab.image.*model*
+
+This image will install a Shell-in-a-Box service running from the 'wrapper' partition on VR9-based models with NAND flash. It adds only the executable for 'shellinaboxd' (statically linked), an init-script and another script to injec    t the start of its init-script into the 'rc.S' script from the original firmware. 
+
+The Shell-in-a-Box service will listen on (local) port 8010, enforces a TLS connection and uses the already installed key and certificate for the FRITZ!OS GUI. The credentials needed to log-in to the shell, depend on the current login settings of the device. A successful log-in will set the ~tainted~ flag of the firmware - if you later request support from vendor, you may have to reset it (simply restart the device, the flag is reset on each start of the init-script), before you generate any support data output.
+
 **Please verify the GPG signature(s) with the key from the base of this repository (Fingerprint: 0DF4F707AC58AA38B35AAA0BC04FCE5230311D96), before you use any of the provided images.**
 
 To boot a FRITZ!Box device from such an image, you may use one of the scripts from the "eva_tools" sub-folder - there are proof-of-concepts for (Unix-) shell-based systems and for PowerShell on Microsoft Windows installations.
