@@ -61,13 +61,15 @@ show_version()
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
 		v="$(openssl version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
-		[ "$v" = "1.0" ] && return 0
+		[ ${#USE_OLD_OPENSSL} -gt 0 ] && [ "$v" = "0_9" ] && printf "0_9\n" && return 0
+		[ "$v" = "1.0" ] && printf "1_0\n" && return 0
+		[ "$v" = "1.1" ] && printf "1_1\n" && return 0
 		if [ "$v" = "0.9" ]; then
-			echo -e "\x1B[1;33mThe OpenSSL version is really old, you should update it as soon as possible.\x1b[0m" 1>&2
-			return 0
+			echo -e "\x1B[1;33mYour OpenSSL version is too old.\x1b[0m" 1>&2
+			return 127
 		fi
-		echo -e "\x1B[1;31mYour OpenSSL version is too new ... please install a version 1.0.2 to use this script.\x1B[0m" 1>&2
-		return 127
+		echo -e "\x1B[1;31mYour OpenSSL version is unknown ... please install a version based on 1.0.x or 1.1.x to use this script.\x1B[0m" 1>&2
+		return 1
 	fi
 }
 #######################################################################################
@@ -103,17 +105,26 @@ fi
 # check OpenSSL presence and version                                                  #
 #                                                                                     #
 #######################################################################################
-show_version
-if [ $? -eq 127 ]; then
+version=$(show_version)
+rc=$?
+if [ $rc -eq 127 ] || [ $rc -eq 1 ]; then
 	exit 1
 fi
 echo -en "Check \x1B[1mgenrsa\x1B[0m command ... " 1>&2
-openssl genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
+if [ $version = 1_0 ] || [ $version = 0_9 ]; then
+	openssl genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
+elif [ $version = 1_1 ]; then
+	openssl genrsa -help 2>&1 | grep -q '^Usage: genrsa' 2>/dev/null 1>&2
+else
+	echo -e "\x1B[1;31mUnexpected OpenSSL version found.\x1B[0m" 1>&2
+	exit 1
+fi
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok
 else
 	show_error
+	exit 1
 fi
 #######################################################################################
 #                                                                                     #
