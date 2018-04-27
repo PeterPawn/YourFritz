@@ -2,7 +2,7 @@
 
 ## Description
 
-The whole problem was discussed in a thread on IPPF: http://www.ip-phone-forum.de/showthread.php?t=290448 (in german language only). 
+The whole problem was discussed in a thread on IPPF: <http://www.ip-phone-forum.de/showthread.php?t=290448> (in german language only).
 
 Coupled with a poll about the decision to prove it with a proof-of-concept for this threat after the vendor fixed it for the first three models from its product line, a description of the problem was published.
 
@@ -12,17 +12,17 @@ After the public poll was started, the vendor decided to communicate/react again
 
 ## How does it work?
 
-A firmware component runs as a singleton, it may be called in an unauthenticated manner and it's possible to provide incomplete information to such a call. 
+A firmware component runs as a singleton, it may be called in an unauthenticated manner and it's possible to provide incomplete information to such a call.
 
 As a result, an instance of this component will be started and it's waiting for about 40 minutes for further input, blocking any additional request to the same component (/cgi-bin/firmwarecfg), which is responsible for different tasks, from file downloads (support data, settings export) to uploads (settings import) and firmware updates.
 
-Because additional requests to this component will be queued and every associated TCP connection was correct established, each such request results in a "hanging" TCP connection too. 
+Because additional requests to this component will be queued and every associated TCP connection was correct established, each such request results in a "hanging" TCP connection too.
 
-The number of external connections is limited (I was able to start up to 15 TLS connections here) and that's why any external (TCP based) access may be blocked this way. 
+The number of external connections is limited (I was able to start up to 15 TLS connections here) and that's why any external (TCP based) access may be blocked this way.
 
 Even all internal TCP connections (needed for GUI or SIP registrar (over TCP) or NAS) may become exhausted in this manner, but their number is higher (~ 180 connections are possible on a 7490 device).
 
-The additional read request (it's my assumption of the basic problem, based on the value "unix_stream_recvmsg" in the "wchan" pseudo file of the started "firmwarecfg" process) will be finished after about 40 minutes due to a timeout. 
+The additional read request (it's my assumption of the basic problem, based on the value "unix_stream_recvmsg" in the "wchan" pseudo file of the started "firmwarecfg" process) will be finished after about 40 minutes due to a timeout.
 
 Afterwards the next request in the queue will be started ... even over the limited number of TLS connections, the normal function of "firmwarecfg" may be effectively blocked for 10 hours (15 requests * 40 minutes per request) within seconds.
 
@@ -56,7 +56,7 @@ The vendor (AVM) has published new firmware versions for most models still in se
 
 2016-09-08 12:35 - Requested a CVE number myself, no such action was taken from vendor up until now, as far as I know - the announced 48 hours waiting for a CVE request confirmation from vendor were expired (started 2016-09-05 09:19).
 
-2016-09-08 21:54 - CVE number request denied by mitre.org; starting in 2016 only the products listed under http://cve.mitre.org/cve/data_sources_product_coverage.html will be covered by this organization and AVM's products aren't listed there. The recommendation was to publish the vulnerability without a CVE number.
+2016-09-08 21:54 - CVE number request denied by mitre.org; starting in 2016 only the products listed under <http://cve.mitre.org/cve/data_sources_product_coverage.html> will be covered by this organization and AVM's products aren't listed there. The recommendation was to publish the vulnerability without a CVE number.
 
 2016-09-14 10:39 - Vendor notified about the decision from mitre.org - the CVE number request was forwarded on 2016-09-08 13:49 to security@avm.de already.
 

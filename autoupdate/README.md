@@ -1,4 +1,4 @@
-## Proof of concept
+# Proof of concept
 
 Add an option for automatic updates during system reboot to '/var/post_install' - this script is called, while a FRITZ!OS based
 device is preparing to restart.
@@ -9,4 +9,4 @@ value in the bootloader environment) may be auto-adjusted to a value supported i
 
 There's a writing (in German) in an IPPF thread regarding the files in this subfolder:
 
-http://www.ip-phone-forum.de/showthread.php?t=286994&p=2186357
+<http://www.ip-phone-forum.de/showthread.php?t=286994&p=2186357>

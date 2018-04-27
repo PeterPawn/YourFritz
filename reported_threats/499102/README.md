@@ -1,3 +1,5 @@
+# Vulnerabily with FTP server login on FRITZ!OS
+
 Timeline:
 
 2016-06-24 13:04 - Vendor notified by (encrypted) e-mail to security@avm.de, there was no proof-of-concept exploit, only a (longer) verbal description of the threat.

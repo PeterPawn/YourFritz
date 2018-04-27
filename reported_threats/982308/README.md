@@ -14,7 +14,7 @@ The vendor was not notified yet. If the threat is still present in the next fina
 
 2017-02-10 03:49 - Vendor notified by e-mail, the flaw wasn't fixed in the newly released version 113.06.80
 
-2017-02-17 16:00 - First reply from vendor: an incident number (#982308) was assigned, the problem was forwarded to the internal development unit and the finding was confirmed. 
+2017-02-17 16:00 - First reply from vendor: an incident number (#982308) was assigned, the problem was forwarded to the internal development unit and the finding was confirmed.
                    No comment on whether or when it will be fixed. The 90 days period from my "responsible disclosure" policy was started on 2017-02-10.
                    The name of the subfolder was adjusted to reflect the assigned incident number.
 

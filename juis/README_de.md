@@ -1,3 +1,5 @@
+# Abfragen des JUIS (Java(?) Update Information Service) von AVM zur Suche nach neuer Firmware
+
 **Zweck:**
 
 Mit diesem Shell-Skript kann man über den AVM-Update-Service (JUIS) nach neuer Firmware suchen lassen.
@@ -9,11 +11,14 @@ Trotzdem kann sich der Aufruf des Skripts im einfachsten Fall auf die Angabe des
 Damit ist es nach wie vor ganz einfach, regelmäßig bei AVM (dem Hersteller der FRITZ!Box) nach neuer Firmware zu suchen - auch von _außerhalb_ der FRITZ!Box und für den Fall, dass man aus (nachvollziehbaren) Sicherheitsbedenken lieber auf die automatische Suche und die automatische Installation neuer Firmware verzichten möchte ... es gab in der Vergangenheit da einige Vorkommnisse, bei denen offensichtlich die vorhandenen Einstellungen zum Update nicht wirklich berücksichtigt wurden von der Firmware.
 
 **Aufruf:**
-```
+
+```text
     juis_check [ Optionen ] [ -- ] [ optionale Parameter ]
 ```
+
 Verfügbare Optionen sind:
-```
+
+```text
 -d, --debug                    - Debug-Ausgaben auf STDERR; muss die erste Option sein
 -h, --help                     - Anzeige dieser Hilfe-Information (muss die erste Option sein)
 -V, --version                  - (ausschließliche) Anzeige der Versionsinformation
@@ -21,15 +26,18 @@ Verfügbare Optionen sind:
 -s, --save-response <filename> - die Antwort vom AVM-Server wird in <filename> gespeichert
 -i, --ignore-cfgfile           - keine Konfigurationsdatei verwenden
 ```
+
 Das Skript versucht, eine Konfigurationsdatei zur Anpassung an die lokalen Gegebenheiten zu verwenden, dazu wird nach einer Datei mit dem (Aufruf-)Namen des Skripts und der Erweiterung ```cfg``` in dem Verzeichnis gesucht, in welchem das Skript selbst enthalten ist. Diese Datei wird dann _eingefügt_ und kann beliebigen Shell-Code enthalten - **man sollte also sehr genau die hiermit zum Ausdruck gebrachte Warnung beachten, dass es sich zu einem schweren Sicherheitsproblem auswachsen kann, wenn irgendjemand diese Datei ohne Kenntnis des Benutzers ändern kann**.
 
 Will man eine Konfigurationsdatei mit einem anderen Namen verwenden, kann deren Name über die Umgebungsvariable ```JUIS_CHECK_CFG``` festgelegt werden. Soll gar keine Konfigurationsdatei benutzt werden, kann man die Option ```--ignore-cfgfile``` (oder ```-i```) angeben - dann muß man aber auf irgendeinem anderen Weg dafür sorgen, daß die Variable ```Box``` einen passenden Wert hat, wenn nicht alle notwendigen Parameter explizit gesetzt wurden und ein Auslesen weiterer Werte aus einer FRITZ!Box erforderlich ist.
 
 Wird keine Konfigurationsdatei (mit dem automatisch gebildeten Namen) gefunden und wurde ihre Verarbeitung nicht über die o.a. Option unterdrückt, wird folgener Inhalt angenommen:
-```
+
+```shell
 Box=$1
 shift
 ```
+
 \- damit wird also als erster und einziger Parameter die Angabe des DNS-Namens oder der IP-Adresse der FRITZ!Box erwartet, von der weitere Einstellungen zu lesen wären. Gleichzeitig dürfen aber auf der Kommandozeile noch weitere Angaben folgen, die dann ihrerseits einen der im Folgenden beschriebenen Parameter festlegen (solange bei der Beschreibung der Variablen nichts anderes steht).
 
 Egal, auf welchem Weg man jetzt die notwendigen Parameter bereitstellt (ob bereits beim Aufruf der Skript-Datei über das Shell-Environment oder über entsprechende Paare aus Namen und Werten (verbunden durch ein Gleichheitszeichen) auf der Kommandozeile oder über die Anweisungen in einer Konfigurationsdatei), am Ende braucht es für die Abfrage die folgenden Werte:
@@ -63,9 +71,11 @@ Sollten jedenfalls am Ende noch irgendwelche Angaben fehlen (die Option ```--deb
 Für jede benötigte Einstellung kann man auch den Wert ```detect``` angeben, das hat denselben Effekt wie das Fehlen dieser Einstellung und führt zum Versuch, den Wert aus der Box zu lesen. Will man einen Wert nicht angeben und gleichzeitig verhindern, dass dieser aus dem Gerät gelesen wird, kann man ```empty``` angeben - das Ergebnis ist dann ein leerer Wert. Als drittes _Schlüsselwort_ im Wert einer Variablen kann ```fixed``` angegeben werden, dem dann - durch einen Doppelpunkt getrennt - der eigentliche Wert folgt. Das ist zwar dasselbe wie die direkte Angabe des Wertes, aber wenn dieser Wert selbst eines der Schlüsselworte wäre (also ```detect``` oder ```empty```), dann braucht man auch mal das ```fixed:``` als Präfix.
 
 Wenn man einen Wert angeben will (oder muss), der seinerseits ein Leerzeichen (oder irgendein anderes Zeichen aus der IFS-Variablen) enthält, muss man beachten, dass später im Skript die Zuweisungen auch noch einmal über ein ```eval```-Kommando getestet werden, daher muß man diese Zeichen passend maskieren, wenn man sie in einer Konfigurationsdatei verwenden will. Um z.B. den Produktnamen mit einem Leerzeichen zu setzen, müsste man in der Konfigurationsdatei die Anweisung:
-```
+
+```shell
 Name="FRITZ!Box\\ 7490"
 ```
+
 verwenden, um am Ende ein Leerzeichen im Wert für die Abfrage bei AVM zu erhalten.
 
 Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Informationen über das Ergebnis zu erhalten - dabei werden die folgenden Werte verwendet:
@@ -73,10 +83,10 @@ Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Inform
 | Wert | Bedeutung |
 | :---: | :--- |
 | 0 | neue Firmware gefunden, die URL zum Download wurde nach STDOUT geschrieben |
-| 1 | Fehler beim Aufruf des Skripts, z.B. fehlender Wert für die ```Box```-Variable, ungültige Parameter beim Aufruf, fehlende Programme, usw. | 
+| 1 | Fehler beim Aufruf des Skripts, z.B. fehlender Wert für die ```Box```-Variable, ungültige Parameter beim Aufruf, fehlende Programme, usw. |
 | 2 | keine neue Firmware gefunden, aber die Abfrage bei AVM war erfolgreich |
 | 3 | unvollständige Parameter, i.d.R. auch das Ergebnis einer nicht erreichbaren FRITZ!Box beim Versuch, fehlende Werte von dort zu lesen |
 | 4 | die Abfrage bei AVM war falsch, das kann an fehlenden oder falschen Parametern liegen und ist am Ende nur eine Schlussfolgerung aus der Tatsache, dass es gar keine Antwort vom AVM-Server innerhalb der Timeout-Zeitspanne gab (der könnte aber auch ganz simpel mal ausgefallen sein), die Antwort nicht von ```200 OK``` als Status-Code begleitet ist oder in der Antwort nicht die erwarteten Felder - das wären ```Found``` und ```DownloadURL``` im XML-Namespace ```ns3``` (```http://juis.avm.de/response```) - vorhanden sind |
 
 ---
-Wer eine Lizenz für MS Office hat, kann auch die Version in Excel von @Chatty benutzen: https://github.com/TheChatty/JUISinExcel
+Wer eine Lizenz für MS Office hat, kann auch die Version in Excel von @Chatty benutzen: <https://github.com/TheChatty/JUISinExcel>
