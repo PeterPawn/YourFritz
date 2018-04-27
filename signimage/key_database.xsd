@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:yourfritz-de:signimage" xmlns:si="urn:yourfritz-de:signimage" elementFormDefault="qualified">
+  <xs:simpleType name="rsa_modulus">
+    <xs:restriction base="xs:token">
+      <xs:pattern value="[0-9a-f]{256}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="rsa_exponent">
+    <xs:restriction base="xs:token">
+      <xs:pattern value="[0-9a-f]{6}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="key_source">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="vendor"/>
+      <xs:enumeration value="customer"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:element name="key">
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="modulus" type="si:rsa_modulus"/>
+        <xs:element name="exponent" type="si:rsa_exponent"/>
+      </xs:all>
+      <xs:attribute name="source" type="si:key_source" use="required"/>
+      <xs:attribute name="original_name" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="device">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="si:key" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="HWRevision" type="xs:integer" use="required"/>
+      <xs:attribute name="name" type="xs:string"/>
+      <xs:attribute name="key_location" type="xs:string" default="/etc"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="devices">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="si:device" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="UniqueHWRevision">
+      <xs:selector xpath="si:device"/>
+      <xs:field xpath="@HWRevision"/>
+    </xs:unique>
+  </xs:element>
+  <xs:element name="database">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="si:devices" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

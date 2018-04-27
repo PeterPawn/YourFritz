@@ -1,4 +1,6 @@
-Hier geht es zu einer deutschen Version dieser Datei: https://github.com/PeterPawn/YourFritz/blob/master/juis/README_de.md
+# Check AVM's JUIS for new versions of firmware
+
+Hier geht es zu einer deutschen Version dieser Datei: <https://github.com/PeterPawn/YourFritz/blob/master/juis/README_de.md>
 
 **Purpose:**
 
@@ -18,13 +20,13 @@ security concerns.
 
 **Usage:**
 
-```
+```text
    juis_check [ options ] [ -- ] [ optional parameters ]
 ```
 
 Supported options are:
 
-```
+```text
 -d, --debug                    - display debug info on STDERR; must prefix all other options
 -h, --help                     - show this information (must be the first option)
 -V, --version                  - show version and exit (must be the first option)
@@ -83,10 +85,12 @@ device, which will be accessed to retrieve missing values. Only if all of the va
 are already present, this read attempt will be skipped and the ```Box``` value will be ignored.
 
 If no configuration file was found, a file containing the lines:
-```
+
+```shell
 Box=$1
 shift
 ```
+
 is assumed instead - this means, the script expects the name or address of a FRITZ!OS device
 as first (and only) parameter and tries to read all other settings from the specified device.
 
@@ -97,9 +101,11 @@ If you need to specify a setting with a value, which contains characters from th
 (it's used for field splitting from POSIX-compatible shells), it may be a bit tricky ... the
 value will be used in an ```eval``` statement somewhere in the script and you have to escape such
 characters with double-backslashes in the value - e.g. you have to use this line:
-```
+
+```shell
 Name="FRITZ!Box\\ 7490"
 ```
+
 to get a single space in the final request.
 
 The exit code of this script may be used to distinguish between the results, the following
@@ -114,7 +120,7 @@ values are used:
 | 4 | wrong SOAP call built with specified and/or read parameters - it's the inference based on a missing answer, a status code other than '200 OK' from AVM or a malformed answer, which has to be a valid SOAP response in case of success |
 
 ---
-If you've a license to use MS Office (the Desktop version, because the cloud-based variant doesn't support macros, as far as I know), you could also use the Excel-based version of this check (by @Chatty): https://github.com/TheChatty/JUISinExcel
+If you've a license to use MS Office (the Desktop version, because the cloud-based variant doesn't support macros, as far as I know), you could also use the Excel-based version of this check (by @Chatty): <https://github.com/TheChatty/JUISinExcel>
 
 ---
 Possibly I'll provide a PowerShell version, too - it's the "remaining gap" in coverage for todays mainstream OS versions (a MS Office license isn't free of charge) and I'm thinking about closing this gap.

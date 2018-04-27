@@ -1,8 +1,9 @@
-## custom configuration framework
+# custom configuration framework
+
 The scripts in this subdirectory build a solution (based solely on a full-featured BusyBox binary, xz_comp is an optional
 component and may be used to get a better compression rate for the settings archive file) to manage additional settings
-for extension packages in a single archive file, which is unpacked each time the device will be started and where any 
-changes to the settings directory are monitored by inotifyd. If a monitored file has been changed, a countdown will be 
+for extension packages in a single archive file, which is unpacked each time the device will be started and where any
+changes to the settings directory are monitored by inotifyd. If a monitored file has been changed, a countdown will be
 started. If the timeout elapses, the changes recorded so far will be written to a new archive, which will be used for
 unpacking on the next start.
 
