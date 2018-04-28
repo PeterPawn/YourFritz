@@ -977,7 +977,7 @@ Class TarMember
 
     # set new file modification time value (epoch format), invalidate signature
     # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
-    hidden [void] setModTime([long] $newTime) {
+    [void] setModTime([long] $newTime) {
         $this.modTime = $newTime;
         $this.fileTime = [System.DateTimeOffset]::FromUnixTimeSeconds($this.modTime);
         $this.hasSignedHeader = $false;
@@ -985,7 +985,7 @@ Class TarMember
 
     # set new file modification time value (datetime format), invalidate signature
     # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
-    hidden [void] setModTime([System.DateTimeOffset] $newTime) {
+    [void] setModTime([System.DateTimeOffset] $newTime) {
         $this.fileTime = $newTime;
         $this.modTime = $this.fileTime.ToUnixTimeSeconds();
         $this.hasSignedHeader = $false;
