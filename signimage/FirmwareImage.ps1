@@ -201,12 +201,21 @@
 #                                                                                                     #
 # Properties from the base class TarFile:                                                             #
 #                                                                                                     #
-# [TarMember[]] $members                                                                              #
-# - an array with the current dictionary of the TAR file                                              #
+# [System.Collections.ArrayList] $members                                                             #
+# - an array list with the current dictionary of the TAR file                                         #
 # - look at the TarMember class for further info about properties and methods or use the PowerShell   #
 #   functions (Get-Member, etc.) to investigate a little bit yourself                                 #
 #                                                                                                     #
 # Methods provided by FirmwareImage class:                                                            #
+#                                                                                                     #
+# [void] Open([string] $fileName)                                                                     #
+# - open the specified file and load its content, discards any older data from this instancecontent   #
+#                                                                                                     #
+# [void] Save()                                                                                       #
+# [void] SaveTo([string] $outputFileName)                                                             #
+# - save the current content to the specified file or to the file, from which it was loaded           #
+# - the first variant isn't really safe, there's no backup of the previous content and an error may   #
+#   lead to complete loss of data                                                                     #
 #                                                                                                     #
 # [System.IO.MemoryStream] extractMemberAndRemoveChecksum([TarMember] $member)                        #
 # [void] extractMemberAndRemoveChecksum([TarMember] $member, [string] $outputName)                    #
@@ -234,6 +243,9 @@
 # - the signature is added to the members dictionary of the base class and - finally - the new        #
 #   content is written to the specified file                                                          #
 #                                                                                                     #
+# [void] resetSignature()                                                                             #
+# - remove an existing signature from the instance                                                    #
+#                                                                                                     #
 # [void] removeMember([TarMember] $member)                                                            #
 # [void] addMember([TarMember] $member)                                                               #
 # [void] insertMember([TarMember] $member, [int] $position)                                           #
@@ -253,16 +265,15 @@
 #                                                                                                     #
 # Because property values of a PowerShell class are always accessible by the caller, it's possible to #
 # change their value (or use their methods, if the property value is another object) without any      #
-# chance for the class code to get notified about this.                                               # 
+# chance for the class code to get notified about this.                                               #
 # So you may change the data stream of a TarMember object and the TarFile object, wherein this member #
 # is contained, does not register this and assumes, an existing signature is still valid.             #
 #                                                                                                     #
 # If you change any property of a TarMember object or the assigned data stream, you should call the   #
-# 'prepareSealedContent' method of this object to re-compute the CRC32 values for header and data. At #
-# the same time you should consider to call the 'resetSigned' method of the FirmwareImage class to    #
-# ensure, that no further signature verification could take place. If you later decide to add your    #
-# own signature, the 'prepareSealedContent' method will be called automatically for each existing     #
-# member.                                                                                             #
+# 'sealContent' method of this object to re-compute the CRC32 values for header and data. At the same #
+# zime you should consider to call the 'resetSigned' method of the FirmwareImage class to ensure,     #
+# that no further signature verification could take place. If you later decide to add your own        #
+# signature, the 'sealContent' method will be called automatically for each existing member.          #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -280,10 +291,10 @@ a collection of PowerShell classes to handle AVM's firmware image files
 
 (C) 2017-2018 P. Haemmerlein (peterpawn@yourfritz.de)
 
-'@
-Write-Host -ForegroundColor Yellow "Look at the comment lines from the beginning of this file to get further info, how to make use of the provided classes.`n"
+'@;
+Write-Host -ForegroundColor Yellow "Look at the comment lines from the beginning of this file to get further info, how to make use of the provided classes.$([System.Environment]::NewLine)";
 
-Write-Host -ForegroundColor Green "The classes are now ready to be used in this session."
+Write-Host -ForegroundColor Green "The classes are now ready to be used in this session.";
 #######################################################################################################
 #                                                                                                     #
 # 'Add-Type' may only be called once in a session for the same type - therefore we check, if our own  #
@@ -292,26 +303,26 @@ Write-Host -ForegroundColor Green "The classes are now ready to be used in this 
 #######################################################################################################
 try
 {
-    [YourFritz.CRC32] | Get-Member | Out-Null
-    Write-Host -ForegroundColor Red "The inline type definitions were NOT updated."
+    [YourFritz.CRC32] | Get-Member | Out-Null;
+    Write-Host -ForegroundColor Red "The inline type definitions were NOT updated.";
 }
 catch
 {
-#######################################################################################################
-#                                                                                                     #
-# calculate a CRC32 value according to the rules for a TI checksum in AVM's firmware                  #
-# - this is an inline type, which will be really compiled to IL code ... so it's much faster than a   #
-#   pure PowerShell based version                                                                     #
-# - TI variant uses the "normal" polynomial (0x(1)04C11DB7) and an initial remainder of all zeros,    #
-#   while the final value is complemented                                                             #
-# - the (non-zero) bytes (in little endian order) of the size of previously processed data are        #
-#   appended in the last step to get the final checksum value                                         #
-#                                                                                                     #
-#######################################################################################################
-Add-Type -TypeDefinition @'
-namespace YourFritz 
+    #######################################################################################################
+    #                                                                                                     #
+    # calculate a CRC32 value according to the rules for a TI checksum in AVM's firmware                  #
+    # - this is an inline type, which will be really compiled to IL code ... so it's much faster than a   #
+    #   pure PowerShell based version                                                                     #
+    # - TI variant uses the "normal" polynomial (0x(1)04C11DB7) and an initial remainder of all zeros,    #
+    #   while the final value is complemented                                                             #
+    # - the (non-zero) bytes (in little endian order) of the size of previously processed data are        #
+    #   appended in the last step to get the final checksum value                                         #
+    #                                                                                                     #
+    #######################################################################################################
+    Add-Type -TypeDefinition @'
+namespace YourFritz
 {
-    public class CRC32 
+    public class CRC32
     {
         private System.UInt32 crcPolynomial = 0x04C11DB7;
         private System.UInt32[] crcRemainderTable;
@@ -336,10 +347,10 @@ namespace YourFritz
 
             System.Byte[] buffer = new System.Byte[32 * 1024];
             int read = 0;
-            
+
             data.Seek(0, System.IO.SeekOrigin.Begin);
             this.Reset();
-            
+
             while ((read = data.Read(buffer, 0, buffer.Length)) > 0)
                 this.Update(buffer, 0, read);
 
@@ -353,19 +364,19 @@ namespace YourFritz
             System.UInt32 bitPosition;
 
             this.crcRemainderTable = new System.UInt32[256];
-            
-            for (dividend = 0; dividend < 256; dividend++) 
+
+            for (dividend = 0; dividend < 256; dividend++)
             {
                 remainder = dividend << 24;
-                for (bitPosition = 0; bitPosition < 8; bitPosition++) 
+                for (bitPosition = 0; bitPosition < 8; bitPosition++)
                 {
                     remainder = ( remainder << 1 ) ^ ( ( remainder & 0x80000000 ) != 0 ? this.crcPolynomial : 0 );
-                }        
+                }
                 this.crcRemainderTable[dividend] = remainder;
             }
         }
 
-        public void Update(System.Byte[] data, long index, long count) 
+        public void Update(System.Byte[] data, long index, long count)
         {
             for (long l = 0; l < (index + count); l++)
             {
@@ -373,17 +384,17 @@ namespace YourFritz
             }
         }
 
-        public void Update(System.Byte[] data) 
+        public void Update(System.Byte[] data)
         {
             this.Update(data, 0, data.Length);
         }
 
-        public void Update(System.Byte data) 
+        public void Update(System.Byte data)
         {
             this.crcRemainder = (this.crcRemainder << 8) ^ this.crcRemainderTable[(this.crcRemainder >> 24) ^ data];
         }
 
-        public System.UInt32 Finish() 
+        public System.UInt32 Finish()
         {
             return ~this.crcRemainder;
         }
@@ -410,9 +421,9 @@ namespace YourFritz
 
             while ((read = data.Read(buffer, 0, buffer.Length)) > 0)
                 this.Update(buffer, 0, read);
-            
+
             data.Seek(0, System.IO.SeekOrigin.Begin);
-            
+
             return this.Finish();
         }
     }
@@ -421,7 +432,7 @@ namespace YourFritz
     {
         private System.UInt32 dataSize;
         private YourFritz.CRC32 crc;
-        
+
         public Cksum()
         {
             this.dataSize = 0;
@@ -450,7 +461,7 @@ namespace YourFritz
         public System.Byte[] Finalize()
         {
             System.UInt32 dataSize = this.dataSize;
-            
+
             while (dataSize > 0)
             {
                 this.crc.Update((System.Byte)(dataSize & 0xFF));
@@ -545,16 +556,16 @@ Class TarHeader
 
         if ($source.fileType -eq [TarMemberType]::Symlink)
         {
-            $this.linkTarget = $source.linkTarget.Substring(0, 100);
+            $this.linkTarget = $source.linkTarget.Substring(0, [Math]::Min($source.linkTarget.Length, 100));
         }
 
         if ($source.userName.Length -gt 0)
         {
-            $this.userName = $source.userName.Substring(0, 32);
+            $this.userName = $source.userName.Substring(0, [Math]::Min($source.userName.Length, 32));
         }
         if ($source.groupName.Length -gt 0)
         {
-            $this.groupName = $source.groupName.Substring(0, 32);
+            $this.groupName = $source.groupName.Substring(0, [Math]::Min($source.groupName.Length, 32));
         }
 
         $this.majorDevice = [System.Convert]::ToString($source.majorDevice, 8);
@@ -615,7 +626,7 @@ Class TarHeader
         }
 
         [int] $chksum = 0;
-        for ([int] $i=0; $i -lt $buffer.count; $i++)
+        for ([int] $i = 0; $i -lt $buffer.count; $i++)
         {
             if ($i -lt 148 -or $i -ge (148 + 8))
             {
@@ -693,6 +704,12 @@ Class TarHeader
 #######################################################################################################
 Class TarMember
 {
+    # static members with umask for new member creation
+    static [int] $umaskFile = [System.Convert]::ToInt32("037", 8);
+    static [int] $umaskDir = [System.Convert]::ToInt32("027", 8);
+    #
+    # instance members
+    #
     # member name, build from all header fields containing name parts
     [string] $fileName;
     # mode/permission flags
@@ -737,9 +754,23 @@ Class TarMember
     TarMember()
     {
         $this.fileType = [TarMemberType]::RegularFile;
-        $this.fileTime = [System.DateTimeOffset]::FromUnixTimeSeconds($this.modTime);
+
+        $this.fileTime = [System.DateTimeOffset]::Now;
+        $this.modTime = $this.fileTime.ToUnixTimeSeconds();
+
         $this.data = [System.IO.MemoryStream]::new();
         $this.hasSignedHeader = $false;
+
+        if ($this.fileType -eq [TarMemberType]::Directory)
+        {
+            $this.fileMode = ([System.Convert]::ToInt32("777", 8) -band (-bnot [TarMember]::umaskDir));
+        }
+        else
+        {
+            $this.fileMode = ([System.Convert]::ToInt32("666", 8) -band (-bnot [TarMember]::umaskFile));
+        }
+        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
+        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
     }
 
     # create a new member from an existing one ($source)
@@ -747,21 +778,26 @@ Class TarMember
     TarMember([TarMember] $source)
     {
         $this.fileName = $source.fileName;
+        $this.fileType = $source.fileType;
+
         $this.fileMode = $source.fileMode;
+        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
+        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
+
         $this.uid = $source.uid;
         $this.userName = $source.userName;
         $this.gid = $source.gid;
         $this.groupName = $source.groupName;
+
         $this.size = $source.size;
+        $this.data = $source.data;
+
         $this.modTime = $source.modTime;
         $this.fileTime = $source.fileTime;
-        $this.fileType = $source.fileType;
+
         $this.linkTarget = $source.linkTarget;
         $this.majorDevice = $source.majorDevice;
         $this.minorDevice = $source.minorDevice;
-        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
-        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
-        $this.data = $source.data;
 
         $this.hasSignedHeader = $source.hasSignedHeader;
         if ($source.hasSignedHeader)
@@ -774,28 +810,32 @@ Class TarMember
         $this.crcHeader = $source.crcHeader;
     }
 
-    # create a new member from the specified TarHeader object 
-    TarMember([TarHeader] $source,           # a TarHeader object built from the content of the header
-              [byte[]] $signedHeader,        # a byte array (optional) with the original header data read from an archive
-              [System.IO.Stream] $dataStream # a stream containing the file data, if any
-             )
+    # create a new member from the specified TarHeader object
+    TarMember([TarHeader] $source, # a TarHeader object built from the content of the header
+        [byte[]] $signedHeader, # a byte array (optional) with the original header data read from an archive
+        [System.IO.Stream] $dataStream # a stream containing the file data, if any
+    )
     {
         $this.fileName = $source.fileName;
+        $this.fileType = [TarMemberType][System.Convert]::ToInt32($source.fileType, 8);
+
         $this.fileMode = [System.Convert]::ToInt32($source.mode, 8) -band 0x0FFF;
+        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
+        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
+
         $this.uid = [System.Convert]::ToInt32($source.uid, 8);
         $this.userName = $source.userName;
         $this.gid = [System.Convert]::ToInt32($source.gid, 8);
         $this.groupName = $source.groupName;
-        $this.size = [System.Convert]::ToInt32($source.size, 8);
+
         $this.modTime = [System.Convert]::ToInt32($source.modTime, 8);
         $this.fileTime = [System.DateTimeOffset]::FromUnixTimeSeconds($this.modTime);
-        $this.fileType = [TarMemberType][System.Convert]::ToInt32($source.fileType, 8);
+
         $this.linkTarget = $source.linkTarget;
         $this.majorDevice = [System.Convert]::ToInt32($source.majorDevice, 8);
         $this.minorDevice = [System.Convert]::ToInt32($source.minorDevice, 8);
-        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
-        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
 
+        $this.size = [System.Convert]::ToInt32($source.size, 8);
         if ($this.size -gt 0)
         {
             [byte[]] $memberData = [byte[]]::CreateInstance([byte], $this.size);
@@ -822,6 +862,279 @@ Class TarMember
         {
             $this.crcHeader = 0;
         }
+    }
+
+    # hidden constructor for static factory methods
+    hidden TarMember([TarMemberType] $fileType, [string] $fileName, [System.IO.MemoryStream] $data)
+    {
+        $this.fileName = $fileName;
+        $this.fileType = $fileType;
+
+        if ($this.fileType -eq [TarMemberType]::Directory)
+        {
+            $this.fileMode = ([System.Convert]::ToInt32("777", 8) -band (-bnot [TarMember]::umaskDir));
+        }
+        else
+        {
+            $this.fileMode = ([System.Convert]::ToInt32("666", 8) -band (-bnot [TarMember]::umaskFile));
+        }
+        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
+        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
+
+        $this.fileTime = [System.DateTimeOffset]::Now;
+        $this.modTime = $this.fileTime.ToUnixTimeSeconds();
+
+        if ($data -ne $null)
+        {
+            $this.data = $data;
+            $this.size = $data.Length;
+        }
+        else
+        {
+            $this.data = [System.IO.MemoryStream]::new();
+        }
+
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new file mode value, refresh dependent properties, invalidate signature
+    [void] setMode([int] $newFileMode)
+    {
+        $this.fileMode = $newFileMode;
+
+        $this.mode = [System.Convert]::ToString($this.fileMode, 8).PadLeft(4, '0');
+        $this.displayMode = [TarMember]::getDisplayMode($this.fileMode, $this.fileType);
+
+        $this.hasSignedHeader = $false;
+    }
+
+    #    [void] setMode([string] $newMode)
+    #    {
+    #
+    #    }
+
+    # set new user ID value, invalidate signature
+    [void] setUID([int] $uid)
+    {
+        $this.uid = $uid;
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new user name value, invalidate signature
+    [void] setUserName([string] $userName)
+    {
+        $this.userName = $userName;
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new user ID and name at once
+    [void] setUserNameAndID([string] $userName, [int] $uid)
+    {
+        $this.setUID($uid);
+        $this.setUserName($userName);
+    }
+
+    # set new group ID value, invalidate signature
+    [void] setGID([int] $gid)
+    {
+        $this.gid = $gid;
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new group name value, invalidate signature
+    [void] setGroupName([string] $groupName)
+    {
+        $this.groupName = $groupName;
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new group ID and name at once
+    [void] setGroupNameAndID([string] $groupName, [int] $gid)
+    {
+        $this.setGID($gid);
+        $this.setGroupName($groupName);
+    }
+
+    # set new file content and data size, invalidate signature
+    [void] setData([System.IO.MemoryStream] $data)
+    {
+        $this.data = $data;
+        if ($data -ne $null)
+        {
+            $this.size = $this.data.Length;
+        }
+        else
+        {
+            $this.size = 0;
+        }
+        $this.hasSignedHeader = $false;
+    }
+
+    # remove any existing data from the member
+    [void] removeData()
+    {
+        $this.setData($null);
+    }
+
+    # set new file modification time value (epoch format), invalidate signature
+    # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
+    [void] setModTime([long] $newTime)
+    {
+        $this.modTime = $newTime;
+        $this.fileTime = [System.DateTimeOffset]::FromUnixTimeSeconds($this.modTime);
+        $this.hasSignedHeader = $false;
+    }
+
+    # set new file modification time value (datetime format), invalidate signature
+    # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
+    [void] setModTime([System.DateTimeOffset] $newTime)
+    {
+        $this.fileTime = $newTime;
+        $this.modTime = $this.fileTime.ToUnixTimeSeconds();
+        $this.hasSignedHeader = $false;
+    }
+
+    # compute new CRC values for the current state (properties, file data) of this instance
+    hidden [void] sealContent()
+    {
+        $crc = New-Object YourFritz.CRC32;
+
+        $this.signedHeader = [TarHeader]::new($this).toBytes();
+        $this.hasSignedHeader = $true;
+        $this.crcHeader = $crc.OneStep($this.signedHeader);
+
+        if ($this.data -ne $null -and $this.data.Length -gt 0)
+        {
+            $this.crcData = $crc.OneStep([System.IO.Stream]$this.data);
+        }
+        else
+        {
+            $this.crcData = 0;
+        }
+    }
+
+    # get the complete content for a TAR file (header + file data) of this member
+    hidden [System.IO.MemoryStream] getTarContent([bool] $forSigning)
+    {
+        if ($forSigning)
+        {
+            if (-not $this.hasSignedHeader)
+            {
+                throw "No signed/sealed header present here - unable to output signed content.";
+            }
+
+            $crc = New-Object YourFritz.CRC32;
+
+            if ($crc.OneStep($this.signedHeader) -ne $this.crcHeader -or
+                ($this.size -gt 0 -and $crc.OneStep($this.data) -ne $this.crcData))
+            {
+                throw ("The original content was changed (member {0}), retrieving of data stream for signing isn't possible." -f $this.fileName);
+            }
+        }
+
+        if ($this.fileName -eq $null -or $this.fileName.Length -eq 0)
+        {
+            throw "A member entry needs a file name.";
+        }
+
+        [System.IO.MemoryStream] $outputStream = [System.IO.MemoryStream]::new();
+
+        if ($this.hasSignedHeader)
+        {
+            $outputStream.Write($this.signedHeader, 0, 512);
+        }
+        else
+        {
+            $outputStream.Write([TarHeader]::new($this).toBytes(), 0, 512);
+        }
+
+        if ($this.size -gt 0)
+        {
+            $this.data.WriteTo($outputStream);
+            [int] $fill = (($this.size + 511) -band -512) - $this.size;
+            $outputStream.Write([byte[]]::CreateInstance([byte], $fill), 0, $fill);
+        }
+
+        return $outputStream;
+    }
+
+    # - static factory methods for new TarMember objects, based on their file type
+    # - use them for more readability and to encapsulate additional assignments to property values
+    # - there's no factory method for hard-links, they're used seldom
+
+    # create a new TAR file member as empty file
+    static [TarMember] newEmptyFile([string] $fileName)
+    {
+        return [TarMember]::newMember([TarMemberType]::RegularFile, $fileName, [System.IO.MemoryStream]::new());
+    }
+
+    # create a new TAR file member with the specified data as content
+    static [TarMember] newFile([string] $fileName, [System.IO.MemoryStream] $data)
+    {
+        return [TarMember]::newMember([TarMemberType]::RegularFile, $fileName, [System.IO.MemoryStream] $data);
+    }
+
+    # get a new member for a directory
+    static [TarMember] newDirectory([string] $dirName)
+    {
+        return [TarMember]::newMember([TarMemberType]::Directory, $dirName, $null);
+    }
+
+    # get a new member for a symbolic link
+    static [TarMember] newSymlink([string] $from, [string] $to)
+    {
+        [TarMember] $newMember = [TarMember]::newMember([TarMemberType]::Symlink, $from, $null);
+        $newMember.linkTarget = $to;
+        return $newMember;
+    }
+
+    # get a new member for a pipe
+    static [TarMember] newPipe([string] $pipeName)
+    {
+        return [TarMember]::newMember([TarMemberType]::Pipe, $pipeName, $null);
+    }
+
+    # get a new member for a character device
+    static [TarMember] newCharDevice([string] $devName, [int] $major, [int] $minor)
+    {
+        [TarMember] $newMember = [TarMember]::newMember([TarMemberType]::CharDevice, $devName, $null);
+        $newMember.majorDevice = $major;
+        $newMember.minorDevice = $minor;
+        return $newMember;
+    }
+
+    # get a new member for a block device
+    static [TarMember] newBlockDevice([string] $devName, [int] $major, [int] $minor)
+    {
+        [TarMember] $newMember = [TarMember]::newMember([TarMemberType]::BlockDevice, $devName, $null);
+        $newMember.majorDevice = $major;
+        $newMember.minorDevice = $minor;
+        return $newMember;
+    }
+
+    # - all further methods are hidden to keep suggestions list for auto-completion smaller
+
+    # create a new generic TarMember object with the specified property values and file data content
+    # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
+    hidden static [TarMember] newMember(
+        [TarMemberType] $fileType, # file type
+        [string] $fileName, # file name
+        [System.IO.MemoryStream] $data # file data, if any
+    )
+    {
+        [TarMember] $newMember = [TarMember]::new($fileType, $fileName, $data);
+        return $newMember;
+    }
+
+    # overloaded method with a byte array for member data
+    # it's only hidden to keep the list of visible methods (for auto-completion) somewhat smaller
+    hidden static [TarMember] newMember(
+        [TarMemberType] $fileType, # file type
+        [string] $fileName, # file name
+        [byte[]] $data                 # file data, if any
+    )
+    {
+        return [TarMember]::newMember($fileType, $fileName, [System.IO.MemoryStream]::new($data));
     }
 
     # internal function to get a symbolic representation of mode flags
@@ -889,70 +1202,6 @@ Class TarMember
 
         return $type + $show;
     }
-
-    # get the complete content for a TAR file (header + file data) of this member
-    hidden [System.IO.MemoryStream] getTarContent([bool] $forSigning)
-    {
-        if ($forSigning)
-        {
-            if (-not $this.hasSignedHeader)
-            {
-                throw "No signed/sealed header present here - unable to output signed content.";
-            }
-
-            $crc = New-Object YourFritz.CRC32;
-
-            if ($crc.OneStep($this.signedHeader) -ne $this.crcHeader -or 
-                ($this.size -gt 0 -and $crc.OneStep($this.data) -ne $this.crcData))
-            {
-                throw ("The original content was changed (member {0}), retrieving of data stream for signing isn't possible." -f $this.fileName);
-            }
-        }
-
-        [System.IO.MemoryStream] $outputStream = [System.IO.MemoryStream]::new();
-
-        if ($this.hasSignedHeader)
-        {
-            $outputStream.Write($this.signedHeader, 0, 512);
-        }
-        else
-        {
-            $outputStream.Write([TarHeader]::new($this).toBytes(), 0, 512);
-        }
-
-        if ($this.size -gt 0)
-        {
-            $this.data.WriteTo($outputStream);
-            [int] $fill = (($this.size + 511) -band -512) - $this.size;
-            $outputStream.Write([byte[]]::CreateInstance([byte], $fill), 0, $fill);
-        }
-
-        return $outputStream;
-    }
-
-    hidden [void] prepareSealedContent()
-    {
-        $crc = New-Object YourFritz.CRC32;
-
-        $this.signedHeader = [TarHeader]::new($this).toBytes();
-        $this.hasSignedHeader = $true;
-        $this.crcHeader = $crc.OneStep($this.signedHeader);
-        if ($this.data -ne $null -and $this.data.Length -gt 0)
-        {
-            $this.crcData = $crc.OneStep([System.IO.Stream]$this.data);
-        }
-        else
-        {
-            $this.crcData = 0;
-        }
-    }
-
-    # create a new TarMember object with the specified property values and file data content
-    static [TarMember] newMember([string] $fileName)
-    {
-        # TODO: implement it
-        return $null;
-    }
 }
 
 #######################################################################################################
@@ -963,7 +1212,7 @@ Class TarMember
 #######################################################################################################
 Class TarFile
 {
-    [TarMember[]] $members;
+    [System.Collections.ArrayList] $members = [System.Collections.ArrayList]::new();
     [long] $garbageAtEnd;
 
     # create an empty file
@@ -1017,12 +1266,12 @@ Class TarFile
                 }
                 [TarHeader] $header = [TarHeader]::new($buffer);
                 [TarMember] $newMember = [TarMember]::new($header, $buffer, $sourceStream);
-                $this.members += $newMember;
+                $this.members.Add($newMember);
             }
         }
-        catch 
+        catch
         {
-            throw ("Error reading TAR file.`n{0}" -f $_.Exception.ToString());
+            throw ("Error reading TAR file.$([System.Environment]::NewLine){0}" -f $_.Exception.ToString());
         }
     }
 
@@ -1089,7 +1338,7 @@ Class TIcksum
     {
         $this.data = $data;
     }
-    
+
     # check, if the content contains a signature (in the last 8 bytes)
     [bool] HasSignature()
     {
@@ -1434,7 +1683,7 @@ Class Asn1Data
     {
         $this.dataType = [Asn1Type] $data[0];
         $this.dataSize = $data[1];
-        
+
         [int] $offset = 2;
         [int] $bitStringOffset = 0;
 
@@ -1442,14 +1691,14 @@ Class Asn1Data
         {
             # explicit length encoding follows
             $this.dataSize = 0;
-        
+
             for ([int] $i = 0; $i -lt ($data[1] -band 127); $i++)
             {
                 $this.dataSize = ($this.dataSize -shl 8) + [System.Convert]::ToInt32($data[2 + $i]);
                 $offset++;
             }
         }
-        
+
         if ($this.dataType -eq [Asn1Type]::BitString -or $this.dataType -eq [Asn1Type]::Int)
         {
             if ($this.dataType -eq [Asn1Type]::BitString)
@@ -1467,7 +1716,7 @@ Class Asn1Data
                 }
             }
         }
-        
+
         [byte[]] $this.value = [byte[]]::CreateInstance([byte], $this.dataSize - $bitStringOffset);
         $this.encodedSize = $this.dataSize + $offset;
         [System.Array]::Copy($data, $offset + $bitStringOffset, $this.value, 0, $this.dataSize - $bitStringOffset);
@@ -1535,12 +1784,12 @@ Class Asn1Data
         {
             throw "Data inside ASN.1 structure isn't a sequence.";
         }
-        
+
         [Asn1Data[]] $output = $null;
         [int] $sequenceSize = $this.dataSize;
         [int] $offset = 0;
         [byte[]] $seqArray = $null;
-        
+
         while ($sequenceSize -gt 0)
         {
             $seqArray = [byte[]]::CreateInstance([byte], $sequenceSize);
@@ -1675,7 +1924,7 @@ Class SigningKey
     SigningKey()
     {
         $this.rsa = [System.Security.Cryptography.RSA]::Create();
-	    $this.rsa.KeySize = 1024;
+        $this.rsa.KeySize = 1024;
     }
 
     # create a new instance from an existing key object (ex- and import the key components -> deep copy)
@@ -1729,19 +1978,19 @@ Class SigningKey
 
         [string] $modulus_unsigned = [System.String]::Empty;
         [string] $exponent_unsigned = [System.String]::Empty;
-    
+
         if ($rsaParameters.Modulus[0] -gt 127)
         {
             $modulus_unsigned = "00";
         }
-    
+
         if ($rsaParameters.Exponent[0] -gt 127)
         {
             $exponent_unsigned = "00";
         }
 
         [byte[]] $asciiText = [System.Text.Encoding]::ASCII.GetBytes($modulus_unsigned + $modulus + "`n" + $exponent_unsigned + $exponent + "`n");
-    
+
         return [System.IO.MemoryStream]::new($asciiText);
     }
 
@@ -1773,7 +2022,7 @@ Class SigningKey
     hidden [byte[]] toDER_private()
     {
         [System.Security.Cryptography.RSAParameters] $rsaParameters = $this.rsa.ExportParameters($true);
-        
+
         [Asn1Data] $version = [Asn1Data]::new([Asn1Type]::Int, [byte[]] (0));
         [Asn1Data] $modulus = [Asn1Data]::new([Asn1Type]::Int, $rsaParameters.Modulus);
         [Asn1Data] $exponent = [Asn1Data]::new([Asn1Type]::Int, $rsaParameters.Exponent);
@@ -1783,19 +2032,19 @@ Class SigningKey
         [Asn1Data] $dp = [Asn1Data]::new([Asn1Type]::Int, $rsaParameters.DP);
         [Asn1Data] $dq = [Asn1Data]::new([Asn1Type]::Int, $rsaParameters.DQ);
         [Asn1Data] $iq = [Asn1Data]::new([Asn1Type]::Int, $rsaParameters.InverseQ);
-        
+
         [Asn1Data] $keySeq = [Asn1Data]::new([Asn1Type]::Sequence,
-                                             $version.toByteArray() +
-                                             $modulus.toByteArray() +
-                                             $exponent.toByteArray() +
-                                             $d.toByteArray() +
-                                             $p.toByteArray() +
-                                             $q.toByteArray() +
-                                             $dp.toByteArray() +
-                                             $dq.toByteArray() +
-                                             $iq.toByteArray()
-                                            );
-        
+            $version.toByteArray() +
+            $modulus.toByteArray() +
+            $exponent.toByteArray() +
+            $d.toByteArray() +
+            $p.toByteArray() +
+            $q.toByteArray() +
+            $dp.toByteArray() +
+            $dq.toByteArray() +
+            $iq.toByteArray()
+        );
+
         return $keySeq.toByteArray();
     }
 
@@ -1856,7 +2105,7 @@ Class SigningKey
         $this.toRSAPublicKeyStream().WriteTo([System.IO.File]::Create($outputFileName));
     }
 
-    # get an array containing the private key in PEM format, optionally encrypted and with 
+    # get an array containing the private key in PEM format, optionally encrypted and with
     # $password protected
     [byte[]] toRSAPrivateKey([string] $keyPassword)
     {
@@ -2142,7 +2391,7 @@ Class SigningKey
         {
             throw "Invalid private key file data (invalid number of entries for RSAPrivateKey).";
         }
-        foreach($keyEntry in $keyValues)
+        foreach ($keyEntry in $keyValues)
         {
             if ($keyEntry.dataType -ne [Asn1Type]::Int)
             {
@@ -2286,6 +2535,23 @@ Class FirmwareImage : TarFile
         $this.isSigned = $this.findSignature();
     }
 
+    # save the current content to the original file (unsafe, there's no backup of the old content)
+    [void] Save()
+    {
+        if ($this.imageName -eq $null -or $this.imageName.Length -eq 0)
+        {
+            throw "Missing file name of this firmware image.";
+        }
+        $this.SaveTo($this.ImageName);
+        [System.IO.File]::WriteAllBytes($this.imageName, $this.data.ToArray());
+    }
+
+    # save the current content to the original file (unsafe, there's no backup of the old content)
+    [void] SaveTo([string] $outputFileName)
+    {
+        [System.IO.File]::WriteAllBytes($outputFileName, $this.data.ToArray());
+    }
+
     # get the specified member data after removing the TI checksum, if any
     [System.IO.MemoryStream] extractMemberAndRemoveChecksum([TarMember] $member)
     {
@@ -2326,7 +2592,7 @@ Class FirmwareImage : TarFile
             }
             catch
             {
-                throw ("Error verifying signed data.`n{0}" -f $_.Exception.ToString());
+                throw ("Error verifying signed data.$([System.Environment]::NewLine){0}" -f $_.Exception.ToString());
             }
         }
         return $false;
@@ -2348,7 +2614,7 @@ Class FirmwareImage : TarFile
             }
             catch
             {
-                throw ("Error reading key file {0}.`n{1}" -f $name, $_.Exception.ToString());
+                throw ("Error reading key file {0}.$([System.Environment]::NewLine){1}" -f $name, $_.Exception.ToString());
             }
         }
         return $this.verifySignature(([SigningKey[]]$keys));
@@ -2370,7 +2636,7 @@ Class FirmwareImage : TarFile
 
         foreach ($member in ([TarFile]$this).members)
         {
-            $member.prepareSealedContent();
+            $member.sealContent();
         }
         $this.garbageAtEnd = 0;
 
@@ -2386,7 +2652,7 @@ Class FirmwareImage : TarFile
             $this.signature.userName = "root";
             $this.signature.groupName = "root";
             $this.signature.size = 128;
-            $this.members += $this.signature;
+            $this.members.Add($this.signature);
         }
 
         $this.signature.modTime = ([System.DateTimeOffset][System.DateTime]::Now).ToUnixTimeSeconds();
@@ -2418,6 +2684,20 @@ Class FirmwareImage : TarFile
     [void] addSignature([string] $keyFileName, [string] $password, [string] $outputFileName)
     {
         $this.addSignature([SigningKey]::FromRSAPrivateKeyFile($keyFileName, $password), $outputFileName);
+    }
+
+    # remove an existing signature from this image
+    [void] resetSignature()
+    {
+        # any change to the file structure invalidates the signature, so we'll remove it
+        if ($this.isSigned)
+        {
+            $this.isSigned = $false;
+            # any older garbage (which was needed to keep an old signature valid) may be ignore now, too
+            $this.garbageAtEnd = 0;
+            $this.removeMember($this.signature);
+            $this.signature = $null;
+        }
     }
 
     # remove the specified member from this image, any existing signature becomes invalid and will be removed, too
@@ -2460,21 +2740,7 @@ Class FirmwareImage : TarFile
         return $false;
     }
 
-    # remove an existing signature from this image
-    hidden [void] resetSignature()
-    {
-        # any change to the file structure invalidates the signature, so we'll remove it
-        if ($this.isSigned)
-        {
-            $this.removeMember($this.signature);
-            $this.signature = $null;
-            $this.isSigned = $false;
-            # any older garbage (which was needed to keep an old signature valid) may be ignore now, too
-            $this.garbageAtEnd = 0;
-        }
-    }
-
-    # get the data stream used for signing an image from this object, either for verification purposes or 
+    # get the data stream used for signing an image from this object, either for verification purposes or
     # for adding an own signature
     hidden [System.IO.MemoryStream] signingStream()
     {
@@ -2495,8 +2761,8 @@ Class FirmwareImage : TarFile
         return $sigStream;
     }
 
-    # get the data stream for this image ... it will re-produce the same content as the loaded file (from the 
-    # last 'new' or 'Open' method call), as long as no changes were applied to the original members (content, 
+    # get the data stream for this image ... it will re-produce the same content as the loaded file (from the
+    # last 'new' or 'Open' method call), as long as no changes were applied to the original members (content,
     # attributes, sort order, etc.) - its more or less the same stream as of 'signingStream' method, but here
     # a signature is contained, if any
     hidden [System.IO.MemoryStream] contentStream()

@@ -59,7 +59,7 @@ To use these classes, simply "source" this file with
 If you want to create a new key for image signing and save it to the file `image_signing.key` (in the current directory), protected by password `firmware_signing`, you would enter the following:
 
 ```Powershell
-[SigningKey]::new().toRSAPrivateKeyFile("firmware_signing", "$pwd\image_signing.key")
+[SigningKey]::new().toRSAPrivateKeyFile("$pwd\image_signing.key", "firmware_signing")
 ```
 
 To load this key from file again and extract/store the public key as a file (with the same base-name) with PEM encoding and as another one with AVM's format of an ASC file, simply enter:
