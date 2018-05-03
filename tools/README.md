@@ -1,10 +1,11 @@
-## Files in this folder
-### (this is something like a "grocery store" of scripts for different purposes)
+# Files in this folder
+
+## (this is something like a "grocery store" of scripts for different purposes)
 
 `alive_start.sh` (__target__: FRITZ!OS device)
 
 - send a heartbeat signal (simply a HTTP request) to the server set up in the (first) configured DynDNS account
-- needs a method to decode the encrypted credentials for the DynDNS account, you can use https://github.com/PeterPawn/decoder for this purpose
+- needs a method to decode the encrypted credentials for the DynDNS account, you can use <https://github.com/PeterPawn/decoder> for this purpose
 
 `juis_check` (__target__: any Linux system or ```bash``` on Windows 10)
 
@@ -18,7 +19,7 @@
 
 Have a look at this thread regarding checks with this new service:
 
-http://www.ip-phone-forum.de/showthread.php?t=287657&p=2181096#post2181096
+<http://www.ip-phone-forum.de/showthread.php?t=287657&p=2181096#post2181096>
 
 `resetsigned` (__target__: FRITZ!OS device)
 
@@ -44,7 +45,7 @@ http://www.ip-phone-forum.de/showthread.php?t=287657&p=2181096#post2181096
 
 `prowl` (__target__: any ```bash``` installation)
 
-- send a push message using PROWL (https://www.prowlapp.com/) from CLI (bash required)
+- send a push message using PROWL (<https://www.prowlapp.com/>) from CLI (bash required)
 
 `rle_decode.c` (__target__: usually cross-build system(s) for FRITZ!OS devices)
 

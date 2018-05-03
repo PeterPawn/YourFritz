@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-An insufficiently tested configuration parameter may be used to run arbitrary commands on newer FRITZ!OS versions. 
+An insufficiently tested configuration parameter may be used to run arbitrary commands on newer FRITZ!OS versions.
 
 An attack can only be started from someone with local administrative access or - without any authentication needed - from a device, which has a wired connection to the router (using EVA FTP server) while it's booting.
 
@@ -41,9 +41,9 @@ A "push mail" (let's use this term from now on, like the vendor does) in this pl
 The password needed to encrypt the file is stored in the settings itself and the user has to set it up, before he may enable sending of this special push mail.
 
 Using this password, an internal command
- 
+
  `/usr/bin/tr069fwupdate configexport "%s" > %s`
- 
+
 will be executed, where the first substituted string represents the entered password ... and that's the root of this issue.
 
 Using a malformed password like `my_password$(command_to_execute)`, the embedded command gets executed and the resulting call of `tr069fwupdate` isn't really changed - if the command doesn't write anything to STDOUT (or this is redirected to /dev/null), only `my_password` will be used to encrypt the settings.

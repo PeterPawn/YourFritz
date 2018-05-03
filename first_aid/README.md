@@ -1,4 +1,4 @@
-## FIRST AID - bootable images for FRITZ!Box routers
+# FIRST AID - bootable images for FRITZ!Box routers
 
 This folder contains an assortment of ready-to-use images for some FRITZ!Box models, they can be used to perform special tasks, if you've access to a starting FRITZ!Box router.
 
@@ -18,7 +18,7 @@ This image will reset the 'tainted' flag in node 87 of the TFFS device. As a res
 
 - implant_siab.image.*model*
 
-This image will install a Shell-in-a-Box service running from the 'wrapper' partition on VR9-based models with NAND flash. It adds only the executable for 'shellinaboxd' (statically linked), an init-script and another script to injec    t the start of its init-script into the 'rc.S' script from the original firmware. 
+This image will install a Shell-in-a-Box service running from the 'wrapper' partition on VR9-based models with NAND flash. It adds only the executable for 'shellinaboxd' (statically linked), an init-script and another script to injec    t the start of its init-script into the 'rc.S' script from the original firmware.
 
 The Shell-in-a-Box service will listen on (local) port 8010, enforces a TLS connection and uses the already installed key and certificate for the FRITZ!OS GUI. The credentials needed to log-in to the shell, depend on the current login settings of the device. A successful log-in will set the ~tainted~ flag of the firmware - if you later request support from vendor, you may have to reset it (simply restart the device, the flag is reset on each start of the init-script), before you generate any support data output.
 
@@ -28,5 +28,4 @@ To boot a FRITZ!Box device from such an image, you may use one of the scripts fr
 
 ## WARNING:
 
-Do not use an image to boot a device model, for which the image was not explicitely built. It's simple to create an own image for the correct model ... please look into the 'toolbox' folder of this repository or read the (german) writing regarding this theme under: http://www.ip-phone-forum.de/showthread.php?t=294386
-
+Do not use an image to boot a device model, for which the image was not explicitely built. It's simple to create an own image for the correct model ... please look into the 'toolbox' folder of this repository or read the (german) writing regarding this theme under: <http://www.ip-phone-forum.de/showthread.php?t=294386>

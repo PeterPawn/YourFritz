@@ -1,4 +1,4 @@
-# Security flaw in "AVM FRITZ!OS" 
+# Security flaw in "AVM FRITZ!OS"
 
 ## Synopsis
 
@@ -9,7 +9,7 @@ An authorized user with write access to the NAS base directory may overwrite the
 - unspecified/unknown first version, obviously every version storing the database in a location, which is reachable using NAS functions
 - ~~up to currently released beta version(s), latest version tested was 113.06.69-41896 for FRITZ!Box 7490, built on 2016-11-10~~
 - partially fixed in 06.8x versions; but the file is still accessible, may be changed/destroyed and the filter daemon uses the (usually outdated) version from the original firmware image instead of an updated database
- 
+
 ## Attack vectors
 
 - an attack needs authorized write access to the NAS base directory of a running FRITZ!Box device
@@ -26,7 +26,7 @@ Partially fixed since 06.80 ... see above for the reason, why I call it a "parti
 
 ~~Not fixed until the time of this writing.~~
 
-The vendor confirmed the vulnerability (see timeline below) and announced a fix for the next major release, expected in Q3 2016. 
+The vendor confirmed the vulnerability (see timeline below) and announced a fix for the next major release, expected in Q3 2016.
 
 ~~No attempt to fix it really is visible so far.~~
 
@@ -38,7 +38,7 @@ No CVE ID requested, mitre.org will even not provide IDs for AVM's products any 
 
 Some times ago AVM's FRITZ!OS started storing the database for the BPjM blacklist feature in the FRITZ directory below the NAS base directory on these models, if a persistent storage is available there. Whether older models without internal storage are also affected, is unknown - newer models (and the older 7390) are equipped with NAND flash and they use it to store the current version of the mentioned database. But not all models provide the NAS feature, it's missing on low-budget devices.
 
-The BPjM database is a simple list of hash values for URIs, known to provide unsuitable HTTP content for children and teenagers. It's maintained by a German governmental institution and usually updated once per month. 
+The BPjM database is a simple list of hash values for URIs, known to provide unsuitable HTTP content for children and teenagers. It's maintained by a German governmental institution and usually updated once per month.
 
 The FRITZ!OS firmware contains the database available at date of its release (or at least the previous one). If the router may access the internet, it tries to download an update for the database and merges the present database and this update. The result is stored using the path `/var/InternerSpeicher/FRITZ/bpjm.data`, but this place is below the NAS base directory `/var/media/ftp` - `/var/InternerSpeicher` is only a symbolic link pointing to it. If no BPjM based limitations for internet access are set, the list will not be updated.
 
@@ -65,7 +65,7 @@ The cheapest and simplest solution is denying access to this file for every NAS 
 2016-06-20 12:33 - Vendor contacted again due to missing confirmation or refusal, deadline announced on 2016-06-24 18:00
 
 2016-06-24 15:25 - Vendor confirmed the findings, a corrected version will be available with the next major release, planned to be published in 3rd quarter of 2016.
-                   
+
 2016-06-24 18:00 - Publication deferred until 2016-10-01.
 
 2016-11-10 --:-- - No visible attempts to fix the flaw, no further notice from vendor about a postponed release of the next major version, which was announced in Q3 2016.

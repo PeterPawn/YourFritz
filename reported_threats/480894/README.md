@@ -1,4 +1,4 @@
-# Security flaw in "AVM FRITZ!OS" 
+# Security flaw in "AVM FRITZ!OS"
 
 ## Synopsis
 
@@ -8,7 +8,7 @@ An unauthenticated attacker may add a malformed tarball to persisted device sett
 
 - unspecified/unknown first version, possibly every version which is customizable with a provider additive configuration
 - up to currently released final version(s), latest version tested was 141.06.63 (FRITZ!Box Cable 6490), built 2016-10-27
- 
+
 ## Attack vectors
 
 - an attacker needs access to a wired Ethernet connection, plugged into a FRITZ!Box device, while it's booting
@@ -25,7 +25,7 @@ The problem was fixed in FRITZ!OS version 06.80 (or any later version).
 
 ## Available fixes / solutions
 
-Update 2016-11-23: 
+Update 2016-11-23:
 
 The issue was fixed in version 113.06.69.41756 (2016-11-01). The "tar x" call was changed, now the files to extract from the tarball are specified with their name(s) and arbitrary content will not be extracted any longer.
 
@@ -33,13 +33,13 @@ End of updated section. The following text is somewhat older.
 
 ~~Not fixed yet, at least as far as I know.~~
 
-The vendor did not commit the vulnerability within 6 weeks after he was notified. 
+The vendor did not commit the vulnerability within 6 weeks after he was notified.
 
 No further statement/message/response from AVM was received regarding this incident (see timeline below) up to 2016-10-07, when the first hint was given to others, where this vulnerability could be found and that it could help to solve a problem.
 
-Possibly it will be investigated now again by the vendor and a fix will be provided in any future version. 
+Possibly it will be investigated now again by the vendor and a fix will be provided in any future version.
 
-The solution is as easy as thinkable ... extract only a file from a tarball, if you'll need it later and handle _any_ tarball, if a stranger could access it (don't take candy from any strangers), as untrusted source or check its content comprehensively, **before** you extract all files from it. Or use a patched BusyBox. 
+The solution is as easy as thinkable ... extract only a file from a tarball, if you'll need it later and handle _any_ tarball, if a stranger could access it (don't take candy from any strangers), as untrusted source or check its content comprehensively, **before** you extract all files from it. Or use a patched BusyBox.
 
 ## CVE
 
@@ -49,7 +49,7 @@ No CVE ID requested, mitre.org will even not provide IDs for AVM's products any 
 
 AVM's FRITZ!OS contains an additional function to allow internet access providers a pre-configuration of some settings, if a (smaller) provider isn't present in a predefined list of providers in stock firmware. These setting usually contain DSL connection parameters like VLAN IDs or the URL of an ACS, if the provider wants to use TR-069 CWMP to configure and manage the CPE in a centralized manner.
 
-These settings are provided in more than one single file, so they're packed into a tarball archive and this file is stored in non-volatile memory - in a special filesystem (more a character device) called TFFS, which was (afaik) created by AVM to provide compression and a transactional layer to NOR flash writes - to assure always valid settings, even if write operations are interrupted after a block was erased and before the new data was written. 
+These settings are provided in more than one single file, so they're packed into a tarball archive and this file is stored in non-volatile memory - in a special filesystem (more a character device) called TFFS, which was (afaik) created by AVM to provide compression and a transactional layer to NOR flash writes - to assure always valid settings, even if write operations are interrupted after a block was erased and before the new data was written.
 
 This "filesystem" provides access to the managed data streams using character oriented I/O, each minor ID between 1 and 255 from TFFS major device may be used to access a stream of up to 32 KB of compressed data (zlib deflated). Some of those stream are treated specially - all minor IDs below 100 are not cleared while the device executes the different actions necessary to reset the whole device to factory settings.
 
@@ -59,9 +59,9 @@ So these settings aren't removable operating the device from its GUI or using to
 
 The tarball is unpacked while the system is starting and if it contains really a provider additive configuration, the files from this configuration are stored in a folder "provider_additive" below the working directory. But unpacking is done using a simple call to `tar xf <filename>`, where `<filename>` is the name of a character device node pointing to minor ID 29 of the TFFS device. If the tarball contains additionals members, those entries will be extracted too.
 
-Because the used BusyBox version is affected by an older problem (http://seclists.org/oss-sec/2015/q4/121), the tarball may contain symlinks and files in an order, where files are stored outside of the target directories. A symbolic link, pointing from a (relative) path to "/var" is extracted first and any following file using this relative path, will be stored below the "/var" directory and its children (the only writable location in an average FRITZ!OS device).
+Because the used BusyBox version is affected by an older problem (<http://seclists.org/oss-sec/2015/q4/121>), the tarball may contain symlinks and files in an order, where files are stored outside of the target directories. A symbolic link, pointing from a (relative) path to "/var" is extracted first and any following file using this relative path, will be stored below the "/var" directory and its children (the only writable location in an average FRITZ!OS device).
 
-There're multiple files to be targeted as possible victims of this write access - it starts with "/var/post_install", which will be executed on each shutdown (via "/etc/inittab"), proceeding to "/var/env.cache" (see below) and ends with overwriting the file "/var/tmp/inetd.conf". 
+There're multiple files to be targeted as possible victims of this write access - it starts with "/var/post_install", which will be executed on each shutdown (via "/etc/inittab"), proceeding to "/var/env.cache" (see below) and ends with overwriting the file "/var/tmp/inetd.conf".
 
 Due to the manner, how "inetd.conf" will be modified later by vendor's firmware, any service already present there, will be available from network if inetd is started later. And it looks like "inetd" is always started in FRITZ!OS, even if no services exist in "/etc/inetd.conf" (a symlink, which points to "/var/tmp/inetd.conf"). Writing a line like
 
@@ -81,7 +81,7 @@ and will be "sourced" from multiple scripts called by "udevd", if an event has t
 
 The victim of an attack - the FRITZ!Box owner - is (usually) unable to clean the device from the evil tarball. Nor a firmware update neither a factory reset will remove the tarball content and the recovery program from AVM refuses to write anything (if the "provider" variable is set, which can be done from any malware script too). The only way to get rid of the tarball is writing a new TFFS image without it or unset the "provider" variable and run the recovery program.
 
-An attacker from the LAN side of a FRITZ!Box router may add such a malicious tarball to his self-made TFFS image. All data needed to create an image without custom settings, may be read from the device using only a FTP connection at boot time. The recovery program from vendor does it in the same manner, if it's "refreshing" a device. It reads the environment and counter values from the device, prepares a new TFFS image and writes it to the right partitions using the FTP service from EVA (AVM's bootloader). 
+An attacker from the LAN side of a FRITZ!Box router may add such a malicious tarball to his self-made TFFS image. All data needed to create an image without custom settings, may be read from the device using only a FTP connection at boot time. The recovery program from vendor does it in the same manner, if it's "refreshing" a device. It reads the environment and counter values from the device, prepares a new TFFS image and writes it to the right partitions using the FTP service from EVA (AVM's bootloader).
 
 If the attack is executed without knowledge of the current settings, it may be detected by the owner ... if he's irritated, why the device loses its settings and does not take it with a shrug and restores his earlier exported settings.
 
@@ -101,7 +101,7 @@ first one).
 
 2016-07-27 15:00 - No further contact/message from the vendor, so there's no reason to delay publishing this finding furthermore.
 
-2016-10-08 --:-- - First details mentioned on IPPF (http://www.ip-phone-forum.de/showthread.php?t=286994&p=2184758), after 114 days (> 16 weeks, counted from 2016-06-14) without any real response from vendor
+2016-10-08 --:-- - First details mentioned on IPPF (<http://www.ip-phone-forum.de/showthread.php?t=286994&p=2184758>), after 114 days (> 16 weeks, counted from 2016-06-14) without any real response from vendor
 
 2016-10-18 --:-- - The flaw was a first time used to update a FRITZ!Box Cable 6490 (with OEM branding) with retail firmware - this was an intentional action by the owner of the device and not an attack from a stranger.
 

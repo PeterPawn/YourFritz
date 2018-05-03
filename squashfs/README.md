@@ -1,4 +1,4 @@
-### Modifications for SquashFS 4.3 tools
+# Modifications for SquashFS 4.3 tools
 
 While investigating the opportunities to unpack, modify and repack a SquashFS image from the “Windows Bash” (that means the Ubuntu subsystem on Windows 10 x64 systems), I found once more, that the emulated syscall for ‘mknod’ does not implement the creation of “special files” (character and block device inodes) and even if it would do this, the creation of such an inode requires superuser access rights.
 
@@ -12,7 +12,7 @@ If such an option exists, it doesn’t matter any longer, whether the "underlyin
 
 This would allow a version of 'squashfs-tools' running on a native Windows installation without the subsystem emulation, where a Windows filesystem is used to store the unpacked files.
 
-So I would like to add and/or change some code, modifying the (original) SquashFS tools … the first step was the separation of listing output (on STDOUT) from other messages during an "unsquashfs" call (which are directed to STDERR now). 
+So I would like to add and/or change some code, modifying the (original) SquashFS tools … the first step was the separation of listing output (on STDOUT) from other messages during an "unsquashfs" call (which are directed to STDERR now).
 
 This is done with the first patch ‘020-definite_streams_for_displayed_text.patch’. To get a "list file" as mentioned above, the caller may redirect STDOUT to a file.
 
