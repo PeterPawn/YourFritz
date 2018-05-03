@@ -75,28 +75,44 @@ namespace YourFritz.EVA
             Answer = 2,
         }
 
-        public System.Net.IPAddress Address { get; }
-        public Direction PacketType { get; }
+        private System.Net.IPAddress p_Address;
+        private Direction p_PacketType;
+
+        public System.Net.IPAddress Address
+        {
+             get
+             {
+                return this.p_Address;
+             }
+        }
+
+        public Direction PacketType
+        {
+            get
+            {
+                return this.p_PacketType;
+            }
+        }
 
         internal UdpPacket()
         {
-            this.PacketType = Direction.Request;
-            this.Address = new System.Net.IPAddress(0);
+            this.p_PacketType = Direction.Request;
+            this.p_Address = new System.Net.IPAddress(0);
         }
 
         internal UdpPacket(System.Net.IPAddress requestedIP)
         {
-            this.PacketType = Direction.Request;
-            this.Address = requestedIP;
+            this.p_PacketType = Direction.Request;
+            this.p_Address = requestedIP;
         }
 
         internal UdpPacket(byte[] answer)
         {
-            this.PacketType = (Direction)answer[4];
-            if ((this.PacketType == Direction.Answer) && (answer[2] == 18) && (answer[3] == 1))
+            this.p_PacketType = (Direction)answer[4];
+            if ((this.p_PacketType == Direction.Answer) && (answer[2] == 18) && (answer[3] == 1))
             {
                 byte[] address = new byte[4] { answer[11], answer[10], answer[9], answer[8] };
-                this.Address = new System.Net.IPAddress(address);
+                this.p_Address = new System.Net.IPAddress(address);
             }
             else
             {
@@ -106,7 +122,7 @@ namespace YourFritz.EVA
 
         public bool Equals(UdpPacket other)
         {
-            if (this.PacketType == other.PacketType && this.Address.Equals(other.Address))
+            if (this.p_PacketType == other.PacketType && this.p_Address.Equals(other.Address))
             {
                 return true;
             }
@@ -119,8 +135,8 @@ namespace YourFritz.EVA
 
             output[2] = 18;
             output[3] = 1;
-            output[4] = Convert.ToByte(this.PacketType);
-            this.Address.GetAddressBytes().CopyTo(output, 8);
+            output[4] = Convert.ToByte(this.p_PacketType);
+            this.p_Address.GetAddressBytes().CopyTo(output, 8);
 
             return output;
         }
@@ -137,8 +153,24 @@ namespace YourFritz.EVA
 
     public class Device
     {
-        public System.Net.IPAddress Address { get; }
-        public int Port { get; }
+        private System.Net.IPAddress p_Address;
+        private int p_Port;
+
+        public System.Net.IPAddress Address
+        {
+            get
+            {
+                return this.p_Address;
+            }
+        }
+
+        public int Port
+        {
+            get
+            {
+                return this.p_Port;
+            }
+        }
 
         internal Device(IPEndPoint ep, UdpPacket answer)
         {
@@ -152,76 +184,186 @@ namespace YourFritz.EVA
                 throw new DiscoveryException("The IP address in the received packet does not match the address of sender in packet data.");
             }
 
-            this.Address = ep.Address;
-            this.Port = ep.Port;
+            this.p_Address = ep.Address;
+            this.p_Port = ep.Port;
         }
     }
 
     public class StartEventArgs : EventArgs
     {
-        public System.Net.IPAddress Address { get; }
-        public int Port { get; }
-        public DateTime StartedAt { get; }
+        private System.Net.IPAddress p_Address;
+        private int p_Port;
+        private DateTime p_StartedAt;
+
+        public System.Net.IPAddress Address
+        {
+            get
+            {
+                return this.p_Address;
+            }
+        }
+
+        public int Port
+        {
+            get
+            {
+                return this.p_Port;
+            }
+        }
+
+        public DateTime StartedAt
+        {
+            get
+            {
+                return this.p_StartedAt;
+            }
+        }
 
         internal StartEventArgs(System.Net.IPAddress address, int port)
         {
-            this.Address = address;
-            this.Port = port;
-            this.StartedAt = DateTime.Now;
+            this.p_Address = address;
+            this.p_Port = port;
+            this.p_StartedAt = DateTime.Now;
         }
     }
 
     public class StopEventArgs : EventArgs
     {
-        public int DeviceCount { get; }
-        public DateTime StoppedAt { get; }
+        private int p_DeviceCount;
+        private DateTime p_StoppedAt;
+
+        public int DeviceCount
+        {
+            get
+            {
+                return this.p_DeviceCount;
+            }
+        }
+
+        public DateTime StoppedAt
+        {
+            get
+            {
+                return this.p_StoppedAt;
+            }
+        }
 
         internal StopEventArgs(int count)
         {
-            this.DeviceCount = count;
-            this.StoppedAt = DateTime.Now;
+            this.p_DeviceCount = count;
+            this.p_StoppedAt = DateTime.Now;
         }
     }
 
     public class PacketSentEventArgs : EventArgs
     {
-        public System.Net.IPAddress Address { get; }
-        public int Port { get; }
-        public DateTime SentAt { get; }
-        public byte[] SentData { get; }
+        private System.Net.IPAddress p_Address;
+        private int p_Port;
+        private DateTime p_SentAt;
+        private byte[] p_SentData;
+
+        public System.Net.IPAddress Address
+        {
+            get
+            {
+                return this.p_Address;
+            }
+        }
+        public int Port
+        {
+            get
+            {
+                return this.p_Port;
+            }
+        }
+        public DateTime SentAt
+        {
+            get
+            {
+                return this.p_SentAt;
+            }
+        }
+
+        public byte[] SentData
+        {
+            get
+            {
+                return this.p_SentData;
+            }
+        }
 
         internal PacketSentEventArgs(System.Net.IPAddress address, int port, byte[] data)
         {
-            this.Address = address;
-            this.Port = port;
-            this.SentData = data;
-            this.SentAt = DateTime.Now;
+            this.p_Address = address;
+            this.p_Port = port;
+            this.p_SentData = data;
+            this.p_SentAt = DateTime.Now;
         }
     }
 
     public class PacketReceivedEventArgs : EventArgs
     {
-        public IPEndPoint EndPoint { get; }
-        public DateTime ReceivedAt { get; }
-        public byte[] ReceivedData { get; }
+        private IPEndPoint p_EndPoint;
+        private DateTime p_ReceivedAt;
+        private byte[] p_ReceivedData;
+
+        public IPEndPoint EndPoint
+        {
+            get
+            {
+                return this.p_EndPoint;
+            }
+        }
+
+        public DateTime ReceivedAt
+        {
+            get
+            {
+                return this.p_ReceivedAt;
+            }
+        }
+
+        public byte[] ReceivedData
+        {
+            get
+            {
+                return this.p_ReceivedData;
+            }
+        }
 
         internal PacketReceivedEventArgs(IPEndPoint ep, byte[] data)
         {
-            this.EndPoint = ep;
-            this.ReceivedData = data;
-            this.ReceivedAt = DateTime.Now;
+            this.p_EndPoint = ep;
+            this.p_ReceivedData = data;
+            this.p_ReceivedAt = DateTime.Now;
         }
     }
 
     public class DeviceFoundEventArgs : EventArgs
     {
-        public Device Device { get; }
-        public DateTime FoundAt { get; }
+        private Device p_Device;
+        private DateTime p_FoundAt;
+
+        public Device Device
+        {
+            get
+            {
+                return this.p_Device;
+            }
+        }
+
+        public DateTime FoundAt
+        {
+            get
+            {
+                return this.p_FoundAt;
+            }
+        }
 
         internal DeviceFoundEventArgs(Device Device)
         {
-            this.Device = Device;
-            this.FoundAt = DateTime.Now;
+            this.p_Device = Device;
+            this.p_FoundAt = DateTime.Now;
         }
     }
 
@@ -249,16 +391,12 @@ namespace YourFritz.EVA
 
     public class Discovery
     {
-        // default FRITZ!Box IP address
-        public System.Net.IPAddress BoxIP { get; set; }
-        // default broadcast address to use - any other value requires access to SocketOptions
-        public System.Net.IPAddress BroadcastAddress { get; set; }
-        // the UDP port to sent to/receive from
-        public int DiscoveryPort { get; set; }
-        // the discovered devices
-        public Dictionary<System.Net.IPAddress, Device> FoundDevices { get; }
-        // discovery active flag
-        public bool IsRunning { get; internal set; }
+        // property values as private fields
+        private System.Net.IPAddress p_BoxIP;
+        private System.Net.IPAddress p_BroadcastAddress;
+        private int p_DiscoveryPort;
+        private Dictionary<System.Net.IPAddress, Device> p_FoundDevices;
+        private bool p_IsRunning;
 
         // the UDP packet for discovery
         private UdpPacket sendData = new UdpPacket();
@@ -273,6 +411,67 @@ namespace YourFritz.EVA
         // stop on first device found
         private bool stopOnFirstDeviceFound = false;
 
+        // default FRITZ!Box IP address
+        public System.Net.IPAddress BoxIP
+        {
+            get
+            {
+                return this.p_BoxIP;
+            }
+            set
+            {
+                this.p_BoxIP = value;
+            }
+        }
+
+        // default broadcast address to use - any other value requires access to SocketOptions
+        public System.Net.IPAddress BroadcastAddress
+        {
+            get
+            {
+                return this.p_BroadcastAddress;
+            }
+            set
+            {
+                this.p_BroadcastAddress = value;
+            }
+        }
+
+        // the UDP port to sent to/receive from
+        public int DiscoveryPort
+        {
+            get
+            {
+                return this.p_DiscoveryPort;
+            }
+            set
+            {
+                this.p_DiscoveryPort = value;
+            }
+        }
+
+        // the discovered devices
+        public Dictionary<System.Net.IPAddress, Device> FoundDevices
+        {
+            get
+            {
+                return this.p_FoundDevices;
+            }
+        }
+
+        // discovery active flag
+        public bool IsRunning
+        {
+            get
+            {
+                return this.p_IsRunning;
+            }
+            internal set
+            {
+                this.p_IsRunning = value;
+            }
+        }
+
         // events raised by this class
         public event StartDiscoveryEventHandler Started;
         public event StopDiscoveryEventHandler Stopped;
@@ -282,12 +481,12 @@ namespace YourFritz.EVA
 
         public Discovery()
         {
-			this.BoxIP = new System.Net.IPAddress(new byte[] { 192, 168, 178, 1 });
-			this.BroadcastAddress = new System.Net.IPAddress(new byte[] { 255, 255, 255, 255 });
-			this.DiscoveryPort = 5035;
- 			this.FoundDevices = new Dictionary<System.Net.IPAddress, Device>();
+			this.p_BoxIP = new System.Net.IPAddress(new byte[] { 192, 168, 178, 1 });
+			this.p_BroadcastAddress = new System.Net.IPAddress(new byte[] { 255, 255, 255, 255 });
+			this.p_DiscoveryPort = 5035;
+ 			this.p_FoundDevices = new Dictionary<System.Net.IPAddress, Device>();
+			this.p_IsRunning = false;
 			this.sendData = new UdpPacket(this.BoxIP);
-			this.IsRunning = false;
         }
 
         ~Discovery()
@@ -316,7 +515,7 @@ namespace YourFritz.EVA
 
         public void Start(System.Net.IPAddress newIP)
         {
-            if (this.IsRunning)
+            if (this.p_IsRunning)
             {
                 throw new DiscoveryException("Discovery is already running.");
             }
@@ -325,7 +524,7 @@ namespace YourFritz.EVA
             {
                 if (!newIP.Equals(this.BoxIP))
                 {
-                    this.BoxIP = newIP;
+                    this.p_BoxIP = newIP;
                 }
                 this.sendData = new UdpPacket(newIP);
             }
@@ -358,8 +557,8 @@ namespace YourFritz.EVA
             }
             this.sendTimer.Start();
 
-            this.IsRunning = true;
-            this.OnStartDiscovery(this.BoxIP, this.DiscoveryPort);
+            this.p_IsRunning = true;
+            this.OnStartDiscovery(this.p_BoxIP, this.p_DiscoveryPort);
         }
 
         public void Start(string requestedIP)
@@ -379,12 +578,12 @@ namespace YourFritz.EVA
 
         public void Start()
         {
-            this.Start(this.BoxIP);
+            this.Start(this.p_BoxIP);
         }
 
         public void Restart(System.Net.IPAddress newIP)
         {
-            if (this.IsRunning)
+            if (this.p_IsRunning)
             {
                 this.Stop();
             }
@@ -393,7 +592,7 @@ namespace YourFritz.EVA
 
         public void Restart(string newIP)
         {
-            if (this.IsRunning)
+            if (this.p_IsRunning)
             {
                 this.Stop();
             }
@@ -407,10 +606,10 @@ namespace YourFritz.EVA
 
         public void Stop()
         {
-            if (this.IsRunning)
+            if (this.p_IsRunning)
             {
-                this.IsRunning = false;
-                this.OnStopDiscovery(this.FoundDevices.Count);
+                this.p_IsRunning = false;
+                this.OnStopDiscovery(this.p_FoundDevices.Count);
             }
             if (this.sendTimer != null)
             {
@@ -439,7 +638,7 @@ namespace YourFritz.EVA
 
             Device[] found = new Device[this.FoundDevices.Count];
             int index = 0;
-            foreach (Device dev in this.FoundDevices.Values)
+            foreach (Device dev in this.p_FoundDevices.Values)
             {
                 found[index++] = dev;
             }
@@ -453,18 +652,18 @@ namespace YourFritz.EVA
 
         private void SendTimer_Elapsed(object sender, ElapsedEventArgs e)
         {
-            if (!this.IsRunning)
+            if (!this.p_IsRunning)
             {
                 return;
             }
 
             byte[] data = this.sendData.ToBytes();
-            IPEndPoint ep = new IPEndPoint(this.BroadcastAddress, this.DiscoveryPort);
+            IPEndPoint ep = new IPEndPoint(this.p_BroadcastAddress, this.p_DiscoveryPort);
             this.sender.Send(data, data.Length, ep);
 
-            this.OnPacketSent(this.BoxIP, this.DiscoveryPort, data);
+            this.OnPacketSent(this.p_BoxIP, this.p_DiscoveryPort, data);
 
-            if (this.IsRunning)
+            if (this.p_IsRunning)
             {
                 this.sendTimer.Interval = 1000;
                 this.sendTimer.Start();
