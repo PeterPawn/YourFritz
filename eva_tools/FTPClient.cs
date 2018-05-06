@@ -55,7 +55,7 @@ namespace YourFritz.EVA
         {
             get
             {
-                return ((this.p_FirstLine.Length == 0) && (this.p_Content.Count == 0) && (this.p_Code != -1));
+                return !((this.p_LastLine.Length == 0) && (this.p_Content.Count == 0) && (this.p_Code != -1));
             }
         }
 
@@ -127,7 +127,7 @@ namespace YourFritz.EVA
                 {
                     throw new FTPClientException("This is a multi-line response from server, use the `'MultilineMessage`' property to access its content.");
                 }
-                return this.p_LastLine; // it is stored in the same property as the last line from multi-line messages
+                return this.p_FirstLine; // it is stored in the same property as the last line from multi-line messages
             }
         }
 
@@ -337,6 +337,7 @@ namespace YourFritz.EVA
             this.p_ResponseComplete.Reset();
             this.p_Message = System.String.Empty;
             this.p_StatusCode = -1;
+            this.p_Responses.Clear();
 
             if (this.p_FTPResponse != null)
             {
@@ -622,22 +623,6 @@ namespace YourFritz.EVA
     {
         static void Main(string[] args)
         {
-            FTPControlChannelReceiver recv = new FTPControlChannelReceiver();
-
-            recv.Push("211- Extensions supported:");
-            recv.Push(" UTF8");
-            recv.Push(" MDTM");
-            recv.Push(" SIZE");
-            recv.Push(" AUTH TLS");
-            recv.Push(" PBSZ");
-            recv.Push(" PROT");
-            recv.Push("211 end");
-            Console.WriteLine("Code   : {0:d}", recv.Code);
-            Console.WriteLine("Message: {0}", recv.Message);
-            recv.Clear();
-            recv.Push("200 command executed");
-            Console.WriteLine("Code   : {0:d}", recv.Code);
-            Console.WriteLine("Message: {0}", recv.Message);
         }
     }
 }
