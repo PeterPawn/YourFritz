@@ -2,6 +2,50 @@
 
 namespace YourFritz.TFFS
 {
+    public class TFFSHelpers
+    {
+        // combine two or more byte array to one single bigger-one
+        internal static byte[] CombineByteArrays(byte[][] inputArrays)
+        {
+            // count combined length of all arrays
+            int count = 0;
+            Array.ForEach<byte[]>(inputArrays, delegate (byte[] buffer) { count += buffer.Length; });
+
+            byte[] output = new byte[count];
+            count = 0;
+
+            Array.ForEach<byte[]>(inputArrays, delegate (byte[] buffer) { System.Array.Copy(buffer, 0, output, count, buffer.Length); count += buffer.Length; });
+
+            return output;
+        }
+
+        // TFFS uses big endian order for numbers, get the bytes for a 32-bit value
+        internal static byte[] GetBytesBE(int input)
+        {
+            byte[] output = System.BitConverter.GetBytes(input);
+
+            if (System.BitConverter.IsLittleEndian)
+            {
+                System.Array.Reverse(output, 0, sizeof(int));
+            }
+
+            return output;
+        }
+
+        // TFFS uses big endian order for numbers, get the bytes for a 16-bit value
+        internal static byte[] GetBytesBE(System.UInt16 input)
+        {
+            byte[] output = System.BitConverter.GetBytes(input);
+
+            if (System.BitConverter.IsLittleEndian)
+            {
+                System.Array.Reverse(output, 0, sizeof(System.UInt16));
+            }
+
+            return output;
+        }
+    }
+
     public class TFFSException : Exception
     {
         public TFFSException()
@@ -289,6 +333,17 @@ namespace YourFritz.TFFS
                 return this.p_Name;
             }
         }
+
+        public byte[] ImageBytes
+        {
+            get
+            {
+                byte[] name = System.Text.Encoding.ASCII.GetBytes(this.p_Name);
+                byte[] aligned = new byte[((name.Length + 1) + 3) & ~3];
+                System.Array.Copy(name, aligned, name.Length);
+                return TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((int)this.p_ID), aligned });
+            }
+        }
     }
 
     public class TFFSEnvironmentEntries : System.Collections.Generic.Dictionary<TFFSEnvironmentID, TFFSEnvironmentEntry>
@@ -411,7 +466,6 @@ namespace YourFritz.TFFS
         {
             this.p_Entries = new TFFSEnvironmentEntries();
             this.p_Version = new TFFSEnvironmentEntry(TFFSEnvironmentID.NameTableVersion, Version);
-            this.p_Entries.Add(TFFSEnvironmentID.NameTableVersion, this.p_Version);
             foreach (TFFSEnvironmentID entry in Entries)
             {
                 this.p_Entries.Add(entry, (TFFSEntryFactory.GetEntries()[entry]));
@@ -435,9 +489,22 @@ namespace YourFritz.TFFS
             }
         }
 
-        public byte[] GetBytes()
+        // get a buffer with table in image format - the kernel uses fix-sized entries (with 64 bytes length for the name)
+        public byte[] ImageBytes
         {
-            return null;
+            get
+            {
+                // we start with our version entry
+                byte[] output = this.p_Version.ImageBytes;
+
+                // and append each other entry in the correct order
+                this.p_Order.ForEach(id => output = TFFSHelpers.CombineByteArrays(new byte[][] { output, this.p_Entries[id].ImageBytes }));
+
+                // prepend it with the correct environment ID and length of the table
+                output = TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((System.UInt16)TFFSEnvironmentID.NameTableID), TFFSHelpers.GetBytesBE((System.UInt16)output.Length), output });
+
+                return output;
+            }
         }
 
         // generate name tables in various (known) versions
@@ -445,13 +512,15 @@ namespace YourFritz.TFFS
         {
             TFFSNameTableEntries entries = new TFFSNameTableEntries();
 
-            // differences between @G and @H are unknown - possibly the ID was incremented to reflect the new TFFS2 version support
-            // @I introduced <linux_fs_start> and <modulemem> values
-            // @J is unknown - I could not found any source from AVM with this version, I have implemented it as @I without 
-            //    <nfs> and <nfsroot> values and with correct (alphabetically) sorted values
-            // @K added more MTD definitions and a value for PLC devices, 6490 support (crash and panic log for the 2nd system),
-            //    DVB configuration, TFFS3 support - which of these changes were contained in @J already, is currently unknown to me
-            // @L added the individual WLAN SSID with two additional characters
+            // Supported versions are between @G and @L, incl. - the differences between @G and @H are unknown - possibly the ID was 
+            // only incremented to reflect the new TFFS2 version support.
+            // @I has introduced <linux_fs_start> and <modulemem> values.
+            // @J changes are unknown, too - I could not find a source from AVM for this version, so I have implemented it as @I without 
+            //    <nfs> and <nfsroot> values and with correctly sorted names (alphabetically) 
+            // @K later has added 6490 support - more MTD definitions, crash and panic log for the 2nd system, DVB configuration, TFFS3 
+            //    support - which of these changes were contained in @J already, is currently unknown.
+            // @L (the current version) has added the individual WLAN SSID with two additional characters. Various "Mesh"-related 
+            //    changes have taken place in "tffs.h", but the name table was not changed anymore.
             if (Version.CompareTo("@G") != 0 &&
                 Version.CompareTo("@H") != 0 &&
                 Version.CompareTo("@I") != 0 &&
@@ -615,6 +684,18 @@ namespace YourFritz.TFFS
             }
 
             return new TFFSNameTable(Version, entries);
+        }
+    }
+
+    public class DumpNameTable
+    {
+        static void Main(string[] args)
+        {
+            string version = "@L";
+
+            if (args.Length > 0 && args[0].Length > 0) version = args[0];
+
+            Console.Write(YourFritz.Helpers.HexDump.Dump(TFFSNameTable.GetNameTable(version).ImageBytes));
         }
     }
 }
