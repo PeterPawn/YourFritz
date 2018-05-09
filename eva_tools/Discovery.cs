@@ -164,12 +164,6 @@ namespace YourFritz.EVA
         }
     }
 
-    public delegate void StartDiscoveryEventHandler(Object sender, StartEventArgs e);
-    public delegate void StopDiscoveryEventHandler(Object sender, StopEventArgs e);
-    public delegate void PacketSentEventHandler(Object sender, PacketSentEventArgs e);
-    public delegate void PacketReceivedEventHandler(Object sender, PacketReceivedEventArgs e);
-    public delegate void DeviceFoundEventHandler(Object sender, DeviceFoundEventArgs e);
-
     public class DiscoveryException : Exception
     {
         public DiscoveryException()
@@ -213,11 +207,11 @@ namespace YourFritz.EVA
         private bool stopOnFirstDeviceFound = false;
 
         // events raised by this class
-        public event StartDiscoveryEventHandler Started;
-        public event StopDiscoveryEventHandler Stopped;
-        public event PacketSentEventHandler PacketSent;
-        public event PacketReceivedEventHandler PacketReceived;
-        public event DeviceFoundEventHandler DeviceFound;
+        public EventHandler<StartEventArgs> Started;
+        public EventHandler<StopEventArgs> Stopped;
+        public EventHandler<PacketSentEventArgs> PacketSent;
+        public EventHandler<PacketReceivedEventArgs> PacketReceived;
+        public EventHandler<DeviceFoundEventArgs> DeviceFound;
 
         public Discovery()
         {
@@ -407,47 +401,32 @@ namespace YourFritz.EVA
 
         protected virtual void OnStartDiscovery(IPAddress address, int port)
         {
-            StartDiscoveryEventHandler handler = this.Started;
-            if (handler != null)
-            {
-                handler(this, new StartEventArgs(address, port));
-            }
+            EventHandler<StartEventArgs> handler = this.Started;
+            if (handler != null) handler(this, new StartEventArgs(address, port));
         }
 
         protected virtual void OnStopDiscovery(int count)
         {
-            StopDiscoveryEventHandler handler = this.Stopped;
-            if (handler != null)
-            {
-                handler(this, new StopEventArgs(count));
-            }
+            EventHandler<StopEventArgs> handler = this.Stopped;
+            if (handler != null) handler(this, new StopEventArgs(count));
         }
 
         protected virtual void OnPacketSent(IPAddress address, int port, byte[] data)
         {
-            PacketSentEventHandler handler = this.PacketSent;
-            if (handler != null)
-            {
-                handler(this, new PacketSentEventArgs(address, port, data));
-            }
+            EventHandler<PacketSentEventArgs> handler = this.PacketSent;
+            if (handler != null) handler(this, new PacketSentEventArgs(address, port, data));
         }
 
         protected virtual void OnPacketReceived(IPEndPoint ep, byte[] data)
         {
-            PacketReceivedEventHandler handler = this.PacketReceived;
-            if (handler != null)
-            {
-                handler(this, new PacketReceivedEventArgs(ep, data));
-            }
+            EventHandler<PacketReceivedEventArgs> handler = this.PacketReceived;
+            if (handler != null) handler(this, new PacketReceivedEventArgs(ep, data));
         }
 
         protected virtual void OnDeviceFound(Device newDevice)
         {
-            DeviceFoundEventHandler handler = this.DeviceFound;
-            if (handler != null)
-            {
-                handler(this, new DeviceFoundEventArgs(newDevice));
-            }
+            EventHandler<DeviceFoundEventArgs> handler = this.DeviceFound;
+            if (handler != null) handler(this, new DeviceFoundEventArgs(newDevice));
             if (this.stopOnFirstDeviceFound)
             {
                 this.Stop();
