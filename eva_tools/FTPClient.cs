@@ -18,36 +18,84 @@ namespace YourFritz.EVA
         }
     }
 
+    public class CommandSentEventArgs : EventArgs
+    {
+        public string Line { get; }
+        public DateTime SentAt { get; }
+
+        internal CommandSentEventArgs(string Line)
+        {
+            this.Line = Line;
+            this.SentAt = DateTime.Now;
+        }
+    }
+
+    public class ResponseReceivedEventArgs : EventArgs
+    {
+        public string Line { get; }
+        public DateTime ReceivedAt { get; }
+
+        internal ResponseReceivedEventArgs(string Line)
+        {
+            this.Line = Line;
+            this.ReceivedAt = DateTime.Now;
+        }
+    }
+
+    public class ResponseCompletedEventArgs : EventArgs
+    {
+        public int Code { get; }
+        public string Message { get; }
+        public DateTime ReceivedAt { get; }
+
+        internal ResponseCompletedEventArgs(int Code, string Message)
+        {
+            this.Code = Code;
+            this.Message = Message;
+            this.ReceivedAt = DateTime.Now;
+        }
+    }
+
+    public class CommandCompletedEventArgs : EventArgs
+    {
+        public string Command { get; }
+        public FTPResponse Response { get; }
+        public DateTime ReceivedAt { get; }
+
+        internal CommandCompletedEventArgs(string Command, FTPResponse Response)
+        {
+            this.Command = Command;
+            this.Response = Response;
+            this.ReceivedAt = DateTime.Now;
+        }
+    }
+
     public class FTPResponse
     {
         private int p_Code;
         private string p_FirstLine;
         private string p_LastLine;
-        private System.Collections.ArrayList p_Content;
+        private System.Collections.Generic.List<string> p_Content;
+        private volatile System.Threading.Tasks.TaskCompletionSource<FTPResponse> p_CompletedTask;
+        private bool p_IsComplete;
+        private bool p_IsMultiline;
 
-        public FTPResponse(string FirstLine, int Code)
+        public FTPResponse()
         {
-            this.Initialize();
-
-            this.p_FirstLine = FirstLine;
-            this.p_Code = Code;
-        }
-
-        public FTPResponse(string Line)
-        {
-            this.Initialize();
-
-            lock (this.p_Content.SyncRoot)
-            { 
-                this.p_Content.Add(Line);
-            }
+            this.p_Content = new System.Collections.Generic.List<string>();
+            this.p_CompletedTask = new System.Threading.Tasks.TaskCompletionSource<FTPResponse>();
+            this.p_Code = -1;
+            this.p_FirstLine = System.String.Empty;
+            this.p_LastLine = System.String.Empty;
+            this.p_IsComplete = false;
+            this.p_IsMultiline = false;
         }
 
         public bool IsComplete
         {
             get
             {
-                return (this.p_Code != -1);
+                return this.p_IsComplete;
             }
         }
 
@@ -55,7 +103,7 @@ namespace YourFritz.EVA
         {
             get
             {
-                return !((this.p_LastLine.Length == 0) && (this.p_Content.Count == 0) && (this.p_Code != -1));
+                return this.p_IsMultiline;
             }
         }
 
@@ -95,7 +143,7 @@ namespace YourFritz.EVA
             }
         }
 
-        public System.Collections.ArrayList Content
+        public System.Collections.Generic.List<string> Content
         {
             get
             {
@@ -107,7 +155,7 @@ namespace YourFritz.EVA
             }
         }
 
-        public string[] MultilineMessage
+        public System.Collections.Generic.List<string> MultilineMessage
         {
             get
             {
@@ -115,7 +163,7 @@ namespace YourFritz.EVA
                 {
                     throw new FTPClientException("This is a single-line response from server, use the `'Message`' property to access its content.");
                 }
-                return (string[])this.p_Content.ToArray();
+                return this.p_Content;
             }
         }
 
@@ -131,10 +179,36 @@ namespace YourFritz.EVA
             }
         }
 
-        public void Dispose()
+        public System.Threading.Tasks.TaskCompletionSource<FTPResponse> Completed
         {
-            this.p_Content.Clear();
-            this.p_Content = null;
+            get
+            {
+                return this.p_CompletedTask;
+            }
+        }
+
+
+        public void SingleLineResponse(string Line, int Code)
+        {
+            this.p_FirstLine = Line;
+            this.p_Code = Code;
+            this.SetCompletion();
+        }
+
+        public void StartMultiLineResponse(string Line)
+        {
+            lock (((System.Collections.ICollection)this.p_Content).SyncRoot)
+            {
+                this.p_Content.Add(Line);
+            }
+        }
+
+        public void AppendLine(string Line)
+        {
+            lock (((System.Collections.ICollection)this.p_Content).SyncRoot)
+            {
+                this.p_Content.Add(Line);
+            }
         }
 
         public void Finish(string LastLine, int Code)
@@ -150,70 +224,41 @@ namespace YourFritz.EVA
             {
                 this.p_Code = Code;
             }
+
+            this.p_IsComplete = true;
+
+            this.SetCompletion();
         }
 
-        public void AppendLine(string Line)
+        protected void SetCompletion()
         {
-            lock (this.p_Content.SyncRoot)
-            {
-                this.p_Content.Add(Line);
-            }
-        }
-
-        private void Initialize()
-        {
-            this.p_Code = -1;
-            this.p_FirstLine = System.String.Empty;
-            this.p_LastLine = System.String.Empty;
-            this.p_Content = new System.Collections.ArrayList();
+            this.p_CompletedTask.SetResult(this);
         }
     }
 
     public class FTPControlChannelReceiver
     {
-        private System.Threading.ManualResetEvent p_QueueNotEmpty;
-        private System.Collections.Queue p_Responses;
         private System.Text.RegularExpressions.Regex p_MatchResponse;
         private int p_StatusCode;
         private string p_Message;
-        private FTPResponse p_FTPResponse;
-        private System.Threading.ManualResetEvent p_ResponseComplete;
+        private volatile FTPResponse p_FTPResponse;
+
+        public EventHandler<ResponseReceivedEventArgs> ResponseReceived;
+        public EventHandler<ResponseCompletedEventArgs> ResponseCompleted;
 
         public FTPControlChannelReceiver()
         {
-            this.p_QueueNotEmpty = new System.Threading.ManualResetEvent(false);
-            this.p_Responses = new System.Collections.Queue();
             this.p_MatchResponse = new System.Text.RegularExpressions.Regex(@"^(?<code>\d{3})(?<delimiter>[ \t-])(?<message>.*)$", System.Text.RegularExpressions.RegexOptions.Compiled);
-            this.p_FTPResponse = null;
-            this.p_ResponseComplete = new System.Threading.ManualResetEvent(false);
+            this.p_FTPResponse = new FTPResponse();
             this.p_StatusCode = -1;
             this.p_Message = System.String.Empty;
         }
 
-        ~FTPControlChannelReceiver()
-        {
-            this.p_QueueNotEmpty.Close();
-            this.p_QueueNotEmpty.Dispose();
-            this.p_Responses.Clear();
-            this.p_FTPResponse.Dispose();
-            this.p_FTPResponse = null;
-            this.p_ResponseComplete.Dispose();
-            this.p_ResponseComplete = null;
-        }
-
-        public System.Threading.ManualResetEvent DataReady
+        public System.Threading.Tasks.TaskCompletionSource<FTPResponse> CompletedTask
         {
             get
             {
-                return this.p_QueueNotEmpty;
-            }
-        }
-
-        public System.Threading.ManualResetEvent ResponseComplete
-        {
-            get
-            {
-                return this.p_ResponseComplete;
+                return this.p_FTPResponse.Completed;
             }
         }
 
@@ -237,11 +282,7 @@ namespace YourFritz.EVA
         {
             System.Text.RegularExpressions.MatchCollection matches = this.p_MatchResponse.Matches(Line);
 
-            lock (this.p_Responses)
-            { 
-                this.p_Responses.Enqueue((object) Line);
-                this.p_QueueNotEmpty.Set();
-            }
+            this.OnResponseReceived(Line);
 
             if (matches.Count > 0)
             {
@@ -278,41 +319,21 @@ namespace YourFritz.EVA
                     {
                         throw new FTPClientException(String.Format("Multi-line start message with code {0:d} (see RFC 959) after previous response lines.", code));
                     }
-                    this.p_FTPResponse = new FTPResponse(message, code);
+                    this.p_FTPResponse.StartMultiLineResponse(Line);
                 }
                 else if (code != -1 && !startMultiline)
                 {
-                    if (this.p_FTPResponse != null)
-                    {
-                        this.p_FTPResponse.Finish(message, code);
-                    }
-                    else
-                    {
-                        this.p_FTPResponse = new FTPResponse(message, code);
-                    }
+                    this.p_FTPResponse.Finish(message, code);
+
                     this.p_Message = message;
                     this.p_StatusCode = code;
-                    this.p_ResponseComplete.Set();
+
+                    this.OnResponseCompleted(this.p_StatusCode, this.p_Message);
                 }
             }
             else
             {
-                if (this.p_FTPResponse != null)
-                {
-                    this.p_FTPResponse.AppendLine(Line);
-                }
-                else
-                {
-                    this.p_FTPResponse = new FTPResponse(Line);
-                }
-            }
-
-            if (this.p_FTPResponse != null)
-            {
-                if (this.p_FTPResponse.IsComplete)
-                {
-                    this.p_ResponseComplete.Set();
-                }
+                this.p_FTPResponse.AppendLine(Line);
             }
         }
 
@@ -320,43 +341,31 @@ namespace YourFritz.EVA
         {
             get
             {
-                if (this.p_FTPResponse != null)
-                {
-                    if (this.p_FTPResponse.IsComplete)
-                    {
-                        return this.p_FTPResponse;
-                    }
-                }
-                throw new FTPClientException("The response is not available yet.");
+                return this.p_FTPResponse;
             }
         }
 
         public void Clear()
         {
-            this.p_QueueNotEmpty.Reset();
-            this.p_ResponseComplete.Reset();
             this.p_Message = System.String.Empty;
             this.p_StatusCode = -1;
-            this.p_Responses.Clear();
-
-            if (this.p_FTPResponse != null)
-            {
-                this.p_FTPResponse.Dispose();
-            }
-            this.p_FTPResponse = null;
+            this.p_FTPResponse = new FTPResponse();
         }
 
-        public bool WaitData(int Timeout)
+        protected virtual void OnResponseReceived(string Line)
         {
-            return this.p_QueueNotEmpty.WaitOne(Timeout);
+            EventHandler<ResponseReceivedEventArgs> handler = this.ResponseReceived;
+            if (handler != null) handler(this, new ResponseReceivedEventArgs(Line));
         }
 
-        public bool Wait(int Timeout)
+        protected virtual void OnResponseCompleted(int Code, string Message)
         {
-            return this.p_ResponseComplete.WaitOne(Timeout);
+            EventHandler<ResponseCompletedEventArgs> handler = this.ResponseCompleted;
+            if (handler != null) handler(this, new ResponseCompletedEventArgs(Code, Message));
         }
     }
 
+    // generic FTP client class
     public class FTPClient
     {
         public enum DataConnectionMode
@@ -371,6 +380,10 @@ namespace YourFritz.EVA
             Binary = 2,
         }
 
+        public event EventHandler<CommandSentEventArgs> CommandSent;
+        public event EventHandler<ResponseReceivedEventArgs> ResponseReceived;
+        public event EventHandler<CommandCompletedEventArgs> CommandCompleted;
+
         // properties fields
         private System.Net.IPAddress p_Address;
         private int p_Port;
@@ -379,9 +392,10 @@ namespace YourFritz.EVA
         private DataType p_DataType;
         private int p_DataPort;
         private bool p_IsOpened;
+        private string p_RunningCommand;
+        private bool p_OpenedDataConnection;
 
         // solely private values
-        private System.Net.IPEndPoint controlEP;
         private System.Net.Sockets.TcpClient controlConnection;
         private System.IO.StreamWriter controlWriter;
         private System.IO.StreamReader controlReader;
@@ -389,7 +403,7 @@ namespace YourFritz.EVA
 
         public FTPClient()
         {
-            this.Initialize(System.Net.IPAddress.Parse("192.168.178.1"), 21);
+            this.Initialize(System.Net.IPAddress.Any, 21);
         }
 
         public FTPClient(string Address)
@@ -513,6 +527,30 @@ namespace YourFritz.EVA
             }
         }
 
+        public bool HasOpenDataConnection
+        {
+            get
+            {
+                return this.p_OpenedDataConnection;
+            }
+        }
+
+        public string RunningCommand
+        {
+            get
+            {
+                return this.p_RunningCommand;
+            }
+        }
+
+        public FTPResponse Response
+        {
+            get
+            {
+                return this.controlChannelReceiver.Response;
+            }
+        }
+
         public void Open()
         {
             this.Open(this.p_Address, this.p_Port);
@@ -542,26 +580,34 @@ namespace YourFritz.EVA
             this.p_Address = Address;
             this.p_Port = Port;
 
-            this.controlEP = new System.Net.IPEndPoint(this.p_Address, this.p_Port);
-            this.controlConnection = new System.Net.Sockets.TcpClient(this.controlEP);
+            try
+            {
+                this.controlConnection = new System.Net.Sockets.TcpClient(this.p_Address.ToString(), this.p_Port);
+            }
+            catch (System.Net.Sockets.SocketException e)
+            {
+                throw new FTPClientException("Error connecting to FTP server.", e);
+            }
             this.controlWriter = this.OpenWriter(this.controlConnection);
             this.controlChannelReceiver = new FTPControlChannelReceiver();
+            this.controlChannelReceiver.ResponseReceived += this.ControlChannelResponseReceived;
+            this.controlChannelReceiver.ResponseCompleted += this.ControlChannelResponseCompleted;
             this.controlReader = this.OpenReader(this.controlConnection);
             this.AsyncControlReader(this.controlReader, this.controlChannelReceiver);
         }
 
-        public void Close()
+        public virtual void Close()
         {
             if (this.controlReader != null)
-            { 
-                this.controlReader.Close();
+            {
+                //              this.controlReader.Close();
                 this.controlReader.Dispose();
                 this.controlReader = null;
             }
 
             if (this.controlWriter != null)
             {
-                this.controlWriter.Close();
+                //              this.controlWriter.Close();
                 this.controlWriter.Dispose();
                 this.controlWriter = null;
             }
@@ -585,8 +631,64 @@ namespace YourFritz.EVA
                 }
                 this.controlConnection = null;
             }
+        }
 
-            this.controlEP = null;
+        public FTPResponse GetResponse()
+        {
+            FTPResponse lastResponse = this.controlChannelReceiver.Response;
+
+            this.controlChannelReceiver.Clear();
+
+            return lastResponse;
+        }
+
+        public void StartCommand(string Command)
+        {
+            if (Command.CompareTo(EVACommandFactory.GetCommands()[EVACommandType.Abort].CommandValue) != 0 && this.p_RunningCommand != null)
+            {
+                throw new FTPClientException("There is already a command in progress.");
+            }
+
+            if (Command.CompareTo(EVACommandFactory.GetCommands()[EVACommandType.Abort].CommandValue) != 0)
+            {
+                // remove any garbage from previous command, if the new one is not an ABOR command
+                this.controlChannelReceiver.Clear();
+            }
+
+            // start the new command
+            this.p_RunningCommand = Command;
+            this.controlWriter.WriteLine(Command);
+            this.OnCommandSent(Command);
+        }
+
+        public async System.Threading.Tasks.Task<FTPResponse> SendCommand(string Command)
+        {
+            this.StartCommand(Command);
+            return await this.controlChannelReceiver.CompletedTask.Task;
+        }
+
+        protected void DataCommandCompleted()
+        {
+            this.p_OpenedDataConnection = false;
+            this.ControlCommandCompleted();
+        }
+
+        protected virtual void OnCommandSent(string Line)
+        {
+            EventHandler<CommandSentEventArgs> handler = this.CommandSent;
+            if (handler != null) handler(this, new CommandSentEventArgs(Line));
+        }
+
+        protected virtual void OnResponseReceived(ResponseReceivedEventArgs e)
+        {
+            EventHandler<ResponseReceivedEventArgs> handler = this.ResponseReceived;
+            if (handler != null) handler(this, e);
+        }
+
+        protected virtual void OnCommandCompleted(string Command, FTPResponse Response)
+        {
+            EventHandler<CommandCompletedEventArgs> handler = this.CommandCompleted;
+            if (handler != null) handler(this, new CommandCompletedEventArgs(Command, Response));
         }
 
         private void Initialize(System.Net.IPAddress address, int port)
@@ -603,6 +705,8 @@ namespace YourFritz.EVA
         private System.IO.StreamWriter OpenWriter(System.Net.Sockets.TcpClient connection)
         {
             System.IO.StreamWriter writer = new System.IO.StreamWriter(connection.GetStream(), System.Text.Encoding.ASCII);
+            writer.NewLine = "\r\n";
+            writer.AutoFlush = true;
             return writer;
         }
 
@@ -614,8 +718,137 @@ namespace YourFritz.EVA
 
         private async void AsyncControlReader(System.IO.StreamReader reader, FTPControlChannelReceiver receiver)
         {
-            string readLine = await reader.ReadLineAsync();
-            receiver.Push(readLine);
+            do
+            {
+                string readLine = await reader.ReadLineAsync();
+                receiver.Push(readLine);
+            } while (this.controlConnection.Connected);
+        }
+
+        private void ControlCommandCompleted()
+        {
+            string lastCommand = this.p_RunningCommand;
+
+            this.p_RunningCommand = null;
+
+            if (lastCommand != null && this.controlChannelReceiver.Response != null && this.controlChannelReceiver.Response.IsComplete)
+            {
+                this.OnCommandCompleted(lastCommand, this.controlChannelReceiver.Response);
+            }
+        }
+
+        private void ControlChannelResponseReceived(Object sender, ResponseReceivedEventArgs e)
+        {
+            this.OnResponseReceived(e);
+        }
+
+        private void ControlChannelResponseCompleted(Object sender, ResponseCompletedEventArgs e)
+        {
+            if (e.Code == 150)
+            {
+                this.p_OpenedDataConnection = true;
+                return;
+            }
+
+            if (e.Code == 421)
+            {
+                // server has closed the connection or will do it soon
+                this.p_IsOpened = false;
+            }
+
+            if (e.Code == 530)
+            {
+                throw new FTPClientException("Login needed.");
+            }
+
+            this.ControlCommandCompleted();
+        }
+    }
+
+    // EVA specific exception 
+    public class EVAClientException : Exception
+    {
+        public EVAClientException()
+        {
+        }
+
+        public EVAClientException(string message)
+            : base(message)
+        {
+        }
+
+        public EVAClientException(string message, Exception inner) : base(message, inner)
+        {
+        }
+    }
+
+    // EVA specific FTP client class
+    public class EVAClient : FTPClient
+    {
+        // static initial settings
+        public readonly static string EVADefaultIP = "192.168.178.1";
+
+        private bool p_IsLoggedIn;
+
+        public EVAClient() :
+            base(EVAClient.EVADefaultIP)
+        {
+
+        }
+
+        public EVAClient(string Address) :
+            base(Address)
+        {
+        }
+
+        public EVAClient(string Address, int Port) :
+            base(Address, Port)
+        {
+        }
+
+        public EVAClient(System.Net.IPAddress Address) :
+            base(Address)
+        {
+        }
+
+        public EVAClient(System.Net.IPAddress Address, int Port) :
+            base(Address, Port)
+        {
+        }
+
+        public bool IsLoggedIn
+        {
+            get
+            {
+                return this.p_IsLoggedIn;
+            }
+        }
+
+        public override void Close()
+        {
+            if (this.IsLoggedIn)
+            {
+                this.Logout();
+            }
+
+            ((FTPClient)this).Close();
+        }
+
+        public async System.Threading.Tasks.Task<FTPResponse> RunCommand(string Command)
+        {
+            return await base.SendCommand(Command);
+        }
+
+        public void Login()
+        {
+            this.p_IsLoggedIn = true;
+            return;
+        }
+
+        public void Logout()
+        {
+            this.p_IsLoggedIn = false;
+            return;
         }
     }
 
@@ -623,6 +856,60 @@ namespace YourFritz.EVA
     {
         static void Main(string[] args)
         {
+            TestFTPClient.Run(args);
+        }
+
+        static async void Run(string[] args)
+        {
+            EVAClient eva = new EVAClient();
+            FTPResponse resp;
+
+            eva.CommandSent += CommandSent;
+            eva.ResponseReceived += ResponseReceived;
+            eva.CommandCompleted += CommandCompleted;
+
+            eva.Open("192.168.130.1");
+            eva.Response.Completed.Task.Wait();
+            resp = eva.GetResponse();
+
+            try
+            {
+                resp = await eva.RunCommand("LIST");
+            }
+            catch (YourFritz.EVA.FTPClientException e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+            catch (YourFritz.EVA.EVAClientException e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+
+            eva.Close();
+        }
+
+        static void CommandSent(Object sender, CommandSentEventArgs e)
+        {
+            Console.WriteLine("< {0:s}", e.Line);
+        }
+
+        static void ResponseReceived(Object sender, ResponseReceivedEventArgs e)
+        {
+            Console.WriteLine("> {0:s}", e.Line);
+        }
+
+        static void CommandCompleted(Object source, CommandCompletedEventArgs e)
+        {
+            Console.WriteLine("Command : {0:s}", e.Command);
+            Console.WriteLine("Response: {0:d} {1:s}", e.Response.Code, e.Response.Message);
+            if (e.Response.IsMultilineResponse)
+            {
+                e.Response.Content.ForEach(line => Console.WriteLine("        : {0:s}", line));
+            }
         }
     }
 }
