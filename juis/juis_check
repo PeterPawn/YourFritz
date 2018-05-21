@@ -74,6 +74,7 @@ usage_text()
 		__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "nicht neu starten mit der 'bash' als Shell"
 		__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "die Antwort vom AVM-Server wird in $(__undl "filename") gespeichert"
 		__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "keine Konfigurationsdatei verwenden"
+		__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "die echte Seriennummer der Box senden"
 		__options_end
 		__nl "Das Skript versucht, eine Konfigurationsdatei zur Anpassung an die lokalen Gegebenheiten"
 		__nl "zu verwenden, dazu wird nach einer Datei mit dem (Aufruf-)Namen des Skripts und der Erweiterung"
@@ -119,6 +120,13 @@ usage_text()
 		__nl "Serial      die 'Seriennummer' der FRITZ!Box, üblicherweise ist das aber in Wirklichkeit der"
 		__nl "            Wert von 'maca' (also der MAC-Adresse auf dem LAN-Interface) und nicht der Wert von"
 		__nl "            'SerialNumber' aus dem FRITZ!Box-Environment im TFFS"
+		__nl "$__red__            Im Zuge des Ablaufs der Übergangszeit für die Einführung der DSGVO in Deutschland,"
+		__nl "$__red__            wird ab dieser Version anstelle eines von der FRITZ!Box gelesenen Wertes nur noch"
+		__nl "$__red__            die Kombination aus den ersten drei Bytes (der OUI), gefolgt von einem zufälligen"
+		__nl "$__red__            Wert, der definitiv nicht der tatsächlichen MAC-Adresse entspricht, verwendet."
+		__nl "$__red__            Wer den echten Wert verwenden möchte, kann das durch Angabe der Option '-r'"
+		__nl "$__red__            erreichen - die Daten werden dann aber ohne weitere Nachfrage an den Hersteller"
+		__nl "$__red__            gesendet."
 		__nl "Name        der Produktname der FRITZ!Box (CONFIG_PRODUKT), kann auch Leerzeichen enthalten"
 		__nl "HW          der Wert von 'HWRevision' aus dem FRITZ!Box-Environment im TFFS"
 		__nl "OEM         der Wert für das 'Branding', hiermit wird bei Boxen, die speziell für bestimmte"
@@ -227,6 +235,7 @@ usage_text()
 		__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "do not respawn with 'bash', even if it's possible"
 		__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "save SOAP response to $(__undl "filename") for further processing"
 		__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "skip configuration file processing"
+		__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "send real Serial value read from device"
 		__options_end
 		__nl "The script attempts to read a configuration file with its own name (or better expressed:"
 		__nl "with the name, that was used to call it, because this may be a symbolic link, too) and an"
@@ -253,6 +262,10 @@ usage_text()
 		__nl "            it's called 'Revision' in older firmware (and in the 'jason_boxinfo.xml' file)"
 		__nl "-----------------------------------------------------------------------------------------------"
 		__nl "Serial      the serial number of the FRITZ!Box device (usually the same as 'maca')"
+		__nl "$__red__            Due to GDPR-base privacy concerns, a random value is used now. If you need"
+		__nl "$__red__            to submit the real value of your device, you may call the script with '-r'"
+		__nl "$__red__            option - the data will be sent without further notification or informantion"
+		__nl "$__red__            in this case."
 		__nl "Name        the product name"
 		__nl "HW          the hardware revision"
 		__nl "OEM         the OEM value used (also known as the 'branding')"
@@ -606,10 +619,11 @@ __required_commands="sed mkfifo:mknod cat rm mkdir touch wc cmp date"
 #                                                                                                     #
 #######################################################################################################
 # common property names
-common_names="Serial Name HW OEM Lang Annex Country"
+common_names="Name HW OEM Lang Annex Country"
 # properties with different names
 version_name="Version"
 buildnumber_name="Buildnumber"
+serial_name="Serial"
 version_parts="%Major%.%Minor%.%Patch%[-%Buildnumber%]"
 version_compound="\$Version-\$Buildnumber"
 version_string="\$(printf "%d.%02d.%02d-%s" \$Major \$Minor \$Patch \$$buildnumber_name)"
@@ -690,6 +704,7 @@ $__version_option__
 $__debug_option__
 __no_cfgfile=0
 __no_respawn=0
+__use_real_serial=0
 __save_output=""
 while [ $# -gt 0 ]; do
 	parameters="$*"
@@ -703,6 +718,10 @@ while [ $# -gt 0 ]; do
 		continue
 	elif __check_option "$1" "-n" "--no-respawn" >/dev/null; then
 		__no_respawn=1
+		shift
+		continue
+	elif __check_option "$1" "-r" "--use-real-serial" >/dev/null; then
+		__use_real_serial=1
 		shift
 		continue
 	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
@@ -829,6 +848,30 @@ run_nc()
 )
 #######################################################################################################
 #                                                                                                     #
+# get the numbers from 1 to 8 in any random order                                                     #
+#                                                                                                     #
+#######################################################################################################
+getrandomorder()
+(
+	v=$(date +%s)
+	i=0;
+	n="8 5 2 1 4 7 6 3"
+	while [ $i -lt 8 ]; do
+		x=$(( (( v >> ( y * ( 3 + ( y & 1 )))) & 7 ) + 1 ))
+		set -- $n
+		[ $x -gt $# ] && x=$#
+		eval y=\$$x
+		n=""
+		while [ $1 ]; do
+			[ $y = $1 ] || n="$n $1"
+			shift
+		done
+		printf "\\\\%d" $y
+		i=$(( i + 1 ))
+	done
+)
+#######################################################################################################
+#                                                                                                     #
 # extract result variables from XML answer                                                            #
 #                                                                                                     #
 #######################################################################################################
@@ -837,7 +880,22 @@ extract_xml()
 	input="$1"
 	ns="$2"
 	tag="$3"
-	sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input
+	if [ "$3" = "$serial_name" ] && [ $__use_real_serial -eq 0 ]; then
+		# replace read serial number with a random value after OUI
+		serial="$(sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input)"
+		oui="$(expr "$serial" : "\([0-9a-fA-F]\{6\}\).*")"
+		rn="$(expr "$serial" : "^[0-9a-fA-F]\{6\}\(.*\)")"
+		rand="$rn"
+		mask="%06X"
+		[ -z "$(expr "$serial" : ".*\([a-f]\).*")" ] || mask="%06x"
+		order="$(getrandomorder)"
+		while [ "$rand" = "$rn" ]; do
+			rand="$(printf "$mask" "$(date +%s)" | sed -n -e "s|\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)\(.\)|$order|p" | sed -n -e "s|.*\(.\{6\}\)\$|\1|p")"
+		done
+		printf "%s%s" "$oui" "$rand"
+	else
+		sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1116,7 +1174,7 @@ else
 	__debug "$(__get_localized DBG_015)"
 fi
 # we use the older variant with a 'Version' value here to retain backward compatibility
-names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
 #######################################################################################################
 #                                                                                                     #
 # first attempt to process name/value pairs from command line, to set variables without an existing   #
@@ -1127,7 +1185,7 @@ for nv in $*; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
-	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
 	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			__debug "$(__get_localized DBG_009)" "$n" "$value"
@@ -1182,12 +1240,12 @@ if [ $detect -eq 1 ]; then
 			__emsg "$(__get_localized ERR_003)" "$boxinfo2" "$Box" "$boxport"
 			exit 3
 		else
-			names="$(get_names "$common_names" "$alt_names" 1) $flags_name $inhouse_option_name"
+			names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
 			ns="j"
 			replace="$boxinfo2_replace_names"
 		fi
 	else
-		names="$(get_names "$common_names" "$alt_names" 2) $flags_name $inhouse_option_name"
+		names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
 		ns="q"
 		replace="$boxinfo1_replace_names"
 	fi
@@ -1255,7 +1313,7 @@ for nv in $*; do
 	value="${nv#*=}"
 	valid=0
 	[ "$name" = "$inhouse_option_name" ] && continue
-	l_names="$(get_names "$common_names" "$alt_names" 1) $flags_name"
+	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name"
 	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			if [ "$value" = "empty" ]; then
@@ -1320,7 +1378,7 @@ done
 #                                                                                                     #
 #######################################################################################################
 if __is_debug; then
-	names="$(get_names "$common_names" "$alt_names" 2) $flags_name $inhouse_option_name"
+	names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
 	__debug "$delimiter_line"
 	__debug "$(__get_localized DBG_003)"
 	__debug "$delimiter_line"
@@ -1329,6 +1387,12 @@ if __is_debug; then
 	done
 	__debug "$delimiter_line"
 fi
+#######################################################################################################
+#                                                                                                     #
+# replace real serial number (or better 'maca' value) with a dummy value, as long as the '-r' option  #
+# was not specified                                                                                   #
+#                                                                                                     #
+#######################################################################################################
 #######################################################################################################
 #                                                                                                     #
 # prepare temporary files for the check request                                                       #
