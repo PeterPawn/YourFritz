@@ -4,6 +4,8 @@ namespace YourFritz.Helpers
 {
     class HexDump
     {
+        private HexDump() { }
+
         public static string Dump(byte[] input)
         {
             System.Text.StringBuilder output = new System.Text.StringBuilder();
