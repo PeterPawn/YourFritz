@@ -20,6 +20,7 @@ Verfügbare Optionen sind:
 -n, --no-respawn               - nicht neu starten mit der 'bash' als Shell
 -s, --save-response <filename> - die Antwort vom AVM-Server wird in <filename> gespeichert
 -i, --ignore-cfgfile           - keine Konfigurationsdatei verwenden
+-r, --use-real-serial          - die echte Seriennummer (maca) der Box senden
 ```
 Das Skript versucht, eine Konfigurationsdatei zur Anpassung an die lokalen Gegebenheiten zu verwenden, dazu wird nach einer Datei mit dem (Aufruf-)Namen des Skripts und der Erweiterung ```cfg``` in dem Verzeichnis gesucht, in welchem das Skript selbst enthalten ist. Diese Datei wird dann _eingefügt_ und kann beliebigen Shell-Code enthalten - **man sollte also sehr genau die hiermit zum Ausdruck gebrachte Warnung beachten, dass es sich zu einem schweren Sicherheitsproblem auswachsen kann, wenn irgendjemand diese Datei ohne Kenntnis des Benutzers ändern kann**.
 
@@ -41,7 +42,7 @@ Egal, auf welchem Weg man jetzt die notwendigen Parameter bereitstellt (ob berei
 | | Minor | die _Hauptversion_ des FRITZ!OS |
 | | Patch | die _Unterversion_ des FRITZ!OS |
 | | Buildnumber | eine immer weiter ansteigende Zahl, die vermutlich eine fortlaufende Nummerierung für die komplettierten Durchläufe zum Erstellen einer Firmware bei AVM darstellt und über alle Modelle _hochgezählt_ wird; in älteren Firmware-Versionen (und in der ```jason_boxinfo.xml```) lief das noch unter dem Namen ```Revision``` |
-| Serial | | die _Seriennummer_ der FRITZ!Box, üblicherweise ist das aber in Wirklichkeit der Wert von ```maca``` (also der MAC-Adresse auf dem LAN-Interface) und nicht der Wert von ```SerialNumber``` aus dem FRITZ!Box-Environment im TFFS |
+| Serial | | die _Seriennummer_ der FRITZ!Box, üblicherweise ist das aber in Wirklichkeit der Wert von ```maca``` (also der MAC-Adresse auf dem LAN-Interface) und nicht der Wert von ```SerialNumber``` aus dem FRITZ!Box-Environment im TFFS<br>**Im Zuge des Ablaufs der Übergangszeit für die Einführung der DSGVO in Deutschland, wird ab dieser Version anstelle eines von der FRITZ!Box gelesenen Wertes nur noch die Kombination aus den ersten drei Bytes (der OUI), gefolgt von einem zufälligen Wert, der definitiv nicht der tatsächlichen MAC-Adresse entspricht, verwendet. Wer den echten Wert verwenden möchte, kann das durch Angabe der Option '-r' erreichen - die Daten werden dann aber ohne weitere Nachfrage an den Hersteller gesendet.** |
 | Name | | der Produktname der FRITZ!Box (```CONFIG_PRODUKT```), kann auch Leerzeichen enthalten |
 | HW | | der Wert von ```HWRevision``` aus dem FRITZ!Box-Environment im TFFS |
 | OEM | | der Wert für das _Branding_, hiermit wird bei Boxen, die speziell für bestimmte ISPs produziert wurden, eine providerspezifische Konfiguration eingestellt; bei den Geräten, die sich direkt als *AVM FRITZ!Box* zu erkennen geben, steht dort ```avm``` für Geräte mit deutscher Firmware und ```avme``` für solche, die eine Version der Firmware für internationale Verwendung installiert haben (oder hatten) |
