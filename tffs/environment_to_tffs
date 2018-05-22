@@ -46,7 +46,7 @@ envfile=$tmpdir/environment
 #
 ##################################################################################
 [ -z $1 ] && nametable=kernel.map || nametable="$1"
-if ! [ -r $nametable_src ]; then
+if ! [ -r $nametable ]; then
 	echo "name table mappings missing" 1>&2
 	exit 1	
 fi
