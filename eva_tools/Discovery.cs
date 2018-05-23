@@ -1,296 +1,635 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 
 namespace YourFritz.EVA
 {
-    public class UdpPacket
+    internal class DiscoveryUdpPacket
     {
-        public enum Direction
+        internal enum Direction
         {
             Request = 1,
             Answer = 2,
         }
 
-        public IPAddress Address { get; }
-        public Direction PacketType { get; }
+        private IPAddress p_Address = new IPAddress(0);
+        private Direction p_PacketType = Direction.Request;
 
-        internal UdpPacket()
+        internal DiscoveryUdpPacket()
         {
-            this.PacketType = Direction.Request;
-            this.Address = new IPAddress(0);
         }
 
-        internal UdpPacket(IPAddress requestedIP)
+        internal DiscoveryUdpPacket(IPAddress requestedIP)
         {
-            this.PacketType = Direction.Request;
-            this.Address = requestedIP;
+            p_Address = requestedIP;
         }
 
-        internal UdpPacket(byte[] answer)
+        internal DiscoveryUdpPacket(byte[] answer)
         {
-            this.PacketType = (Direction)answer[4];
-            if ((this.PacketType == Direction.Answer) && (answer[2] == 18) && (answer[3] == 1))
+            p_PacketType = (Direction)answer[4];
+            if ((p_PacketType == Direction.Answer) && (answer[2] == 18) && (answer[3] == 1))
             {
                 byte[] address = new byte[4] { answer[11], answer[10], answer[9], answer[8] };
-                this.Address = new IPAddress(address);
+                p_Address = new IPAddress(address);
             }
             else
             {
-                throw new DiscoveryException("Unexpected packet type found in received data.");
+                throw new EVADiscoveryException("Unexpected packet type found in received data.");
             }
         }
 
-        public bool Equals(UdpPacket other)
+        internal IPAddress Address
         {
-            if (this.PacketType == other.PacketType && this.Address.Equals(other.Address))
+            get
             {
-                return true;
+                return p_Address;
             }
-            return false;
         }
 
-        public byte[] ToBytes()
+        internal Direction PacketType
+        {
+            get
+            {
+                return p_PacketType;
+            }
+        }
+
+        internal bool Equals(DiscoveryUdpPacket other)
+        {
+            return (p_PacketType == other.p_PacketType) && (p_Address.Equals(other.p_Address));
+        }
+
+        internal byte[] ToBytes()
         {
             byte[] output = new byte[16];
 
             output[2] = 18;
             output[3] = 1;
-            output[4] = Convert.ToByte(this.PacketType);
-            this.Address.GetAddressBytes().CopyTo(output, 8);
+            output[4] = Convert.ToByte(p_PacketType);
+            p_Address.GetAddressBytes().CopyTo(output, 8);
 
             return output;
         }
 
-        public static bool IsAnswer(byte[] data)
+        internal static bool IsAnswer(byte[] data)
         {
-            if (data[2] == 18 && data[3] == 1 && data[4] == (byte)Direction.Answer)
-            {
-                return true;
-            }
-            return false;
+            return (data[2] == 18) && (data[3] == 1) && (data[4] == (byte)Direction.Answer);
         }
     }
 
-    public class Device
+    public class EVADevice
     {
-        public IPAddress Address { get; }
-        public int Port { get; }
+        private IPAddress p_Address;
+        private int p_Port;
 
-        internal Device(IPEndPoint ep, UdpPacket answer)
+        internal EVADevice(IPEndPoint ep, DiscoveryUdpPacket answer)
         {
-            if (answer.PacketType != UdpPacket.Direction.Answer)
+            if (answer.PacketType != DiscoveryUdpPacket.Direction.Answer)
             {
-                throw new DiscoveryException("The specified UDP packet isn't a discovery response.");
+                throw new EVADiscoveryException("The specified UDP packet isn't a discovery response.");
             }
 
             if (!answer.Address.Equals(ep.Address))
             {
-                throw new DiscoveryException("The IP address in the received packet does not match the packet sender's address.");
+                throw new EVADiscoveryException("The IP address in the received packet does not match the packet sender's address.");
             }
 
-            this.Address = ep.Address;
-            this.Port = ep.Port;
-        }
-    }
-
-    public class StartEventArgs : EventArgs
-    {
-        public IPAddress Address { get; }
-        public int Port { get; }
-        public DateTime StartedAt { get; }
-
-        internal StartEventArgs(IPAddress address, int port)
-        {
-            this.Address = address;
-            this.Port = port;
-            this.StartedAt = DateTime.Now;
-        }
-    }
-
-    public class StopEventArgs : EventArgs
-    {
-        public int DeviceCount { get; }
-        public DateTime StoppedAt { get; }
-
-        internal StopEventArgs(int count)
-        {
-            this.DeviceCount = count;
-            this.StoppedAt = DateTime.Now;
-        }
-    }
-
-    public class PacketSentEventArgs : EventArgs
-    {
-        public IPAddress Address { get; }
-        public int Port { get; }
-        public DateTime SentAt { get; }
-        public byte[] SentData { get; }
-
-        internal PacketSentEventArgs(IPAddress address, int port, byte[] data)
-        {
-            this.Address = address;
-            this.Port = port;
-            this.SentData = data;
-            this.SentAt = DateTime.Now;
-        }
-    }
-
-    public class PacketReceivedEventArgs : EventArgs
-    {
-        public IPEndPoint EndPoint { get; }
-        public DateTime ReceivedAt { get; }
-        public byte[] ReceivedData { get; }
-
-        internal PacketReceivedEventArgs(IPEndPoint ep, byte[] data)
-        {
-            this.EndPoint = ep;
-            this.ReceivedData = data;
-            this.ReceivedAt = DateTime.Now;
-        }
-    }
-
-    public class DeviceFoundEventArgs : EventArgs
-    {
-        public Device Device { get; }
-        public DateTime FoundAt { get; }
-
-        internal DeviceFoundEventArgs(Device Device)
-        {
-            this.Device = Device;
-            this.FoundAt = DateTime.Now;
-        }
-    }
-
-    public class DiscoveryException : Exception
-    {
-        public DiscoveryException()
-        {
+            p_Address = ep.Address;
+            p_Port = ep.Port;
         }
 
-        public DiscoveryException(string message)
-            : base(message)
+        public IPAddress Address
         {
-        }
-
-        public DiscoveryException(string message, Exception inner) : base(message, inner)
-        {
-        }
-    }
-
-    public class Discovery
-    {
-        // default FRITZ!Box IP address
-        public IPAddress BoxIP { get; set; } = new IPAddress(new byte[] { 192, 168, 178, 1 });
-        // default broadcast address to use - any other value requires access to SocketOptions
-        public IPAddress BroadcastAddress { get; set; } = new IPAddress(new byte[] { 255, 255, 255, 255 });
-        // the UDP port to sent to/receive from
-        public int DiscoveryPort { get; set; } = 5035;
-        // the discovered devices
-        public Dictionary<IPAddress, Device> FoundDevices { get; } = new Dictionary<IPAddress, Device>();
-        // discovery active flag
-        public bool IsRunning { get; internal set; } = false;
-
-        // the UDP packet for discovery
-        private UdpPacket sendData = new UdpPacket();
-        // the listener receiving any response
-        private UdpClient listener = null;
-        // the client used to send UDP broadcast packets
-        private UdpClient sender = null;
-        // the timer used to send one packet per second
-        private Timer sendTimer = null;
-        // event to set, if we're waiting for discovery to get finished
-        private System.Threading.ManualResetEvent stopEvent = null;
-        // stop on first device found
-        private bool stopOnFirstDeviceFound = false;
-
-        // events raised by this class
-        public EventHandler<StartEventArgs> Started;
-        public EventHandler<StopEventArgs> Stopped;
-        public EventHandler<PacketSentEventArgs> PacketSent;
-        public EventHandler<PacketReceivedEventArgs> PacketReceived;
-        public EventHandler<DeviceFoundEventArgs> DeviceFound;
-
-        public Discovery()
-        {
-            this.sendData = new UdpPacket(this.BoxIP);
-        }
-
-        ~Discovery()
-        {
-            if (this.sendTimer != null)
+            get
             {
-                this.sendTimer.Stop();
-                this.sendTimer.Dispose();
-                this.sendTimer = null;
-            }
-
-            if (this.sender != null)
-            {
-                this.sender.Close();
-                this.sender.Dispose();
-                this.sender = null;
-            }
-
-            if (this.listener != null)
-            {
-                this.listener.Close();
-                this.listener.Dispose();
-                this.listener = null;
+                return p_Address;
             }
         }
 
-        public void Start(IPAddress newIP)
+        public int Port
         {
-            if (this.IsRunning)
+            get
             {
-                throw new DiscoveryException("Discovery is already running.");
+                return p_Port;
             }
+        }
+    }
 
-            if (newIP != null)
+    public class EVADevices : Dictionary<IPAddress, EVADevice>
+    {
+    }
+
+    public class DiscoveryStartEventArgs : EventArgs
+    {
+        private IPAddress p_Address;
+        private int p_Port;
+        private DateTime p_StartedAt = DateTime.Now;
+
+        internal DiscoveryStartEventArgs(IPAddress address, int port)
+        {
+            p_Address = address;
+            p_Port = port;
+        }
+
+        public IPAddress Address
+        {
+            get
             {
-                if (!newIP.Equals(this.BoxIP))
+                return p_Address;
+            }
+        }
+
+        public int Port
+        {
+            get
+            {
+                return p_Port;
+            }
+        }
+
+        public DateTime StartedAt
+        {
+            get
+            {
+                return p_StartedAt;
+            }
+        }
+    }
+
+    public class DiscoveryStopEventArgs : EventArgs
+    {
+        private int p_DeviceCount = 0;
+        private bool p_Canceled = false;
+        private DateTime p_StoppedAt = DateTime.Now;
+
+        internal DiscoveryStopEventArgs(int Count, bool Canceled)
+        {
+            p_DeviceCount = Count;
+            p_Canceled = Canceled;
+        }
+
+        public int DeviceCount
+        {
+            get
+            {
+                return p_DeviceCount;
+            }
+        }
+
+        public bool Canceled
+        {
+            get
+            {
+                return p_Canceled;
+            }
+        }
+
+        public DateTime StoppedAt
+        {
+            get
+            {
+                return p_StoppedAt;
+            }
+        }
+    }
+
+    public class DiscoveryPacketSentEventArgs : EventArgs
+    {
+        private IPAddress p_Address;
+        private int p_Port;
+        private byte[] p_SentData;
+        private DateTime p_SentAt = DateTime.Now;
+
+        internal DiscoveryPacketSentEventArgs(IPAddress address, int port, byte[] data)
+        {
+            p_Address = address;
+            p_Port = port;
+            p_SentData = data;
+        }
+
+        public IPAddress Address
+        {
+            get
+            {
+                return p_Address;
+            }
+        }
+
+        public int Port
+        {
+            get
+            {
+                return p_Port;
+            }
+        }
+
+        public byte[] SentData
+        {
+            get
+            {
+                return p_SentData;
+            }
+        }
+
+        public DateTime SentAt
+        {
+            get
+            {
+                return p_SentAt;
+            }
+        }
+    }
+
+    public class DiscoveryPacketReceivedEventArgs : EventArgs
+    {
+        private IPEndPoint p_EndPoint;
+        private byte[] p_ReceivedData;
+        private DateTime p_ReceivedAt = DateTime.Now;
+
+        internal DiscoveryPacketReceivedEventArgs(IPEndPoint ep, byte[] data)
+        {
+            p_EndPoint = ep;
+            p_ReceivedData = data;
+        }
+
+        public IPEndPoint EndPoint
+        {
+            get
+            {
+                return p_EndPoint;
+            }
+        }
+
+        public byte[] ReceivedData
+        {
+            get
+            {
+                return p_ReceivedData;
+            }
+        }
+
+        public DateTime ReceivedAt
+        {
+            get
+            {
+                return p_ReceivedAt;
+            }
+        }
+    }
+
+    public class DiscoveryDeviceFoundEventArgs : EventArgs
+    {
+        private EVADevice p_Device;
+        private DateTime p_FoundAt = DateTime.Now;
+
+        internal DiscoveryDeviceFoundEventArgs(EVADevice Device)
+        {
+            p_Device = Device;
+        }
+
+        public EVADevice Device
+        {
+            get
+            {
+                return p_Device;
+            }
+        }
+
+        public DateTime FoundAt
+        {
+            get
+            {
+                return p_FoundAt;
+            }
+        }
+    }
+
+    public class EVADiscoveryException : Exception
+    {
+        internal EVADiscoveryException()
+        {
+        }
+
+        internal EVADiscoveryException(string message) : base(message)
+        {
+        }
+
+        internal EVADiscoveryException(string message, Exception inner) : base(message, inner)
+        {
+        }
+    }
+
+    public class EVADiscovery
+    {
+        private IPAddress p_BoxIP = IPAddress.Parse(EVAConstants.EVADefaultIP);
+        private IPAddress p_BroadcastAddress = IPAddress.Broadcast;
+        private int p_DiscoveryPort = EVAConstants.EVADefaultDiscoveryPort;
+        private bool p_IsRunning = false;
+        private bool p_Canceled = false;
+        private int p_Timeout = EVAConstants.EVADiscoveryTimeout;
+        private bool p_TimeoutElapsed = false;
+        private bool p_StopOnFirstFound = false;
+
+        private CancellationTokenSource ctSource = null;
+        private TaskCompletionSource<EVADevices> discovery;
+
+        public EventHandler<DiscoveryStartEventArgs> Started;
+        public EventHandler<DiscoveryStopEventArgs> Stopped;
+        public EventHandler<DiscoveryPacketSentEventArgs> PacketSent;
+        public EventHandler<DiscoveryPacketReceivedEventArgs> PacketReceived;
+        public EventHandler<DiscoveryDeviceFoundEventArgs> DeviceFound;
+
+        public EVADiscovery()
+        {
+        }
+
+        public IPAddress BoxIP
+        {
+            get
+            {
+                return p_BoxIP;
+            }
+            internal set
+            {
+                this.p_BoxIP = value;
+            }
+        }
+
+        public IPAddress BroadcastAddress
+        {
+            get
+            {
+                return p_BroadcastAddress;
+            }
+        }
+
+        public int DiscoveryPort
+        {
+            get
+            {
+                return p_DiscoveryPort;
+            }
+            internal set
+            {
+                if (value > 65534 || value < 1024)
                 {
-                    this.BoxIP = newIP;
+                    throw new FTPClientException(String.Format("Invalid port number {0:s} specified.", Convert.ToString(value)));
                 }
-                this.sendData = new UdpPacket(newIP);
+                p_DiscoveryPort = value;
+            }
+        }
+
+        public bool StopOnFirstFound
+        {
+            get
+            {
+                return p_StopOnFirstFound;
+            }
+            set
+            {
+                p_StopOnFirstFound = value;
+            }
+        }
+
+        public int DiscoveryTimeout
+        {
+            get
+            {
+                return p_Timeout;
+            }
+            set
+            {
+                p_Timeout = value;
+            }
+        }
+
+        public bool IsRunning
+        {
+            get
+            {
+                return p_IsRunning;
+            }
+        }
+
+        public bool WasCanceled
+        {
+            get
+            {
+                return p_Canceled;
+            }
+        }
+
+        public bool HasTimedOut
+        {
+            get
+            {
+                return p_TimeoutElapsed;
+            }
+        }
+
+        public async Task<EVADevices> StartAsync(IPAddress newIP)
+        {
+            if (p_IsRunning)
+            {
+                throw new EVADiscoveryException("Discovery is already running.");
             }
             else
             {
-                this.sendData = new UdpPacket(new IPAddress(0));
+                p_IsRunning = true;
             }
 
-            if (this.sender == null)
+            IPAddress sendAddress = p_BoxIP;
+
+            if (newIP != null)
             {
-                this.sender = new UdpClient();
+                if (!newIP.Equals(p_BoxIP))
+                {
+                    p_BoxIP = newIP;
+                    sendAddress = p_BoxIP;
+                }
             }
-
-            if (this.listener == null)
+            else
             {
-                this.listener = new UdpClient(this.DiscoveryPort);
+                sendAddress = new IPAddress(0);
             }
-            this.listener.BeginReceive(new AsyncCallback(UdpListenerCallback), this);
 
-            if (this.stopEvent != null)
+            OnStartDiscovery(sendAddress, p_DiscoveryPort);
+
+            EVADevices foundDevices = new EVADevices();
+            discovery = new TaskCompletionSource<EVADevices>();
+
+            ctSource = new CancellationTokenSource();
+
+            List<Task> netIOTasks = new List<Task>
             {
-                this.stopEvent.Reset();
-            }
+                // listening task
+                // do not use the cancellation token here, because socket operations are hard to abort
+                // instead we'll receive our own packet and terminate the loop, if cancellation was requested
+                Task.Factory.StartNew(() =>
+                {
+                    using (UdpClient listener = new UdpClient(p_DiscoveryPort))
+                    {
+                        IPEndPoint ep = new IPEndPoint(IPAddress.Any, p_DiscoveryPort);
+                        bool canceled = false;
 
-            if (this.sendTimer == null)
+//                      Debug.WriteLine(String.Format("Listener started, task id = {0:d}", Task.CurrentId));
+
+                        while (!canceled)
+                        {
+                            byte[] data = listener.Receive(ref ep);
+                            if (DiscoveryUdpPacket.IsAnswer(data))
+                            {
+                                OnPacketReceived(ep, data);
+
+                                EVADevice foundDevice = new EVADevice(ep, new DiscoveryUdpPacket(data));
+
+                                if (!foundDevices.ContainsKey(foundDevice.Address))
+                                {
+                                    foundDevices.Add(foundDevice.Address, foundDevice);
+
+                                    OnDeviceFound(foundDevice);
+
+                                    if (p_StopOnFirstFound)
+                                    {
+                                        //Debug.WriteLine(String.Format("Answer received, leaving task {0:d} ...", Task.CurrentId));
+                                        canceled = true;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                //Debug.WriteLine("Received sent broadcast packet ...");
+                            }
+                            
+                            if (ctSource.IsCancellationRequested)
+                            {
+                                canceled = true;
+                            }
+                        }
+                    }
+                }),
+
+                // broadcast discovery packets, do not use cancellation token for the outer loop
+                Task.Factory.StartNew(async () =>
+                {
+                    IPEndPoint ep = new IPEndPoint(p_BroadcastAddress, p_DiscoveryPort);
+                    byte[] data = new DiscoveryUdpPacket(sendAddress).ToBytes();
+                    int delay = 10;
+
+                    //Debug.WriteLine(String.Format("Packet sender task, id = {0:d}", Task.CurrentId));
+
+                    using (UdpClient sender = new UdpClient())
+                    {
+                        bool canceled = false;
+
+                        while (!canceled)
+                        {
+                            try
+                            {
+                                await Task.Delay(delay, ctSource.Token);
+                            }
+                            catch (TaskCanceledException)
+                            {
+                            }
+
+                            if (!ctSource.IsCancellationRequested)
+                            {
+                                sender.Send(data, data.Length, ep);
+
+                                //Debug.WriteLine(String.Format("Packet sent"));
+
+                                OnPacketSent(sendAddress, p_DiscoveryPort, data);
+
+                                delay = 1000;
+                            }
+                            else
+                            {
+                                canceled = true;
+                            }
+                        }
+                        //Debug.WriteLine(String.Format("Sending loop left"));
+
+                        // send one more packet to terminate listening loop
+                        sender.Send(data, data.Length, ep);
+                        //Debug.WriteLine(String.Format("Final packet sent"));
+                    }
+
+                }),
+
+                // timeout task, cancelable
+                Task.Delay(DiscoveryTimeout * 1000, ctSource.Token).ContinueWith((t) =>
+                {
+                    p_TimeoutElapsed = true;
+                    ctSource.Cancel();
+                }, TaskContinuationOptions.NotOnCanceled)
+            };
+
+            while (netIOTasks.Count > 0)
             {
-                this.sendTimer = new Timer();
-                this.sendTimer.Interval = 100;
-                this.sendTimer.Elapsed += SendTimer_Elapsed;
-            }
-            this.sendTimer.Start();
+                try
+                {
+                    Task finished = await Task.WhenAny(netIOTasks);
 
-            this.IsRunning = true;
-            this.OnStartDiscovery(this.BoxIP, this.DiscoveryPort);
+                    //Debug.WriteLine(String.Format("Task {0:d} finished", finished.Id));
+
+                    netIOTasks.Remove(finished);
+
+                    if (finished is Task<Task> && !p_TimeoutElapsed)
+                    {
+                        netIOTasks.Add(((Task<Task>)finished).Result);
+                    }
+                    else
+                    {
+                        if (!ctSource.IsCancellationRequested && p_TimeoutElapsed)
+                        {
+                            ctSource.Cancel();
+                        }
+                    }
+                }
+                catch (TaskCanceledException e)
+                {
+                    netIOTasks.Remove(e.Task);
+                }
+                catch (AggregateException age)
+                {
+                    foreach (Exception e in age.InnerExceptions)
+                    {
+                        if (e is TaskCanceledException)
+                        {
+                            Task t = ((TaskCanceledException)e).Task;
+
+                            if (netIOTasks.Count > 0 && netIOTasks.Contains(t))
+                            {
+                                netIOTasks.Remove(t);
+                            }
+                        }
+                        else
+                        {
+                            throw e;
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    throw e;
+                }
+            }
+
+            OnStopDiscovery(foundDevices.Count, p_Canceled);
+
+            p_IsRunning = false;
+
+            discovery.SetResult(foundDevices);
+
+            return foundDevices;
         }
 
-        public void Start(string requestedIP)
+        public async Task<EVADevices> StartAsync(string requestedIP)
         {
             IPAddress newIP;
 
@@ -302,215 +641,69 @@ namespace YourFritz.EVA
             {
                 newIP = new IPAddress(0);
             }
-            this.Start(newIP);
+
+            return await StartAsync(newIP);
         }
 
-        public void Start()
+        public async Task<EVADevices> StartAsync()
         {
-            this.Start(this.BoxIP);
+            return await StartAsync(p_BoxIP);
         }
 
-        public void Restart(IPAddress newIP)
+        public async Task CancelAsync()
         {
-            if (this.IsRunning)
+            if (p_IsRunning)
             {
-                this.Stop();
-            }
-            this.Start(newIP);
-        }
-
-        public void Restart(string newIP)
-        {
-            if (this.IsRunning)
-            {
-                this.Stop();
-            }
-            this.Start(newIP);
-        }
-
-        public void Restart()
-        {
-            this.Restart(this.BoxIP);
-        }
-
-        public void Stop()
-        {
-            if (this.IsRunning)
-            {
-                this.IsRunning = false;
-                this.OnStopDiscovery(this.FoundDevices.Count);
-            }
-            if (this.sendTimer != null)
-            {
-                this.sendTimer.Stop();
-            }
-            if (this.stopEvent != null)
-            {
-                this.stopEvent.Set();
-            }
-        }
-
-        public Device[] WaitUntilFinished(bool StopOnDeviceFound, int WaitMax)
-        {
-            int timeout = System.Threading.Timeout.Infinite;
-
-            if (this.stopEvent == null)
-            {
-                this.stopEvent = new System.Threading.ManualResetEvent(false);
-            }
-            if (WaitMax != System.Threading.Timeout.Infinite)
-            {
-                timeout = WaitMax * 1000;
-            }
-            this.stopOnFirstDeviceFound = StopOnDeviceFound;
-            this.stopEvent.WaitOne(timeout);
-
-            Device[] found = new Device[this.FoundDevices.Count];
-            int index = 0;
-            foreach (Device dev in this.FoundDevices.Values)
-            {
-                found[index++] = dev;
-            }
-            return found;
-        }
-
-        public Device[] WaitUntilFinished(int WaitMax)
-        {
-            return this.WaitUntilFinished(false, WaitMax);
-        }
-
-        private void SendTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            if (!this.IsRunning)
-            {
-                return;
+                p_Canceled = true;
+                ctSource.Cancel();
             }
 
-            byte[] data = this.sendData.ToBytes();
-            IPEndPoint ep = new IPEndPoint(this.BroadcastAddress, this.DiscoveryPort);
-            this.sender.Send(data, data.Length, ep);
-
-            this.OnPacketSent(this.BoxIP, this.DiscoveryPort, data);
-
-            if (this.IsRunning)
-            {
-                this.sendTimer.Interval = 1000;
-                this.sendTimer.Start();
-            }
+            await Task.CompletedTask;
         }
 
         protected virtual void OnStartDiscovery(IPAddress address, int port)
         {
-            EventHandler<StartEventArgs> handler = this.Started;
-            if (handler != null) handler(this, new StartEventArgs(address, port));
+            EventHandler<DiscoveryStartEventArgs> handler = Started;
+            if (handler != null)
+            {
+                handler(this, new DiscoveryStartEventArgs(address, port));
+            }
         }
 
-        protected virtual void OnStopDiscovery(int count)
+        protected virtual void OnStopDiscovery(int count, bool canceled)
         {
-            EventHandler<StopEventArgs> handler = this.Stopped;
-            if (handler != null) handler(this, new StopEventArgs(count));
+            EventHandler<DiscoveryStopEventArgs> handler = Stopped;
+            if (handler != null)
+            {
+                handler(this, new DiscoveryStopEventArgs(count, canceled));
+            }
         }
 
         protected virtual void OnPacketSent(IPAddress address, int port, byte[] data)
         {
-            EventHandler<PacketSentEventArgs> handler = this.PacketSent;
-            if (handler != null) handler(this, new PacketSentEventArgs(address, port, data));
+            EventHandler<DiscoveryPacketSentEventArgs> handler = PacketSent;
+            if (handler != null)
+            {
+                handler(this, new DiscoveryPacketSentEventArgs(address, port, data));
+            }
         }
 
         protected virtual void OnPacketReceived(IPEndPoint ep, byte[] data)
         {
-            EventHandler<PacketReceivedEventArgs> handler = this.PacketReceived;
-            if (handler != null) handler(this, new PacketReceivedEventArgs(ep, data));
-        }
-
-        protected virtual void OnDeviceFound(Device newDevice)
-        {
-            EventHandler<DeviceFoundEventArgs> handler = this.DeviceFound;
-            if (handler != null) handler(this, new DeviceFoundEventArgs(newDevice));
-            if (this.stopOnFirstDeviceFound)
+            EventHandler<DiscoveryPacketReceivedEventArgs> handler = PacketReceived;
+            if (handler != null)
             {
-                this.Stop();
+                handler(this, new DiscoveryPacketReceivedEventArgs(ep, data));
             }
         }
 
-        private static void UdpListenerCallback(IAsyncResult asyncRes)
+        protected virtual void OnDeviceFound(EVADevice newDevice)
         {
-            Discovery discovery = (Discovery)asyncRes.AsyncState;
-            IPEndPoint ep = new IPEndPoint(IPAddress.Any, discovery.DiscoveryPort);
-            byte[] received = discovery.listener.EndReceive(asyncRes, ref ep);
-
-            try
+            EventHandler<DiscoveryDeviceFoundEventArgs> handler = DeviceFound;
+            if (handler != null)
             {
-                if (UdpPacket.IsAnswer(received))
-                {
-                    discovery.OnPacketReceived(ep, received);
-
-                    UdpPacket recvData = new UdpPacket(received);
-                    Device foundDevice = new Device(ep, recvData);
-                    if (!discovery.FoundDevices.ContainsKey(foundDevice.Address))
-                    {
-                        discovery.FoundDevices.Add(foundDevice.Address, foundDevice);
-                        discovery.OnDeviceFound(foundDevice);
-                    }
-                }
+                handler(this, new DiscoveryDeviceFoundEventArgs(newDevice));
             }
-            catch (DiscoveryException)
-            {
-            }
-            finally
-            {
-                if (discovery.IsRunning)
-                {
-                    discovery.listener.BeginReceive(new AsyncCallback(UdpListenerCallback), discovery);
-                }
-            }
-        }
-    }
-
-    public class Discover
-    {
-        static void Main(string[] args)
-        {
-            Discovery disco = new Discovery();
-
-            disco.DeviceFound += DeviceFound;
-            disco.Started += Started;
-            disco.Stopped += Stopped;
-            disco.PacketSent += Blip;
-            disco.Start("192.168.178.9");
-            Device[] found = disco.WaitUntilFinished(true, 120);
-            Console.WriteLine("Number of devices found: {0}", found.Length);
-            foreach (Device dev in found)
-            {
-                Console.WriteLine("EVA found at {0} ...", dev.Address);
-            }
-            disco.Restart("192.168.178.8");
-            found = disco.WaitUntilFinished(false, 10);
-            Console.WriteLine("Number of devices found: {0}", found.Length);
-            foreach (Device dev in found)
-            {
-                Console.WriteLine("EVA found at {0} ...", dev.Address);
-            }
-        }
-
-        static void DeviceFound(Object sender, DeviceFoundEventArgs e)
-        {
-            Console.WriteLine("Device found at {0}:{1:d}", e.Device.Address.ToString(), e.Device.Port);
-        }
-
-        static void Started(Object sender, StartEventArgs e)
-        {
-            Console.WriteLine("Device discovery started, IP address will be set to {0} ...", e.Address.ToString());
-        }
-
-        static void Stopped(Object sender, StopEventArgs e)
-        {
-            Console.WriteLine("Device discovery finished.");
-        }
-
-        static void Blip(Object sender, PacketSentEventArgs e)
-        {
-            Console.WriteLine("Sending UDP discovery packet ...");
         }
     }
 }
