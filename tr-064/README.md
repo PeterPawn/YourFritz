@@ -3,3 +3,7 @@
 ### WoLbyMAC.ps1
 
 Windows PowerShell - wake up a sleeping LAN client with a known MAC address
+
+## SetUpgradesManaged.ps1
+
+Windows PowerShell - switch "managed updates" on or off via TR-064; a device with "managed updates" does not show manual firmware update pages in its GUI
