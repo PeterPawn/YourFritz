@@ -72,18 +72,12 @@ using System.Threading.Tasks;
 using System.Timers;
 using YourFritz.TFFS;
 
+/// This code uses older syntax from before C# 6, to be usable even from PowerShell 5.1 with .NET Framework.
+/// With C# 6 and above, much new features may be used ... e.g. lambda expressions as method bodies or nullable
+/// types for event handlers.
+
 namespace YourFritz.EVA
 {
-    public class EVAConstants
-    {
-        // static initial settings
-        public readonly static string EVADefaultIP = "192.168.178.1";
-        public readonly static int EVADefaultDiscoveryPort = 5035;
-        public readonly static string EVADefaultUser = "adam2";
-        public readonly static string EVADefaultPassword = "adam2";
-        public readonly static int EVADiscoveryTimeout = 120;
-    }
-
     public enum EVAMediaType
     {
         // access flash partition
@@ -408,6 +402,7 @@ namespace YourFritz.EVA
         NotLoggedIn = 64,
         PasswordRequired = 128,
         StartsDataConnection = 1,
+        VariableNotSet = 4096,
         WelcomeMessage = 4,
         WrongMultiLineResponse = 512,
     }
@@ -581,6 +576,27 @@ namespace YourFritz.EVA
 
             return null;
         }
+
+        public EVAResponse FindFlag(EVAResponseFlags Flags)
+        {
+            foreach (EVAResponse r in this)
+            {
+                if (r.Flags == Flags)
+                {
+                    return r;
+                }
+            }
+
+            return null;
+        }
+
+        public int CodeForSuccess
+        {
+            get
+            {
+                return 200;
+            }
+        }
     }
 
     public class EVAResponseFactory
@@ -600,36 +616,36 @@ namespace YourFritz.EVA
             EVAResponseFactory.sp_Responses = resp;
 
             resp.Add(new EVAResponse(120, EVAResponseFlags.None, @"Service not ready, please wait", EVAErrorSeverity.TemporaryFailure));
-            resp.Add(new EVAResponse(150, EVAResponseFlags.None & EVAResponseFlags.StartsDataConnection, @"Opening BINARY data connection", EVAErrorSeverity.Success));
-            resp.Add(new EVAResponse(150, EVAResponseFlags.None & EVAResponseFlags.StartsDataConnection, @"Opening ASCII data connection", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(150, EVAResponseFlags.StartsDataConnection, @"Opening BINARY data connection", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(150, EVAResponseFlags.StartsDataConnection, @"Opening ASCII data connection", EVAErrorSeverity.Success));
             resp.Add(new EVAResponse(150, EVAResponseFlags.None, @"Flash check 0x{0:x}", EVAErrorSeverity.Success, @"^Flash check 0x(?<value>[0-9a-fA-F]*)$", new string[] { "value" }));
-            resp.Add(new EVAResponse(200, EVAResponseFlags.None & EVAResponseFlags.WrongMultiLineResponse, @"GETENV command successful", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(200, EVAResponseFlags.WrongMultiLineResponse, @"GETENV command successful", EVAErrorSeverity.Success));
             resp.Add(new EVAResponse(200, EVAResponseFlags.None, @"SETENV command successful", EVAErrorSeverity.Success));
             resp.Add(new EVAResponse(200, EVAResponseFlags.None, @"UNSETENV command successful", EVAErrorSeverity.Success));
             resp.Add(new EVAResponse(200, EVAResponseFlags.None, @"Media set to {0:s}", EVAErrorSeverity.Success, @"^Media set to (?<mediatype>.*)$", new string[] { "mediatype" }));
             resp.Add(new EVAResponse(200, EVAResponseFlags.None, @"Type set to {0:s}", EVAErrorSeverity.Success, @"^Type set to (?<type>.*)$", new string[] { "type" }));
-            resp.Add(new EVAResponse(215, EVAResponseFlags.None & EVAResponseFlags.Identity, @"AVM EVA Version {0:d}.{1:s} 0x{2:x} 0x{3:x}{4:s}", EVAErrorSeverity.Success, @"^AVM EVA Version (?<version>.*) .*$", new string[] { "version" }));
-            resp.Add(new EVAResponse(220, EVAResponseFlags.None & EVAResponseFlags.WelcomeMessage, @"ADAM2 FTP Server ready", EVAErrorSeverity.Success));
-            resp.Add(new EVAResponse(221, EVAResponseFlags.None & EVAResponseFlags.GoodbyeMessage, @"Goodbye", EVAErrorSeverity.Success));
-            resp.Add(new EVAResponse(221, EVAResponseFlags.None & EVAResponseFlags.GoodbyeMessage, @"Thank you for using the FTP service on ADAM2", EVAErrorSeverity.Success));
-            resp.Add(new EVAResponse(226, EVAResponseFlags.None & EVAResponseFlags.ClosesDataConnection, @"Transfer complete", EVAErrorSeverity.Success));
-            resp.Add(new EVAResponse(227, EVAResponseFlags.None & EVAResponseFlags.DataConnectionParameters, @"Entering Passive Mode ({0:d},{1:d},{2:d},{3:d},{4:d},{5:d})", EVAErrorSeverity.Success, @"^Entering Passive Mode \(((?<b>[0-9]{1,3}),?){6}\)$", new string[] { "b" }));
-            resp.Add(new EVAResponse(230, EVAResponseFlags.None & EVAResponseFlags.LoggedIn, @"User {0:s} successfully logged in", EVAErrorSeverity.Success, @"^User (?<user>.*) successfully logged in$", new string[] { "user" }));
-            resp.Add(new EVAResponse(331, EVAResponseFlags.None & EVAResponseFlags.PasswordRequired, @"Password required for {0:s}", EVAErrorSeverity.Continue, @"^Password required for (?<user>.*)$", new string[] { "user" }));
+            resp.Add(new EVAResponse(215,  EVAResponseFlags.Identity, @"AVM EVA Version {0:d}.{1:s} 0x{2:x} 0x{3:x}{4:s}", EVAErrorSeverity.Success, @"^AVM EVA Version (?<version>.*) .*$", new string[] { "version" }));
+            resp.Add(new EVAResponse(220,  EVAResponseFlags.WelcomeMessage, @"ADAM2 FTP Server ready", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(221,  EVAResponseFlags.GoodbyeMessage, @"Goodbye", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(221,  EVAResponseFlags.GoodbyeMessage, @"Thank you for using the FTP service on ADAM2", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(226,  EVAResponseFlags.ClosesDataConnection, @"Transfer complete", EVAErrorSeverity.Success));
+            resp.Add(new EVAResponse(227,  EVAResponseFlags.DataConnectionParameters, @"Entering Passive Mode ({0:d},{1:d},{2:d},{3:d},{4:d},{5:d})", EVAErrorSeverity.Success, @"^Entering Passive Mode \(((?<b>[0-9]{1,3}),?){6}\)$", new string[] { "b" }));
+            resp.Add(new EVAResponse(230,  EVAResponseFlags.LoggedIn, @"User {0:s} successfully logged in", EVAErrorSeverity.Success, @"^User (?<user>.*) successfully logged in$", new string[] { "user" }));
+            resp.Add(new EVAResponse(331,  EVAResponseFlags.PasswordRequired, @"Password required for {0:s}", EVAErrorSeverity.Continue, @"^Password required for (?<user>.*)$", new string[] { "user" }));
             resp.Add(new EVAResponse(425, EVAResponseFlags.None, @"can'nt open data connection"));
-            resp.Add(new EVAResponse(426, EVAResponseFlags.None & EVAResponseFlags.ClosesDataConnection, @"Data connection closed"));
-            resp.Add(new EVAResponse(501, EVAResponseFlags.None, @"environment variable not set"));
+            resp.Add(new EVAResponse(426,  EVAResponseFlags.ClosesDataConnection, @"Data connection closed"));
+            resp.Add(new EVAResponse(501,  EVAResponseFlags.VariableNotSet, @"environment variable not set"));
             resp.Add(new EVAResponse(501, EVAResponseFlags.None, @"unknown variable {0:s}", EVAErrorSeverity.PermanentFailure, @"^unknown variable (?<var>.*)$", new string[] { "var" }));
-            resp.Add(new EVAResponse(501, EVAResponseFlags.None & EVAResponseFlags.ClosesDataConnection, @"store failed"));
+            resp.Add(new EVAResponse(501,  EVAResponseFlags.ClosesDataConnection, @"store failed"));
             resp.Add(new EVAResponse(501, EVAResponseFlags.None, @"Syntax error: Invalid number of parameters"));
-            resp.Add(new EVAResponse(502, EVAResponseFlags.None & EVAResponseFlags.NotImplemented, @"Command not implemented"));
+            resp.Add(new EVAResponse(502,  EVAResponseFlags.NotImplemented, @"Command not implemented"));
             resp.Add(new EVAResponse(505, EVAResponseFlags.None, @"Close Data connection first"));
-            resp.Add(new EVAResponse(530, EVAResponseFlags.None & EVAResponseFlags.NotLoggedIn, @"not logged in"));
+            resp.Add(new EVAResponse(530,  EVAResponseFlags.NotLoggedIn, @"not logged in"));
             resp.Add(new EVAResponse(551, EVAResponseFlags.None, @"unknown Mediatype"));
             resp.Add(new EVAResponse(553, EVAResponseFlags.None, @"Urlader_Update failed."));
             resp.Add(new EVAResponse(553, EVAResponseFlags.None, @"Flash erase failed."));
-            resp.Add(new EVAResponse(553, EVAResponseFlags.None & EVAResponseFlags.ClosesDataConnection, @"RETR failed."));
-            resp.Add(new EVAResponse(553, EVAResponseFlags.None & EVAResponseFlags.ClosesDataConnection, @"Execution failed."));
+            resp.Add(new EVAResponse(553,  EVAResponseFlags.ClosesDataConnection, @"RETR failed."));
+            resp.Add(new EVAResponse(553,  EVAResponseFlags.ClosesDataConnection, @"Execution failed."));
 
             return EVAResponseFactory.sp_Responses;
         }
@@ -952,12 +968,12 @@ namespace YourFritz.EVA
 
     public class EVADiscovery
     {
-        private IPAddress p_BoxIP = IPAddress.Parse(EVAConstants.EVADefaultIP);
+        private IPAddress p_BoxIP = IPAddress.Parse(EVADefaults.EVADefaultIP);
         private IPAddress p_BroadcastAddress = IPAddress.Broadcast;
-        private int p_DiscoveryPort = EVAConstants.EVADefaultDiscoveryPort;
+        private int p_DiscoveryPort = EVADefaults.EVADefaultDiscoveryPort;
         private bool p_IsRunning = false;
         private bool p_Canceled = false;
-        private int p_Timeout = EVAConstants.EVADiscoveryTimeout;
+        private int p_Timeout = EVADefaults.EVADiscoveryTimeout;
         private bool p_TimeoutElapsed = false;
         private bool p_StopOnFirstFound = false;
 
@@ -1060,13 +1076,13 @@ namespace YourFritz.EVA
 
         public async Task<EVADevices> StartAsync(IPAddress newIP)
         {
-            if (!p_IsRunning)
+            if (p_IsRunning)
             {
-                p_IsRunning = true;
+                throw new EVADiscoveryException("Discovery is already running.");
             }
             else
             {
-                throw new EVADiscoveryException("Discovery is already running.");
+                p_IsRunning = true;
             }
 
             IPAddress sendAddress = p_BoxIP;
@@ -1141,6 +1157,7 @@ namespace YourFritz.EVA
                 }),
 
                 // broadcast discovery packets, do not use cancellation token for the outer loop
+                // the first packet is sent with a 10 ms delay, later the interval will grow up to 1000 ms
                 Task.Factory.StartNew(async () =>
                 {
                     IPEndPoint ep = new IPEndPoint(p_BroadcastAddress, p_DiscoveryPort);
@@ -1163,19 +1180,19 @@ namespace YourFritz.EVA
                             {
                             }
 
-                            if (!ctSource.IsCancellationRequested)
-                            {
-                                sender.Send(data, data.Length, ep);
-
-                                //Debug.WriteLine(String.Format("Packet sent"));
-
-                                OnPacketSent(sendAddress, p_DiscoveryPort, data);
-
-                                delay = 1000;
-                            }
-                            else
+                            if (ctSource.IsCancellationRequested)
                             {
                                 canceled = true;
+                            }
+
+                            sender.Send(data, data.Length, ep);
+
+                            //Debug.WriteLine(String.Format("Packet sent"));
+
+                            if (!canceled)
+                            {
+                                OnPacketSent(sendAddress, p_DiscoveryPort, data);
+                                delay = 1000;
                             }
                         }
                         //Debug.WriteLine(String.Format("Sending loop left"));
@@ -1211,7 +1228,7 @@ namespace YourFritz.EVA
                     }
                     else
                     {
-                        if (!ctSource.IsCancellationRequested && p_TimeoutElapsed)
+                        if (!ctSource.IsCancellationRequested && (p_TimeoutElapsed || (p_StopOnFirstFound && foundDevices.Count > 0)))
                         {
                             ctSource.Cancel();
                         }
@@ -1463,6 +1480,7 @@ namespace YourFritz.EVA
         private int p_Code = -1;
         private string p_Message = String.Empty;
         private bool p_IsComplete = false;
+        protected object p_SyncRoot = new object();
 
         internal FTPResponse()
         {
@@ -1621,7 +1639,7 @@ namespace YourFritz.EVA
 
         internal void AppendLine(string Line)
         {
-            lock (p_Content)
+            lock (p_SyncRoot)
             {
                 p_Content.Add(Line);
             }
@@ -1661,6 +1679,7 @@ namespace YourFritz.EVA
         private bool p_Success = false;
         private int p_ExpectedAnswer = 0;
         private readonly object p_Lock = new object();
+        private object p_UserData = null;
 
         internal FTPAction()
         {
@@ -1671,10 +1690,23 @@ namespace YourFritz.EVA
             p_Command = Command;
         }
 
+        internal FTPAction(string Command, object UserData)
+        {
+            p_Command = Command;
+            p_UserData = UserData;
+        }
+
         internal FTPAction(string Command, int ExpectedCode)
         {
             p_Command = Command;
             p_ExpectedAnswer = ExpectedCode;
+        }
+
+        internal FTPAction(string Command, int ExpectedCode, object UserData)
+        {
+            p_Command = Command;
+            p_ExpectedAnswer = ExpectedCode;
+            p_UserData = UserData;
         }
 
         private FTPAction(FTPAction source)
@@ -1684,6 +1716,7 @@ namespace YourFritz.EVA
             p_Aborted = source.Aborted;
             p_Success = source.Success;
             p_ExpectedAnswer = source.ExpectedAnswer;
+            p_UserData = source.UserData;
         }
 
         public string Command
@@ -1718,6 +1751,10 @@ namespace YourFritz.EVA
         {
             get
             {
+                if (!p_Success)
+                {
+                    CheckSuccess();
+                }
                 return p_Success;
             }
         }
@@ -1731,6 +1768,14 @@ namespace YourFritz.EVA
             internal set
             {
                 p_ExpectedAnswer = value;
+            }
+        }
+
+        public object UserData
+        {
+            get
+            {
+                return p_UserData;
             }
         }
 
@@ -1862,7 +1907,7 @@ namespace YourFritz.EVA
                     }
                     p_CurrentResponse = new MultiLineResponse(Line, code);
                 }
-                else if (!startMultiline)
+                else
                 {
                     if (p_CurrentResponse != null)
                     {
@@ -1875,7 +1920,7 @@ namespace YourFritz.EVA
 
                     FTPResponse completed = p_CurrentResponse;
                     p_CurrentResponse = null;
-                    lock (p_ResponseQueue)
+                    lock (p_Lock)
                     {
                         p_ResponseQueue.Enqueue(completed);
                     }
@@ -1898,7 +1943,7 @@ namespace YourFritz.EVA
 
         internal void Clear()
         {
-            lock (p_ResponseQueue)
+            lock (p_Lock)
             {
                 p_ResponseQueue.Clear();
                 p_CurrentResponse = null;
@@ -1907,9 +1952,9 @@ namespace YourFritz.EVA
 
         internal void SetException(Exception e)
         {
-            FTPResponse response = new FTPResponse(500, "Client error");
+            FTPResponse response = new FTPResponse(FTPClient.genericErrorCode, "Client error");
             response.AsyncTaskCompletionSource.SetException(e);
-            lock (p_ResponseQueue)
+            lock (p_Lock)
             {
                 p_ResponseQueue.Enqueue(response);
             }
@@ -1974,6 +2019,12 @@ namespace YourFritz.EVA
     // generic FTP client class
     public class FTPClient
     {
+        internal static int openedDataConnectionCode = 150;
+        internal static int openedControlConnectionCode = 220;
+        internal static int closedControlConnectionCode = 221;
+        internal static int closedControlConnectionForciblyCode = 421;
+        internal static int genericErrorCode = 500;
+
         public enum DataConnectionMode
         {
             Active = 1,
@@ -2348,7 +2399,7 @@ namespace YourFritz.EVA
         {
             FTPResponse nextResponse = null;
 
-            lock (controlChannelReceiver.Responses)
+            lock (p_Lock)
             {
                 if (controlChannelReceiver.Responses.Count > 0)
                 {
@@ -2365,6 +2416,11 @@ namespace YourFritz.EVA
         }
 
         public async Task<FTPAction> StartActionAsync(string Command)
+        {
+            return await StartActionAsync(Command, null);
+        }
+
+        public async Task<FTPAction> StartActionAsync(string Command, object UserData)
         {
             if (!IsOpen)
             {
@@ -2388,7 +2444,7 @@ namespace YourFritz.EVA
                 controlChannelReceiver.Clear();
             }
 
-            p_CurrentAction = new FTPAction(Command);
+            p_CurrentAction = new FTPAction(Command, UserData);
 
             await OnCommandSent(p_CurrentAction.Command);
 
@@ -2430,7 +2486,12 @@ namespace YourFritz.EVA
 
         public async virtual Task<FTPAction> RunCommandAsync(string Command)
         {
-            Task<FTPAction> commandTask = StartActionAsync(Command);
+            return await RunCommandAsync(Command, null);
+        }
+
+        public async virtual Task<FTPAction> RunCommandAsync(string Command, object UserData)
+        {
+            Task<FTPAction> commandTask = StartActionAsync(Command, UserData);
             FTPAction action = null;
 
             try
@@ -2527,12 +2588,10 @@ namespace YourFritz.EVA
                     handler(this, new ActionCompletedEventArgs(Action));
                 }
 
-                if (Action.AsyncTask.IsCompleted)
+                if (!Action.AsyncTask.IsCompleted)
                 {
-                    return;
+                    Action.AsyncTaskCompletionSource.SetResult(Action);
                 }
-
-                Action.AsyncTaskCompletionSource.SetResult(Action);
             }
             catch (Exception e)
             {
@@ -2618,40 +2677,35 @@ namespace YourFritz.EVA
 
         private async void OnControlChannelResponseCompleted(Object sender, ResponseCompletedEventArgs e)
         {
-            switch (e.Response.Code)
+            if (e.Response.Code == FTPClient.openedDataConnectionCode)
             {
-                case 150:
-                    lock (SyncRoot)
-                    {
-                        p_OpenedDataConnection = true;
-                    }
-                    return;
-
-                case 220:
-                    lock (SyncRoot)
-                    {
-                        p_IsOpened = true;
-                    }
-                    return;
-
-                case 221:
-                    lock (SyncRoot)
-                    {
-                        p_IsOpened = false;
-                    }
-                    break;
-
-                case 421:
-                    lock (SyncRoot)
-                    {
-                        p_IsOpened = false;
-                        p_ForciblyClosed = true;
-                        controlConnection.Close();
-                    }
-                    return;
-
-                default:
-                    break;
+                lock (SyncRoot)
+                {
+                    p_OpenedDataConnection = true;
+                }
+            }
+            else if (e.Response.Code == FTPClient.openedControlConnectionCode)
+            {
+                lock (SyncRoot)
+                {
+                    p_IsOpened = true;
+                }
+            }
+            else if (e.Response.Code == FTPClient.closedControlConnectionCode)
+            {
+                lock (SyncRoot)
+                {
+                    p_IsOpened = false;
+                }
+            }
+            else if (e.Response.Code == FTPClient.closedControlConnectionForciblyCode)
+            {
+                lock (SyncRoot)
+                {
+                    p_IsOpened = false;
+                    p_ForciblyClosed = true;
+                    controlConnection.Close();
+                }
             }
 
             await OnControlCommandCompleted(e.Response);
@@ -2685,15 +2739,16 @@ namespace YourFritz.EVA
 
         private bool p_IsLoggedIn = false;
         private bool p_IgnoreLoginError = false;
-        private string p_User = EVAConstants.EVADefaultUser;
-        private string p_Password = EVAConstants.EVADefaultPassword;
+        private string p_User = EVADefaults.EVADefaultUser;
+        private string p_Password = EVADefaults.EVADefaultPassword;
 
         private List<Task> outstandingEventHandlers = new List<Task>();
         private TFFSNameTable nameTable = TFFSNameTable.GetLatest();
         private EVACommands commands = EVACommandFactory.GetCommands();
+        private EVAResponses responses = EVAResponseFactory.GetResponses();
 
         public EVAClient() :
-            base(EVAConstants.EVADefaultIP)
+            base(EVADefaults.EVADefaultIP)
         {
             Initialize();
         }
@@ -2831,30 +2886,46 @@ namespace YourFritz.EVA
 
         public async override Task<FTPAction> RunCommandAsync(string Command)
         {
+            return await RunCommandAsync(Command, null);
+        }
+
+        public async override Task<FTPAction> RunCommandAsync(string Command, object UserData)
+        {
             RemoveFinishedEventHandlerTasks();
 
-            return await base.RunCommandAsync(Command);
+            return await base.RunCommandAsync(Command, UserData);
         }
 
         public async Task<FTPAction> RunCommandAndCheckResultAsync(string Command, int Code)
         {
-            return await RunCommandAsync(Command).ContinueWith((t) =>
+            return await RunCommandAndCheckResultAsync(Command, Code, null);
+        }
+
+
+        public async Task<FTPAction> RunCommandAndCheckResultAsync(string Command, int Code, object UserData)
+        {
+            FTPAction runCmd;
+            Task<FTPAction> runCmdTask = RunCommandAsync(Command, UserData);
+
+            await runCmdTask;
+
+            if (runCmdTask.IsCompleted && runCmdTask.Result != null)
             {
-                if (t.IsCompleted && t.Exception == null)
+                runCmd = runCmdTask.Result;
+                runCmd.ExpectedAnswer = Code;
+
+                await CompleteEventsAsync();
+            }
+            else
+            {
+                if (runCmdTask.IsCompleted && runCmdTask.Exception is AggregateException)
                 {
-                    t.Result.ExpectedAnswer = Code;
-                    t.Result.CheckSuccess();
-                    return t.Result;
+                    throw runCmdTask.Exception.InnerException;
                 }
-                else
-                {
-                    if (t.IsCompleted && t.Exception is AggregateException)
-                    {
-                        throw t.Exception.InnerException;
-                    }
-                    throw t.Exception;
-                }
-            });
+                throw runCmdTask.Exception;
+            }
+
+            return runCmd;
         }
 
         public async Task LoginAsync(string User, string Password)
@@ -2871,11 +2942,23 @@ namespace YourFritz.EVA
                 throw new EVAClientException("Missing user name and/or password for login.");
             }
 
-            FTPAction login = await RunCommandAndCheckResultAsync(String.Format(commands[EVACommandType.User].CommandValue, p_User), 331);
+            FTPAction login = await RunCommandAndCheckResultAsync(
+                String.Format(commands[EVACommandType.User].CommandValue, p_User),
+                responses.FindFlag(EVAResponseFlags.PasswordRequired).Code,
+                commands[EVACommandType.User]
+                );
+
+            await login.AsyncTask;
 
             if (login.Success)
             {
-                FTPAction pw = await RunCommandAndCheckResultAsync(String.Format(commands[EVACommandType.Password].CommandValue, p_Password), 230);
+                FTPAction pw = await RunCommandAndCheckResultAsync(
+                    String.Format(commands[EVACommandType.Password].CommandValue, p_Password),
+                    responses.FindFlag(EVAResponseFlags.LoggedIn).Code,
+                    commands[EVACommandType.Password]
+                    );
+
+                await pw.AsyncTask;
 
                 if (pw.Success)
                 {
@@ -2898,17 +2981,33 @@ namespace YourFritz.EVA
             p_IsLoggedIn = false;
             if (IsConnected)
             {
-                await RunCommandAndCheckResultAsync(commands[EVACommandType.Quit].CommandValue, 221);
+                FTPAction quit = await RunCommandAndCheckResultAsync(
+                    commands[EVACommandType.Quit].CommandValue,
+                    responses.FindFlag(EVAResponseFlags.GoodbyeMessage).Code,
+                    commands[EVACommandType.Quit]
+                    );
+
+                await quit.AsyncTask;
+
+                await CompleteEventsAsync();
             }
         }
 
         public async Task EnsureItIsEVAAsync()
         {
-            FTPAction syst = await RunCommandAndCheckResultAsync(commands[EVACommandType.SystemType].CommandValue, 215);
+            FTPAction syst = await RunCommandAndCheckResultAsync(
+                commands[EVACommandType.SystemType].CommandValue,
+                responses.FindFlag(EVAResponseFlags.Identity).Code,
+                commands[EVACommandType.SystemType]
+                );
+
+            await syst.AsyncTask;
 
             if (syst.Success)
             {
-                if (!syst.Response.Message.StartsWith("AVM EVA"))
+                EVAResponse response = responses.FindResponse(syst.Response.Code, syst.Response.Message);
+
+                if (response == null || (response.Flags & EVAResponseFlags.Identity) == 0)
                 {
                     throw new EVAClientException(String.Format("Unexpected system type: {0:s}", syst.Response.ToString()));
                 }
@@ -2923,7 +3022,13 @@ namespace YourFritz.EVA
         {
             if (IsConnected)
             {
-                await RunCommandAndCheckResultAsync(commands[EVACommandType.Reboot].CommandValue, 221);
+                FTPAction reboot = await RunCommandAndCheckResultAsync(
+                    commands[EVACommandType.Reboot].CommandValue,
+                    responses.FindFlag(EVAResponseFlags.GoodbyeMessage).Code,
+                    commands[EVACommandType.Reboot]
+                    );
+
+                await reboot.AsyncTask;
             }
             else
             {
@@ -2940,8 +3045,15 @@ namespace YourFritz.EVA
         {
             CheckName(Name, NameTable);
 
-            FTPAction getenv = await RunCommandAndCheckResultAsync(String.Format(commands[EVACommandType.GetEnvironmentValue].CommandValue, Name), 200);
+            FTPAction getenv = await RunCommandAndCheckResultAsync(
+                String.Format(commands[EVACommandType.GetEnvironmentValue].CommandValue, Name),
+                responses.CodeForSuccess,
+                commands[EVACommandType.GetEnvironmentValue]
+                );
+
             string output = null;
+
+            await getenv.AsyncTask;
 
             if (getenv.Success)
             {
@@ -2955,14 +3067,9 @@ namespace YourFritz.EVA
             }
             else
             {
-                if (getenv.Response.Code == 501)
-                {
-                    if (getenv.Response.Message.CompareTo("environment variable not set") != 0)
-                    {
-                        throw new EVAClientException(String.Format("Unexpected error returned: {0:s}", getenv.Response.ToString()));
-                    }
-                }
-                else
+                EVAResponse response = responses.FindResponse(getenv.Response.Code, getenv.Response.Message);
+
+                if ((response.Flags & EVAResponseFlags.VariableNotSet) == 0)
                 {
                     throw new EVAClientException(String.Format("Unexpected error returned: {0:s}", getenv.Response.ToString()));
                 }
@@ -2980,7 +3087,13 @@ namespace YourFritz.EVA
         {
             CheckName(Name, NameTable);
 
-            FTPAction unsetenv = await RunCommandAndCheckResultAsync(String.Format(commands[EVACommandType.UnsetEnvironmentValue].CommandValue, Name), 200);
+            FTPAction unsetenv = await RunCommandAndCheckResultAsync(
+                String.Format(commands[EVACommandType.UnsetEnvironmentValue].CommandValue, Name),
+                responses.CodeForSuccess,
+                commands[EVACommandType.UnsetEnvironmentValue]
+                );
+
+            await unsetenv.AsyncTask;
 
             if (!unsetenv.Success)
             {
@@ -2997,7 +3110,13 @@ namespace YourFritz.EVA
         {
             CheckName(Name, NameTable);
 
-            FTPAction setenv = await RunCommandAndCheckResultAsync(String.Format(commands[EVACommandType.SetEnvironmentValue].CommandValue, Name, Value), 200);
+            FTPAction setenv = await RunCommandAndCheckResultAsync(
+                String.Format(commands[EVACommandType.SetEnvironmentValue].CommandValue, Name, Value),
+                responses.CodeForSuccess,
+                commands[EVACommandType.SetEnvironmentValue]
+                );
+
+            await setenv.AsyncTask;
 
             if (!setenv.Success)
             {
@@ -3012,7 +3131,7 @@ namespace YourFritz.EVA
 
             value = value ?? "0";
 
-            if (value.CompareTo("1") != 0 && value.CompareTo("0") != 0)
+            if (value.CompareTo("1") != 0 && value.CompareTo("0") != 0) // 'nfs' is treated as an error
             {
                 throw new EVAClientException(String.Format("Unexpected value '{0:s}' of '{1:s}' found.", value, varName));
             }
@@ -3025,6 +3144,7 @@ namespace YourFritz.EVA
         public async Task<FTPAction> Store(MemoryStream data)
         {
             await Task.CompletedTask;
+
             return null;
         }
 
@@ -3073,20 +3193,19 @@ namespace YourFritz.EVA
         {
             if (table != null && table.FindID(name) == TFFSEnvironmentID.Free)
             {
-                throw new EVAClientException(String.Format("Variable name not found in the specified name table ({0}).", table.Version));
+                throw new EVAClientException(String.Format("Variable name '{0:s}' not found in the specified name table ({1:s}).", name, table.Version));
             }
         }
 
         private void OnActionCompleted(Object sender, ActionCompletedEventArgs e)
         {
-            switch (e.Action.Response.Code)
+            int goodbye = responses.FindFlag(EVAResponseFlags.GoodbyeMessage).Code;
+
+            if (e.Action.Response.Code == responses.FindFlag(EVAResponseFlags.NotLoggedIn).Code)
             {
-                case 530:
-                    if (p_IgnoreLoginError)
-                    {
-                        break;
-                    }
-                    if (e.Action.Command.StartsWith(commands[EVACommandType.Password].CommandValue))
+                if (!p_IgnoreLoginError)
+                {
+                    if (e.Action.UserData != null && ((EVACommand)e.Action.UserData).Equals(commands[EVACommandType.Password]))
                     {
                         e.Action.AsyncTaskCompletionSource.SetException(new EVAClientException("Login failed, wrong password."));
                     }
@@ -3094,17 +3213,16 @@ namespace YourFritz.EVA
                     {
                         e.Action.AsyncTaskCompletionSource.SetException(new EVAClientException("Login needed."));
                     }
-                    return;
+                }
 
-                case 221:
-                    lock(SyncRoot)
-                    {
-                        p_IsLoggedIn = false;
-                    }
-                    break;
-
-                default:
-                    break;
+                return;
+            }
+            else if (e.Action.Response.Code == responses.FindFlag(EVAResponseFlags.GoodbyeMessage).Code)
+            {
+                lock(SyncRoot)
+                {
+                    p_IsLoggedIn = false;
+                }
             }
 
             FTPAction clone = e.Action.Clone();
@@ -3114,6 +3232,16 @@ namespace YourFritz.EVA
                 outstandingEventHandlers.Add(Task.Run(() => OnActionCompletedEVA(clone)));
             }
         }
+    }
+
+    public class EVADefaults
+    {
+        // static initial settings
+        public readonly static string EVADefaultIP = "192.168.178.1";
+        public readonly static int EVADefaultDiscoveryPort = 5035;
+        public readonly static string EVADefaultUser = "adam2";
+        public readonly static string EVADefaultPassword = "adam2";
+        public readonly static int EVADiscoveryTimeout = 120;
     }
 }
 
