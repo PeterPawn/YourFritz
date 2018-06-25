@@ -38,51 +38,8 @@ table()
 	if [ ${#1} -eq 0 ]; then
 		op="empty"
 	else
-		case "$1" in
-			"init")
-				op="init"
-				shift
-				;;
-			"empty")
-				op="empty"
-				shift
-				;;
-			"output")
-				op="output"
-				shift
-				;;
-			"outside")
-				op="outside"
-				shift
-				;;
-			"columns")
-				op="columns"
-				shift
-				;;
-			"header")
-				op="header"
-				shift
-				;;
-			"repeatheader")
-				op="repeatheader"
-				shift
-				;;
-			"delimiter")
-				op="delimiter"
-				shift
-				;;
-			"footer")
-				op="footer"
-				shift
-				;;
-			"row")
-				op="row"
-				shift
-				;;
-			*)
-				return 1
-				;;
-		esac
+		op="$1"
+		shift
 	fi
 	case "$op" in
 		init)

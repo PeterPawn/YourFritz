@@ -1,7 +1,7 @@
 #! /bin/sh
 #######################################################################################################
 #                                                                                                     #
-# create a bootable image to add a new user account to a FRITZ!Box device                             #
+# create a bootable image to reset the "unauthorized changes" flag on FRITZ!OS devices                #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -31,18 +31,13 @@
 # The name of the firmware image file has to be specified as first argument, the created bootable     #
 # image will be written to STDOUT and the caller is responsible for the proper redirection.           #
 #                                                                                                     #
-# The second and third arguments are optional and they may be used to specify the user name and the   #
-# password for the new account. A missing argument will be substituted by the string 'superuser' -    #
-# if you omit both arguments, an user 'superuser' with the same string for its password will be       #
-# created.                                                                                            #
-#                                                                                                     #
-# It needs some additional script files, they will be looked up in the current directory only.        #
-#                                                                                                     #
 # The root filesystem for the bootable image is built on top of a 10 MByte image file, which will be  #
 # formatted with an ext2 structure. The only binary file, which is copied into this filesystem, is    #
 # a statically linked BusyBox binary from my GitHub repository (for the MIPS platform).               #
 # If you want to get a filesystem image with a different size, you can set the environment variable   #
 # 'TOOLBOX_IMAGE_SIZE' to the requested value (in MBytes) prior to calling this script.               #
+#                                                                                                     #
+# It needs some additional script files, they will be looked up in the current directory only.        #
 #                                                                                                     #
 # There are only little prerequisites to be met to run this script on your Linux system. The most     #
 # important point: You have to run this script as "root".                                             #
@@ -59,8 +54,7 @@
 tmpdir="/tmp"
 binaries="../bin/mips"
 image_get_file="image/get_file_from_image"
-payload_script_1="scripts/add_user_to_fritzos"
-toolbox_scripts="$image_get_file $payload_script_1"
+toolbox_scripts="$image_get_file"
 create_inodes="$(cat <<'EOT'
 d /bin 700 0 0
 d /dev 700 0 0
@@ -240,7 +234,7 @@ if ! [ -d "$tmpdir" ]; then
 	[ $debug -eq 1 ] && printf "The directory '%s' does not exist.\n" "$tmpdir" 1>&2
 	exit 1
 fi
-name="$tmpdir/$$_build_add_user"
+name="$tmpdir/$$_reset_tainted"
 rm -r "$name" 2>/dev/null
 mkdir "$name" 2>/dev/null
 if ! [ -d "$name" ]; then
@@ -371,22 +365,22 @@ done
 # add files needed to fulfill our function                                                            #
 #                                                                                                     #
 #######################################################################################################
-cp $payload_script_1 $base/sbin/
 cat >"$base/sbin/rc.init" <<EOS
 #! /bin/sh
 /bin/mount -t proc proc /proc
 /bin/mount -t tmpfs tmpfs /tmp
 export PATH=/sbin:/bin
-/bin/sh /sbin/${payload_script_1##*/} $username $password
+printf 'clear_id 87\n' >/proc/tffs
+printf 'cleanup\n' >/proc/tffs
 /sbin/reboot
 EOS
 cat >"$base/etc/inittab" <<EOF
 /dev/ttyS0::sysinit:/bin/sh /sbin/rc.init
 EOF
-chmod 777 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}"
+chmod 777 "$base/sbin/rc.init"
 chmod 666 "$base/etc/inittab"
-chown 0 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}" "$base/etc/inittab"
-chgrp 0 "$base/sbin/rc.init" "$base/sbin/${payload_script_1##*/}" "$base/etc/inittab"
+chown 0 "$base/sbin/rc.init" "$base/etc/inittab"
+chgrp 0 "$base/sbin/rc.init" "$base/etc/inittab"
 #######################################################################################################
 #                                                                                                     #
 # dismount then new filesystem image                                                                  #
