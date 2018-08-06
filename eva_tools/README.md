@@ -44,3 +44,9 @@
 
 - very incomplete script to create an (universal) in-memory image from vendor's firmware
 - the resulting image does not contain closed-source components, so it may be shared without copyright violations, 'cause only redistributable parts from the original firmware are used
+
+## Other sources of information
+
+If you need help using these files to access the FTP server of AVM's EVA loader, have a look at this thread:
+
+https://www.ip-phone-forum.de/threads/wie-verwende-ich-denn-nun-die-skript-dateien-aus-yourfritz-eva_tools.298591/
