@@ -570,11 +570,7 @@ get_localized_date()
 #######################################################################################################
 get_modified_by()
 (
-	if [ -z "$1" ]; then
-		[ "$(get_system_type)" = "VR9" ] && base="/" || base="$(get_partition "$filesystem_name" "$active_name")"
-	else
-		base="$1"
-	fi
+	base="${1:-/}"
 	i=0
 	for f in $version_files; do
 		i=$(( i + 1 ))
@@ -603,11 +599,7 @@ get_modified_date()
 		# SquashFS image file has date of last modification
 		[ -z "$1" ] && v="$(stat -c %Y -- "$vr9_image_source_active")" || v="$(stat -c %Y -- "$tempdir/$wrapper_mount_name/$vr9_rootfs_name")"
 	else
-		if [ -z "$1" ]; then
-			base="$(get_partition "$filesystem_name" "$active_name")"
-		else
-			base="$1"
-		fi
+		base="${1:-/}"
 		for f in $version_files; do
 			if [ -f "$base/$f" ]; then
 				v="$(stat -c %Y -- "$base/$f")"
