@@ -701,7 +701,7 @@ generate_html_lang_de()
 	html '<br><br>\n'
 	html '<h4>Branding &auml;ndern</h4>\n'
 	if has_fdt_environment; then
-		html 'Auf diesem Modell ist keine dauerhafte Änderung der Firmware-Version möglich.'
+		html 'Auf diesem Modell ist keine dauerhafte Änderung der Firmware-Version möglich.\n'
 		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 	else
 		html '<span id=\"running_branding\">\n'
@@ -781,7 +781,7 @@ generate_html_lang_en()
 	html '<br><br>\n'
 	html '<h4>Change branding</h4>\n'
 	if has_fdt_environment; then
-		html 'Unable to change the branding permanently on this model.'
+		html 'Unable to change the branding permanently on this model.\n'
 		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 	else
 		html '<span id=\"running_branding\">\n'
