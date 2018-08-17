@@ -1,0 +1,21 @@
+--- usr/www/$TARGET_BRANDING/system/reboot.lua
++++ usr/www/$TARGET_BRANDING/system/reboot.lua
+@@ -7,2 +7,7 @@
+ local savecookie = {}
++if box.post.linux_fs_start then
++local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")
++local branding = string.gsub(box.post[linux_fs_start.."_branding"], "'", "")
++os.execute("/usr/bin/gui_bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")
++end
+ webuicookie.set_action_allowed_time()
+@@ -63,2 +68,10 @@
+ <form action="/system/reboot.lua" method="POST">
++<div id="managed_reboot" class="reboot_managed">
++<?lua
++pipe = io.popen("/usr/bin/gui_bootmanager html_display")
++line = pipe:read("*a")
++pipe:close()
++box.out(line)
++?>
++</div>
+ <div id="btn_form_foot">

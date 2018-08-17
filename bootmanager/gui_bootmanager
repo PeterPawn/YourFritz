@@ -42,14 +42,17 @@
 # GRX5 SoC, switching the system is supported, too - but due to bootloader limitations, the OEM name  #
 # (aka 'the branding') cannot be changed anymore.                                                     #
 #                                                                                                     #
-# There are four operations supported as first argument (at least one parameter is always required):  #
+# There are six operations supported as first argument (at least one parameter is always required):   #
 #                                                                                                     #
 # is_supported - returns true (exit code 0) or false (exit code 1), if the device doesn't support the #
 #                dual-boot selection                                                                  #
+# is_blocked   - check the used semaphore file, if there's already a running instance                 #
 # html_display - creates a little HTML snippet (containing JS code, too), which may be included into  #
 #                the original reboot.lua page (tested up to version 06.93)                            #
 # switch_to    - switches to the 'running' or 'alternative' system (2nd parameter) and (optionally)   #
 #                sets the OEM name to the 3rd parameter (which isn't checked any further)             #
+# get_values   - provide a list of relevant values for implementers of other interfaces, without the  #
+#                needs to implement the full logic once again                                         #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
 #                                                                                                     #
@@ -478,7 +481,7 @@ parse_date_value()
 	command -v date 2>/dev/null 1>&2 || printf "%s" "$1"
 	date --help 2>&1 | grep -q BusyBox || printf "%s" "$1"
 	eval $(printf "%s\n" "$1" | sed -n -e "s|\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\) \([0-9]*\):\([0-9]*\):\([0-9]*\)|DAY=\1 MONTH=\2 YEAR=\3 HOUR=\4 MINUTES=\5 SECONDS=\6|p")
-	date +%s --date=$YEAR$MONTH$DAY$HOUR$MINUTES.$SECONDS
+	date +%s -d $YEAR$MONTH$DAY$HOUR$MINUTES.$SECONDS
 )
 #######################################################################################################
 #                                                                                                     #
@@ -556,7 +559,7 @@ dismount_alternative_system()
 #######################################################################################################
 get_localized_date()
 {
-	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" --date=@$1 || date +"%d.%m.%Y %H:%M:%S" --date=@$1
+	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" -d @$1 || date +"%d.%m.%Y %H:%M:%S" -d @$1
 }
 #######################################################################################################
 #                                                                                                     #
@@ -950,6 +953,9 @@ rc=127
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
+		;;
+	("is_blocked")
+		[ -f $semafile ] && rc=1 || rc=0
 		;;
 	("debug")
 		is_puma_based_device && printf "system type = Puma6/7\n" || printf "system type = %s\n" "$(get_system_type)"
