@@ -3,11 +3,11 @@
 # read environment from FRITZ!Box 
 #
 #
-# check if "dash" is being used, this will cause issues, so we rather exit
-case $(ls -al /bin/sh) in
-  *dash) echo "/bin/sh seems to be a dash. This is not supported! Exiting..." 1>&2; exit 1
-              ;;
-esac
+# check if incompatible shell is used, this will cause issues, so we rather exit
+if ! ( printf "\n" | read -u 0 2>/dev/null ); then
+	echo "wrong shell interpreter" 1>&2
+	exit 1
+fi
 # some constants to be changed, if needed
 #
 box_ip=${2:-192.168.178.1} # EVA_IP may be the second parameter (the 1st is the virtual file name) and defaults to 192.168.178.1
