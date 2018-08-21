@@ -1,5 +1,11 @@
 #! /bin/sh
 #
+# check if incompatible shell is used, this will cause issues, so we rather exit
+if ! ( printf "\n" | read -u 0 2>/dev/null ); then
+	echo "wrong shell interpreter" 1>&2
+	exit 1
+fi
+#
 # file to transfer to the router
 #
 mtdname="$1"
