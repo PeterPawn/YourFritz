@@ -5,7 +5,7 @@ sed -e "
 /^local savecookie/a\\
 if box.post.linux_fs_start then\\
 local linux_fs_start = string.gsub(box.post.linux_fs_start, \"'\", \"\")\\
-local branding = string.gsub(box.post[linux_fs_start..\"_branding\"], \"'\", \"\")\\
+local branding = box.post[linux_fs_start..\"_branding\"] ~= nil and string.gsub(box.post[linux_fs_start..\"_branding\"], \"'\", \"\") or \"\"\\
 os.execute(\"/usr/bin/gui_bootmanager switch_to '\"..linux_fs_start..\"' '\"..branding..\"'\")\\
 end
 /^<form action/a\\
