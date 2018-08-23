@@ -50,9 +50,9 @@ show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
 show_version() 
 { 
 	local v
-	v=$(openssl version 2>/dev/null)
+	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary, set YF_SIGNIMAGE_OPENSSL variable to its path name." 1>&2
 		return 1
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
@@ -173,7 +173,7 @@ read_box_key()
 	pkp=$(which privatekeypassword)
 	found=$?
 	if [ $found -eq 0 ]; then
-		openssl rsa -in $box_key_name -pubout -passin pass:"$(privatekeypassword)" -out "$tmp/pubkey" 2>/dev/null
+		"$YF_SIGNIMAGE_OPENSSL" rsa -in $box_key_name -pubout -passin pass:"$(privatekeypassword)" -out "$tmp/pubkey" 2>/dev/null
 		if [ $? -eq 0 ]; then
 			read_openssl_file "$tmp/pubkey" PEM "box key" "FRITZ!OS RSA key"
 			[ $? -ne 0 ] && found=1
@@ -183,7 +183,7 @@ read_box_key()
 	fi
 	if [ $found -ne 0 ]; then # try to use the certificate to get the public key
 		echo -en "Check \x1B[1mx509\x1B[0m command ... " 1>&2
-		echo "" | openssl x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2
+		echo "" | "$YF_SIGNIMAGE_OPENSSL" x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2
 		rc=$?
 		if [ $rc -eq 0 ]; then
 			show_ok 
@@ -193,11 +193,11 @@ read_box_key()
 		fi
 		if [ $rc -eq 0 ]; then
 			echo -ne "Trying to read public key from \x1B[1m$box_cert_name1\x1B[0m ... " 1>&2
-			openssl x509 -in $box_cert_name1 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
+			"$YF_SIGNIMAGE_OPENSSL" x509 -in $box_cert_name1 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
 			if [ $? -ne 0 ]; then
 				show_error
 				echo -ne "Trying to read public key from \x1B[1m$box_cert_name2\x1B[0m ... " 1>&2
-				openssl x509 -in $box_cert_name2 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
+				"$YF_SIGNIMAGE_OPENSSL" x509 -in $box_cert_name2 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
 				if [ $? -ne 0 ]; then
 					show_error 
 					rc=14
@@ -279,7 +279,7 @@ modulus_to_der()
 read_openssl_file()
 {
 	local file="$1" format="$2" desc="${3:-$format key}" display="${4:-$file}" rc=12 line MODULUS EXPONENT Modulus
-	line=$(openssl rsa -in "$file" -pubin -inform $format -modulus -noout 2>/dev/null)
+	line=$("$YF_SIGNIMAGE_OPENSSL" rsa -in "$file" -pubin -inform $format -modulus -noout 2>/dev/null)
 	rc=$?
 	if [ $rc -ne 0 ]; then
 		echo -e "Unable to read RSA key ($format) from input file \x1B[1m$file\x1B[0m." 1>&2
@@ -293,10 +293,10 @@ read_openssl_file()
 		fi
 		first=${MODULUS:0:1}
 		[ "${first/[89a-f]/}" != "$first" ] && MODULUS="00$MODULUS"
-		openssl rsa -in "$file" -pubin -inform $format -text -noout 2>/dev/null |
+		"$YF_SIGNIMAGE_OPENSSL" rsa -in "$file" -pubin -inform $format -text -noout 2>/dev/null |
 		grep -q "^Exponent: 65537 (0x10001)\$" 2>/dev/null 1>&2
 		if [ $? -ne 0 ]; then # different exponent, read it from the output
-			EXPONENT=$(openssl rsa -in "$file" -pubin -inform $format -text -noout |
+			EXPONENT=$("$YF_SIGNIMAGE_OPENSSL" rsa -in "$file" -pubin -inform $format -text -noout |
 			sed -n -e "s|^Exponent: [0-9]* (\(0x[0-9a-fA-F]*\))\$|\1|p")
 			if [ ${#EXPONENT} -eq 0 ]; then
 				echo "Unexpected output from public key file \x1B[1m$file\x1B[0m ($format)." 1>&2
@@ -330,6 +330,45 @@ if ! [ -f "$image_file" ]; then
 fi
 ####################################################################################
 #                                                                                  #
+# get the path for needed external commands, if called in any toolchain            #
+#                                                                                  #
+# looks a little bit complicated, but has to support definitions for BusyBox       #
+# applets as commands to be used and simple quoting isn't enough to ensure proper  #
+# substitution, but spreading 'eval' statements all over the code looks ugly, too  #
+#                                                                                  #
+####################################################################################
+if ! [ -z "$YF_SIGNIMAGE_TAR" ]; then
+	__YF_SIGNIMAGE_TAR="$YF_SIGNIMAGE_TAR"
+	__yf_signimage_tar()
+	{
+		eval $__YF_SIGNIMAGE_TAR $*
+	}
+	YF_SIGNIMAGE_TAR="__yf_signimage_tar"
+else
+	YF_SIGNIMAGE_TAR="tar"
+fi
+if ! [ -z "$YF_SIGNIMAGE_DD" ]; then
+	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
+	__yf_signimage_dd()
+	{
+		eval $__YF_SIGNIMAGE_DD $*
+	}
+	YF_SIGNIMAGE_DD="__yf_signimage_dd"
+else
+	YF_SIGNIMAGE_DD="dd"
+fi
+if ! [ -z "$YF_SIGNIMAGE_OPENSSL" ]; then
+	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
+	__yf_signimage_openssl()
+	{
+		eval $__YF_SIGNIMAGE_OPENSSL $*
+	}
+	YF_SIGNIMAGE_OPENSSL="__yf_signimage_openssl"
+else
+	YF_SIGNIMAGE_OPENSSL="openssl"
+fi
+####################################################################################
+#                                                                                  #
 # prepare a temporary directory and cleanup on exit                                #
 #                                                                                  #
 ####################################################################################
@@ -346,13 +385,13 @@ trap "rm -r \"$tmp\"" EXIT HUP INT
 ####################################################################################
 show_version
 [ $? -ne 0 ] && exit 32
-cnf="$(openssl version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
+cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
 if [ -n "$cnf" ]; then # configuration file missing
 	touch $tmp/openssl.cnf
 	export OPENSSL_CONF=$tmp/openssl.cnf
 fi
 echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
-echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
+echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -361,7 +400,7 @@ else
 	exit 33
 fi
 echo -en "Check \x1B[1mrsautl\x1B[0m command ... " 1>&2
-echo "" | openssl rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2
+echo "" | "$YF_SIGNIMAGE_OPENSSL" rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -389,7 +428,7 @@ fi
 #                                                                                  #
 ####################################################################################
 offset=0
-tar -t -v -f "$image_file" | 
+"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" | 
 sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
 while read line; do
 	eval $line
@@ -423,7 +462,7 @@ if [ $SIZE -eq 0 -o $SIZE -gt 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
 	exit 5
 fi
-tar -x -f "$image_file" -C "$tmp" ./var/signature 2>/dev/null
+"$YF_SIGNIMAGE_TAR" -x -f "$image_file" -C "$tmp" ./var/signature 2>/dev/null
 fs=$(stat -c %s "$tmp/var/signature")
 if [ $fs -ne 128 -a $fs -ne 256 -a $fs -ne 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
@@ -566,7 +605,7 @@ while read line; do
 	eval $line
 	echo -en "Checking the public key from \x1B[1m$SRC\x1B[0m ... " 1>&2
 	modulus_to_der $MOD $EXP >"$tmp/pubkey.der"
-	output="$(openssl rsautl -verify -pubin -inkey "$tmp/pubkey.der" -keyform der -asn1parse -in "$tmp/var/signature" 2>&1)"
+	output="$("$YF_SIGNIMAGE_OPENSSL" rsautl -verify -pubin -inkey "$tmp/pubkey.der" -keyform der -asn1parse -in "$tmp/var/signature" 2>&1)"
 	rc=$?
 	if [ $rc -eq 0 ]; then
 		key_found=1
@@ -582,7 +621,7 @@ while read line; do
 				fi
 			done
 			if [ $valid_algo -eq 1 ]; then
-				echo "" | openssl dgst -$algo 2>&1 2>/dev/null 1>&2
+				echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst -$algo 2>&1 2>/dev/null 1>&2
 				rc=$?
 				if [ $rc -eq 0 ]; then
 					show_ok
@@ -613,10 +652,10 @@ fi
 # file in a subshell and pipe its output to openssl                                #
 #                                                                                  #
 ####################################################################################
-res="$( ( dd if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
-dd if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
-dd if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) |
-openssl dgst -$algo -verify "$tmp/pubkey.der" -keyform der -signature "$tmp/var/signature")"
+res="$( ( "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
+"$YF_SIGNIMAGE_DD" if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) |
+"$YF_SIGNIMAGE_OPENSSL" dgst -$algo -verify "$tmp/pubkey.der" -keyform der -signature "$tmp/var/signature")"
 rc=$?
 if [ $rc -ne 0 ]; then
 	echo -e "Signature verification failed." 1>&2

@@ -8,7 +8,7 @@
 # This script needs a full-functioning OpenSSL binary ('genrsa' is embedded into      #
 # FRITZ!OS images, but 'rsa' and 'rsautl' are not available) and a shell version,     #
 # which may use "read -sp" for hidden terminal reads. If your shell does not          #
-# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the    #
+# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the    
 # password as argument during call.                                                   #
 #                                                                                     #
 # We assume enough entropy here ... please make sure there's enough randomness,       #
@@ -46,6 +46,35 @@ my_name="${0##*/}"
 source "$my_path/image_signing_files.inc"
 #######################################################################################
 #                                                                                     #
+# get the path for needed external commands, if called in any toolchain               #
+#                                                                                     #
+# looks a little bit complicated, but has to support definitions for BusyBox          #
+# applets as commands to be used and simple quoting isn't enough to ensure proper     #
+# substitution, but spreading 'eval' statements all over the code looks ugly, too     #
+#                                                                                     #
+#######################################################################################
+if ! [ -z "$YF_SIGNIMAGE_DD" ]; then
+	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
+	__yf_signimage_dd()
+	{
+		eval $__YF_SIGNIMAGE_DD $*
+	}
+	YF_SIGNIMAGE_DD="__yf_signimage_dd"
+else
+	YF_SIGNIMAGE_DD="dd"
+fi
+if ! [ -z "$YF_SIGNIMAGE_OPENSSL" ]; then
+	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
+	__yf_signimage_openssl()
+	{
+		eval $__YF_SIGNIMAGE_OPENSSL $*
+	}
+	YF_SIGNIMAGE_OPENSSL="__yf_signimage_openssl"
+else
+	YF_SIGNIMAGE_OPENSSL="openssl"
+fi
+#######################################################################################
+#                                                                                     #
 # some subfunctions                                                                   #
 #                                                                                     #
 #######################################################################################
@@ -54,13 +83,13 @@ show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
 show_version()
 {
 	local v
-	v=$(openssl version 2>/dev/null)
+	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary, set YF_SIGNIMAGE_OPENSSL variable to its path name." 1>&2
 		return 127
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
-		v="$(openssl version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
+		v="$("$YF_SIGNIMAGE_OPENSSL" version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
 		[ ${#USE_OLD_OPENSSL} -gt 0 ] && [ "$v" = "0_9" ] && printf "0_9\n" && return 0
 		[ "$v" = "1.0" ] && printf "1_0\n" && return 0
 		[ "$v" = "1.1" ] && printf "1_1\n" && return 0
@@ -112,9 +141,9 @@ if [ $rc -eq 127 ] || [ $rc -eq 1 ]; then
 fi
 echo -en "Check \x1B[1mgenrsa\x1B[0m command ... " 1>&2
 if [ $version = 1_0 ] || [ $version = 0_9 ]; then
-	openssl genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
+	"$YF_SIGNIMAGE_OPENSSL" genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
 elif [ $version = 1_1 ]; then
-	openssl genrsa -help 2>&1 | grep -q '^Usage: genrsa' 2>/dev/null 1>&2
+	"$YF_SIGNIMAGE_OPENSSL" genrsa -help 2>&1 | grep -q '^Usage: genrsa' 2>/dev/null 1>&2
 else
 	echo -e "\x1B[1;31mUnexpected OpenSSL version found.\x1B[0m" 1>&2
 	exit 1
@@ -165,7 +194,7 @@ fi
 #######################################################################################
 if ! [ -f "${name_prefix}.${seed_extension}" ]; then
 	echo -n "Generating random seed file from /dev/random (may take some time) ... " 1>&2
-	dd if=/dev/random of="${name_prefix}.${seed_extension}" bs=16 count=16 status=none 2>/dev/null
+	"$YF_SIGNIMAGE_DD" if=/dev/random of="${name_prefix}.${seed_extension}" bs=16 count=16 status=none 2>/dev/null
 	if [ $rc -ne 0 -o ! -f "${name_prefix}.${seed_extension}" ]; then
 		show_error
 		exit 1
@@ -180,7 +209,7 @@ fi
 #                                                                                     #
 #######################################################################################
 echo -en "Generating RSA key as \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-KEYPASSWORD="${KEYPASSWORD}" openssl genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
+KEYPASSWORD="${KEYPASSWORD}" "$YF_SIGNIMAGE_OPENSSL" genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
 rc=$?
 if [ $rc -ne 0 -o ! -f "${name_prefix}.${private_extension}" ]; then
 	show_error
@@ -194,7 +223,7 @@ fi
 #                                                                                     #
 #######################################################################################
 echo -en "Extracting public key to \x1B[1m${name_prefix}.${public_extension}\x1B[0m ... " 1>&2
-KEYPASSWORD="${KEYPASSWORD}" openssl rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
+KEYPASSWORD="${KEYPASSWORD}" "$YF_SIGNIMAGE_OPENSSL" rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 -o ! -f "${name_prefix}.${public_extension}" ]; then
 	show_error
@@ -211,7 +240,7 @@ fi
 #######################################################################################
 echo -en "Extracting public key in AVM format to \x1B[1m${name_prefix}.${avm_extension}\x1B[0m ... " 1>&2
 EXPONENT=010001
-eval $(openssl rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout)
+eval $("$YF_SIGNIMAGE_OPENSSL" rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout)
 rc=$?
 if [ $rc -ne 0 ]; then
 	show_error

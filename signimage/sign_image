@@ -36,6 +36,45 @@ box_key_name="/var/flash/websrv_ssl_key"
 source "$my_path/image_signing_files.inc"
 ####################################################################################
 #                                                                                  #
+# get the path for needed external commands, if called in any toolchain            #
+#                                                                                  #
+# looks a little bit complicated, but has to support definitions for BusyBox       #
+# applets as commands to be used and simple quoting isn't enough to ensure proper  #
+# substitution, but spreading 'eval' statements all over the code looks ugly, too  #
+#                                                                                  #
+####################################################################################
+if ! [ -z "$YF_SIGNIMAGE_TAR" ]; then
+	__YF_SIGNIMAGE_TAR="$YF_SIGNIMAGE_TAR"
+	__yf_signimage_tar()
+	{
+		eval $__YF_SIGNIMAGE_TAR $*
+	}
+	YF_SIGNIMAGE_TAR="__yf_signimage_tar"
+else
+	YF_SIGNIMAGE_TAR="tar"
+fi
+if ! [ -z "$YF_SIGNIMAGE_DD" ]; then
+	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
+	__yf_signimage_dd()
+	{
+		eval $__YF_SIGNIMAGE_DD $*
+	}
+	YF_SIGNIMAGE_DD="__yf_signimage_dd"
+else
+	YF_SIGNIMAGE_DD="dd"
+fi
+if ! [ -z "$YF_SIGNIMAGE_OPENSSL" ]; then
+	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
+	__yf_signimage_openssl()
+	{
+		eval $__YF_SIGNIMAGE_OPENSSL $*
+	}
+	YF_SIGNIMAGE_OPENSSL="__yf_signimage_openssl"
+else
+	YF_SIGNIMAGE_OPENSSL="openssl"
+fi
+####################################################################################
+#                                                                                  #
 # some subfunctions                                                                #
 #                                                                                  #
 ####################################################################################
@@ -44,9 +83,9 @@ show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
 show_version() 
 { 
 	local v
-	v=$(openssl version 2>/dev/null)
+	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		echo -e "Missing \x1B[1mopenssl\x1B[0m binary." 1>&2
+		echo -e "Missing \x1B[1mopenssl\x1B[0m binary, set YF_SIGNIMAGE_OPENSSL variable to its path name." 1>&2
 		return 1
 	else
 		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
@@ -133,7 +172,7 @@ fi
 show_version
 [ $? -ne 0 ] && exit 1
 echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
-echo "" | openssl dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
+echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -142,7 +181,7 @@ else
 	exit 1
 fi
 echo -en "Check \x1B[1mrsa\x1B[0m command ... " 1>&2
-echo "" | openssl rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
+echo "" | "$YF_SIGNIMAGE_OPENSSL" rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -173,7 +212,7 @@ else
 	hash_algo="md5"
 fi
 echo -en "Verify hash algorithm \x1B[1m$hash_algo\x1B[0m is supported ... " 1>&2
-echo "" | openssl dgst -$hash_algo 2>&1 2>/dev/null 1>&2
+echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo 2>&1 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -186,12 +225,12 @@ fi
 # verify input file format                                                         #
 #                                                                                  #
 ####################################################################################
-dd if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null
 if [ $? -ne 0 ]; then
 	echo -e "Input file doesn't look like a TAR archive." 1>&2
 	exit 1
 fi
-dd if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null
 if [ $? -eq 0 ]; then
 	echo -e "Input file contains extended headers (PaxHeaders) and may not be signed this way." 1>&2
 	exit 1
@@ -210,7 +249,7 @@ trap "rm -r \"$tmp\"" EXIT HUP
 #                                                                                  #
 ####################################################################################
 offset=0
-tar -t -v -f "$image_file" |
+"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" |
 sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
 while read line; do
 	eval $line
@@ -293,7 +332,7 @@ fi
 ####################################################################################
 if [ $on_box -eq 0 ]; then
 	echo -en "Check the password for the private key file ... " 1>&2
-	openssl rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
+	"$YF_SIGNIMAGE_OPENSSL" rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
 	rc=$?
 	if [ $rc -eq 0 ]; then
 		show_ok 
@@ -323,7 +362,7 @@ mkdir -p "$tmp/var"
 # blocks with a size of 512 octets)                                                #
 #                                                                                  #
 ####################################################################################
-dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
+"$YF_SIGNIMAGE_DD" if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
 ####################################################################################
 #                                                                                  #
 # generate the signature file                                                      #
@@ -335,8 +374,8 @@ dd if=/dev/zero of="$tmp/1K.bin" bs=512 count=2 status=none 2>/dev/null
 #                                                                                  #
 ##################################A#################################################
 echo -en "Signing the image hash (\x1B[1m$hash_algo\x1B[0m) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-dd if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/1K.bin" "$tmp/1K.bin" | 
-openssl dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/1K.bin" "$tmp/1K.bin" | 
+"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok 
@@ -350,14 +389,14 @@ fi
 #                                                                                  #
 ####################################################################################
 echo -en "Copying resulting image to output ... " 1>&2
-dd if="$image_file" bs=512 count=$copy_blocks status=none
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none
 ####################################################################################
 #                                                                                  #
 # and append another TAR archive containing only our newly created signature file  #
 #                                                                                  #
 ####################################################################################
-tar --version 2>/dev/null | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
-tar $format -C "$tmp" -O -c ./var/signature | dd bs=512 count=4 status=none 2>/dev/null
+"$YF_SIGNIMAGE_TAR" --version 2>/dev/null | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
+"$YF_SIGNIMAGE_TAR" $format -C "$tmp" -O -c ./var/signature | "$YF_SIGNIMAGE_DD" bs=512 count=4 status=none 2>/dev/null
 show_ok
 ####################################################################################
 #                                                                                  #
