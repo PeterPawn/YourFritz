@@ -126,6 +126,29 @@ y\nthe signed file with AVM components."
 }
 ####################################################################################
 #                                                                                  #
+# compute checksum of a TAR header                                                 #
+#                                                                                  #
+####################################################################################
+checksum()
+{
+	read_values()
+	{
+		i=1
+		while read pos left right; do
+			while [ $i -lt $pos ]; do
+				i=$(( i + 1 ))
+			done
+			sum=$(( sum + 0$left ))
+			i=$(( pos + 1 ))
+		done
+		printf "%d" $sum
+	}
+	sum=0
+	cp "$1" /var/tmp/savedheader
+	cmp -l -- "$1" /dev/zero 2>/dev/null | read_values
+}
+####################################################################################
+#                                                                                  #
 # try to identify FRITZ!OS as runtime environment (not too sophisticated, but it   #
 # should be able to make this distinction)                                         #
 #                                                                                  #
@@ -349,6 +372,20 @@ fi
 mkdir -p "$tmp/var"
 ####################################################################################
 #                                                                                  #
+# prepare a temporary block as filler, if circumvention of AVM's hash error is     #
+# needed                                                                           #
+#                                                                                  #
+####################################################################################
+fill_blocks=0
+if [ $(( ( copy_blocks + 2 ) % 20 )) -eq 0 ]; then
+	echo -ne "Repeating first entry as filler ... " 1>&2
+	"$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/filler.bin" bs=512 count=1 status=none 2>/dev/null
+	show_ok
+else
+	touch "$tmp/filler.bin"
+fi
+####################################################################################
+#                                                                                  #
 # prepare a temporary block for an empty TAR member - 512 byte header and 512 byte #
 # content, it will be used as "end of archive" header too (2 continous empty       #
 # blocks with a size of 512 octets)                                                #
@@ -366,7 +403,7 @@ mkdir -p "$tmp/var"
 #                                                                                  #
 ##################################A#################################################
 echo -en "Signing the image hash (\x1B[1m$hash_algo\x1B[0m) with RSA key from \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/1K.bin" "$tmp/1K.bin" | 
+"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/filler.bin" "$tmp/1K.bin" "$tmp/1K.bin" |
 "$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
 rc=$?
 if [ $rc -eq 0 ]; then
@@ -382,13 +419,27 @@ fi
 ####################################################################################
 echo -en "Copying resulting image to output ... " 1>&2
 "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none
+cat "$tmp/filler.bin"
 ####################################################################################
 #                                                                                  #
-# and append another TAR archive containing only our newly created signature file  #
+# build our own signature member using the first member entry from image           #
 #                                                                                  #
 ####################################################################################
-"$YF_SIGNIMAGE_TAR" --version 2>/dev/null | grep -q GNU 2>/dev/null && format=" --format=gnu" || format=""
-"$YF_SIGNIMAGE_TAR" $format -C "$tmp" -O -c ./var/signature | "$YF_SIGNIMAGE_DD" bs=512 count=4 status=none 2>/dev/null
+"$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/header" bs=512 count=1 status=none 2>/dev/null
+printf "signature" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=6 conv=notrunc status=none 2>/dev/null
+printf "200" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=132 conv=notrunc status=none 2>/dev/null
+printf "0" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=156 conv=notrunc status=none 2>/dev/null
+printf "        " | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
+chksum=$(checksum "$tmp/header")
+printf "%06o\000" $chksum  | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
+####################################################################################
+#                                                                                  #
+# and append signature content and EoA blocks                                      #
+#                                                                                  #
+####################################################################################
+cat "$tmp/header" "$tmp/var/signature"
+"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - 128 )) count=1 status=none 2>/dev/null
+cat "$tmp/1K.bin"
 show_ok
 ####################################################################################
 #                                                                                  #
