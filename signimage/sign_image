@@ -135,9 +135,6 @@ checksum()
 	{
 		i=1
 		while read pos left right; do
-			while [ $i -lt $pos ]; do
-				i=$(( i + 1 ))
-			done
 			sum=$(( sum + 0$left ))
 			i=$(( pos + 1 ))
 		done
