@@ -133,10 +133,8 @@ checksum()
 {
 	read_values()
 	{
-		i=1
 		while read pos left right; do
 			sum=$(( sum + 0$left ))
-			i=$(( pos + 1 ))
 		done
 		printf "%d" $sum
 	}
