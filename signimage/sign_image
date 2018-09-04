@@ -404,7 +404,8 @@ echo -en "Signing the image hash (\x1B[1m$hash_algo\x1B[0m) with RSA key from \x
 "$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/var/signature" -passin "pass:$KEYPASSWORD"
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
+	sigsize=$(stat -c %s "$tmp/var/signature")
 else
 	show_error
 	exit 1
@@ -424,7 +425,7 @@ cat "$tmp/filler.bin"
 ####################################################################################
 "$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/header" bs=512 count=1 status=none 2>/dev/null
 printf "signature" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=6 conv=notrunc status=none 2>/dev/null
-printf "200" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=132 conv=notrunc status=none 2>/dev/null
+printf "%04o\000" $sigsize | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=131 conv=notrunc status=none 2>/dev/null
 printf "0" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=156 conv=notrunc status=none 2>/dev/null
 printf "        " | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
 chksum=$(checksum "$tmp/header")
@@ -435,7 +436,7 @@ printf "%06o\000" $chksum  | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 c
 #                                                                                  #
 ####################################################################################
 cat "$tmp/header" "$tmp/var/signature"
-"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - 128 )) count=1 status=none 2>/dev/null
+"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
 cat "$tmp/1K.bin"
 show_ok
 ####################################################################################
