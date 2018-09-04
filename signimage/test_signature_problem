@@ -1,0 +1,89 @@
+#! /bin/sh
+#
+# show the MD5 computation error from "firmwarecfg", if the signature member starts
+# 1K below a 10K boundary with the image file
+#
+# the script needs full-functioning signing and verification from the "signimage"
+# project and the own public key as "~/firmware_signing.asc"
+#
+# specify the password for the private key as first parameter
+#
+# the script will create image files with one block less, the wrong block count and
+# one block more than the needed count to force the faulty behavior, sign the image
+# file and verify it with both the provided "check_signed_image" script and the
+# tr069fwupdate utility from AVM
+#
+# the prove the wrong computation of MD5 hash, it gets computed independently from
+# tr069fwupdate/firmwarecfg and will be shown together with AVM's output files
+#
+# You need an OpenSSL CLI utility and the "hexdump" applet as additions to the
+# original firmware from AVM to run this script successfully.
+#
+check()
+{
+	check_signed_image $1 -a ~/firmware_signing.asc
+}
+sign()
+{
+	sign_image "$1" "$2"
+}
+pack()
+{
+	tar -c "$*"
+}
+show()
+{
+	size=$(stat -c %s "$1")
+	off=$(hexdump -C "$1" | grep "\./var/signature" | sed -n -e "s|^\([^ ]*\) .*\$|\1|p")
+	printf "%s file: size=%d (0x%08x)" "$2" $size $size
+	[ -z $off ] || printf ", signature offset=%s" $off
+	printf "\n"
+}
+hash()
+{
+	size=$(stat -c %s "$1")
+	blocks=$(( size / 512 ))
+	md5=$( ( dd if="$1" bs=512 count=$(( blocks - 4 )) 2>/dev/null;dd if=/dev/zero bs=512 count=4 2>/dev/null ) | md5sum | sed -n -e "s|^\([a-f0-9]*\).*\$|\1|p")
+	printf "Hash value: %s\n" $md5
+}
+run()
+{
+	rm -r /var/packet 2>/dev/null
+	dir="/var/media/ftp/YourFritz-1/test_signature"
+	rm -r "$dir" 2>/dev/null
+	mkdir -p "$dir/var"
+	dd if=/dev/zero of="$dir/var/zeroes.bin" bs=512 count=$(( ( $1 * 20 ) - 6 + $2 )) 2>/dev/null
+	cat >"$dir/var/install" <<EOF
+#! /bin/sh
+cat /var/tmp/firmware_stream_result >/dev/console 2>/dev/null
+head -n 1 /var/tmp/fwsign.log >/dev/console 2>/dev/null
+exit 0
+EOF
+	chmod a+x "$dir/var/install"
+	cd "$dir"
+	pack "./var/" > "$dir/$i.image"
+	show "$dir/$i.image" "Unsigned"
+	sign "$dir/$i.image" "$keypwd" > "$dir/$i.signed.image" #2>/dev/null
+	show "$dir/$i.signed.image" "Signed"
+	check "$dir/$i.signed.image" 2>/dev/null
+	yf_check=$?
+	hash "$dir/$i.signed.image" 2>/dev/null
+	tr069fwupdate packet "file://$(realpath "$dir")/$i.signed.image"
+	avm_check=$?
+	[ $avm_check -eq 0 ] && echo "AVM signature check: $avm_check, YourFritz signature check: $yf_check" || echo -e "\033[1m\033[31mAVM signature check: $avm_check\033[0m, YourFritz signature check: $yf_check"
+	if [ $avm_check -ne 0 ]; then
+		cat /var/tmp/firmware_stream_result 2>/dev/null
+		cat /var/tmp/fwsign.log 2>/dev/null
+	fi
+	cd /var
+	rm -r "$dir"
+	printf "\n------------------------------------------------\n\n"
+}
+keypwd="$1"
+mount -o bind ~/firmware_signing.asc /etc/avm_firmware_public_key1
+for i in 1 2 2762; do
+	run $i -1
+	run $i 0
+	run $i 1
+done
+while umount /etc/avm_firmware_public_key1 2>/dev/null; do :; done
