@@ -24,7 +24,8 @@ Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of 
       [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'the IP address, which the device should use (defaults to 192.168.178.1)')][string]$requested_address,
       [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'do not hold up the device in the bootloader')][bool]$nohold = $False,
       [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
-      [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the port number to use')][int]$discovery_port = 5035
+      [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the port number to use')][int]$discovery_port = 5035,
+      [Parameter(Mandatory = $False, Position = 5, HelpMessage = 'the interface address to send broadcasts from')][String]$if_address = ""
 )
       
 if ($PSBoundParameters["Debug"] -and $DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }      
@@ -55,6 +56,10 @@ try {
     $sender = New-Object System.Net.Sockets.UdpClient
     $sender.EnableBroadcast = $True
     $sender.ExclusiveAddressUse = $False
+    if ($if_address.Length -ne 0) {
+        $local_ep = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse($if_address), 0)
+        $sender.Client.Bind($local_ep)
+    }
     $sender_ready = $True
 }
 catch {
