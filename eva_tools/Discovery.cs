@@ -326,12 +326,12 @@ namespace YourFritz.EVA
 
     public class EVADiscovery
     {
-        private IPAddress p_BoxIP = IPAddress.Parse(EVAConstants.EVADefaultIP);
+        private IPAddress p_BoxIP = IPAddress.Parse(EVADefaults.EVADefaultIP);
         private IPAddress p_BroadcastAddress = IPAddress.Broadcast;
-        private int p_DiscoveryPort = EVAConstants.EVADefaultDiscoveryPort;
+        private int p_DiscoveryPort = EVADefaults.EVADefaultDiscoveryPort;
         private bool p_IsRunning = false;
         private bool p_Canceled = false;
-        private int p_Timeout = EVAConstants.EVADiscoveryTimeout;
+        private int p_Timeout = EVADefaults.EVADiscoveryTimeout;
         private bool p_TimeoutElapsed = false;
         private bool p_StopOnFirstFound = false;
 
@@ -477,8 +477,6 @@ namespace YourFritz.EVA
                         IPEndPoint ep = new IPEndPoint(IPAddress.Any, p_DiscoveryPort);
                         bool canceled = false;
 
-//                      Debug.WriteLine(String.Format("Listener started, task id = {0:d}", Task.CurrentId));
-
                         while (!canceled)
                         {
                             byte[] data = listener.Receive(ref ep);
@@ -496,14 +494,9 @@ namespace YourFritz.EVA
 
                                     if (p_StopOnFirstFound)
                                     {
-                                        //Debug.WriteLine(String.Format("Answer received, leaving task {0:d} ...", Task.CurrentId));
                                         canceled = true;
                                     }
                                 }
-                            }
-                            else
-                            {
-                                //Debug.WriteLine("Received sent broadcast packet ...");
                             }
                             
                             if (ctSource.IsCancellationRequested)
@@ -515,13 +508,12 @@ namespace YourFritz.EVA
                 }),
 
                 // broadcast discovery packets, do not use cancellation token for the outer loop
+                // the first packet is sent with a 10 ms delay, later the interval will grow up to 1000 ms
                 Task.Factory.StartNew(async () =>
                 {
                     IPEndPoint ep = new IPEndPoint(p_BroadcastAddress, p_DiscoveryPort);
                     byte[] data = new DiscoveryUdpPacket(sendAddress).ToBytes();
                     int delay = 10;
-
-                    //Debug.WriteLine(String.Format("Packet sender task, id = {0:d}", Task.CurrentId));
 
                     using (UdpClient sender = new UdpClient())
                     {
@@ -537,26 +529,22 @@ namespace YourFritz.EVA
                             {
                             }
 
-                            if (!ctSource.IsCancellationRequested)
-                            {
-                                sender.Send(data, data.Length, ep);
-
-                                //Debug.WriteLine(String.Format("Packet sent"));
-
-                                OnPacketSent(sendAddress, p_DiscoveryPort, data);
-
-                                delay = 1000;
-                            }
-                            else
+                            if (ctSource.IsCancellationRequested)
                             {
                                 canceled = true;
                             }
+
+                            sender.Send(data, data.Length, ep);
+
+                            if (!canceled)
+                            {
+                                OnPacketSent(sendAddress, p_DiscoveryPort, data);
+                                delay = 1000;
+                            }
                         }
-                        //Debug.WriteLine(String.Format("Sending loop left"));
 
                         // send one more packet to terminate listening loop
                         sender.Send(data, data.Length, ep);
-                        //Debug.WriteLine(String.Format("Final packet sent"));
                     }
 
                 }),
@@ -575,8 +563,6 @@ namespace YourFritz.EVA
                 {
                     Task finished = await Task.WhenAny(netIOTasks);
 
-                    //Debug.WriteLine(String.Format("Task {0:d} finished", finished.Id));
-
                     netIOTasks.Remove(finished);
 
                     if (finished is Task<Task> && !p_TimeoutElapsed)
@@ -585,7 +571,7 @@ namespace YourFritz.EVA
                     }
                     else
                     {
-                        if (!ctSource.IsCancellationRequested && p_TimeoutElapsed)
+                        if (!ctSource.IsCancellationRequested && (p_TimeoutElapsed || (p_StopOnFirstFound && foundDevices.Count > 0)))
                         {
                             ctSource.Cancel();
                         }
