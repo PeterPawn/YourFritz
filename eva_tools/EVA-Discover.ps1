@@ -22,10 +22,10 @@
 #######################################################################################
 Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the number of packets to be sent, with 1 second delay in-between (defaults to 120 -> 2 minutes)')][int]$maxWait = 30,
       [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'the IP address, which the device should use (defaults to 192.168.178.1)')][string]$requested_address,
-      [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'do not hold up the device in the bootloader')][bool]$nohold = $False,
-      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
-      [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the port number to use')][int]$discovery_port = 5035,
-      [Parameter(Mandatory = $False, Position = 5, HelpMessage = 'the interface address to send broadcasts from')][String]$if_address = ""
+      [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the interface address to send broadcasts from')][string]$if_address = "",
+      [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'do not hold up the device in the bootloader')][bool]$nohold = $False,
+      [Parameter(Mandatory = $False, Position = 4, HelpMessage = 'the broadcast address to use')][String]$bc_address = "255.255.255.255",
+      [Parameter(Mandatory = $False, Position = 5, HelpMessage = 'the port number to use')][int]$discovery_port = 5035
 )
       
 if ($PSBoundParameters["Debug"] -and $DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }      
