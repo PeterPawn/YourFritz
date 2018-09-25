@@ -35,7 +35,7 @@
 #                                                                                                     #
 # The bootable image will add the following to the 'wrapper' partition of the active system:          #
 #                                                                                                     #
-# - a Shell-in-a-Box executable (from the 'binaries' branch),                                         #
+# - a Shell-in-a-Box executable (from the 'yf_bin' submodule),                                        #
 # - an init-script to control this service and                                                        #
 # - a (very early executed) script to add own init-scripts to the original processing of FRITZ!OS     #
 #   (using a bind-mounted copy of the 'rc.S' file)                                                    #
@@ -69,13 +69,16 @@
 # shell statements, I kept the POSIX standard definitions in mind - that means, it should also work   #
 # with very limited shells like 'dash'.                                                               #
 #                                                                                                     #
+# To detect the version of binaries to use in image, meanwhile a 'strings' utility is needed, too.    #
+#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
 #                                                                                                     #
 #######################################################################################################
 tmpdir="/tmp"
-binaries="../bin/mips"
+kernel_version="3.10.73"
+eval binaries="../bin/mips/\$kernel_version"
 image_get_file="image/get_file_from_image"
 payload_script_1="scripts/copy_payload"
 payload_script_2="scripts/rc.shellinaboxd"
@@ -243,7 +246,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 for f in $toolbox_scripts; do
-	! [ -r $f ] && printf "Missing toolbox script '%s' in the current directory.\n" "$f" 1>&2 && exit 1
+	! [ -r $f ] && printf "Missing toolbox script '%s', starting from current directory.\n" "$f" 1>&2 && exit 1
 done
 #######################################################################################################
 #                                                                                                     #
@@ -295,6 +298,25 @@ if ! [ -d "$name" ]; then
 	exit 1
 fi
 trap 'housekeeping $name' HUP EXIT INT
+#######################################################################################################
+#                                                                                                     #
+# try to detect the needed version of binaries                                                        #
+#                                                                                                     #
+#######################################################################################################
+buildroot_year="$($SHELL $image_get_file $dbgopt "$src" chksum | strings | sed -n -e "s|.*Buildroot \([0-9]*\).*|\1|p")"
+if [ -z "$buildroot_year" ] || [ $buildroot_year -lt 2016 ]; then
+	[ $debug -eq 1 ] && printf "Using binaries for systems with kernel version 3.10.73.\n" 1>&2
+else
+	[ $debug -eq 1 ] && printf "Using binaries for systems with kernel version 3.10.107.\n" 1>&2
+	kernel_version="3.10.107"
+	eval binaries="../bin/mips/\$kernel_version"
+	payload_bin_1="$binaries/shellinaboxd"
+	toolbox_scripts="$image_get_file $payload_script_1 $payload_bin_1"
+	busybox_source="$binaries/busybox"
+	for f in $toolbox_scripts; do
+		! [ -r $f ] && printf "Missing toolbox script '%s', starting from current directory.\n" "$f" 1>&2 && exit 1
+	done
+fi
 #######################################################################################################
 #                                                                                                     #
 # extract kernel image                                                                                #
