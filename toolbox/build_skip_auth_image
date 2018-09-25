@@ -52,7 +52,10 @@
 #                                                                                                     #
 #######################################################################################################
 tmpdir="/tmp"
-binaries="../bin/mips"
+ignore_kernel_version="${kernel_version:+1}"
+[ -z "$ignore_kernel_version" ] && ignore_kernel_version=0
+kernel_version="${kernel_version:-3.10.73}"
+eval binaries="../bin/mips/\$kernel_version"
 image_get_file="image/get_file_from_image"
 payload_script_1="scripts/skip_auth_from_homenetwork"
 toolbox_scripts="$image_get_file $payload_script_1"
@@ -242,6 +245,23 @@ if ! [ -d "$name" ]; then
 fi
 trap 'housekeeping $name' HUP EXIT INT
 #######################################################################################################
+#                                                                                                     #
+# try to detect the needed version of binaries                                                        #
+#                                                                                                     #
+#######################################################################################################
+if [ $ignore_kernel_version -eq 0 ]; then
+	buildroot_year="$($SHELL $image_get_file $dbgopt "$src" chksum | strings | sed -n -e "s|.*Buildroot \([0-9]*\).*|\1|p")"
+	if [ -z "$buildroot_year" ] || [ $buildroot_year -lt 2016 ]; then
+		[ $debug -eq 1 ] && printf "Using binaries for systems with kernel version %s.\n" "$kernel_version" 1>&2
+	else
+		printf "\033[1m\033[31m\aWarning:\033[39m This script was only tested with FRITZ!OS versions below 07.00, aborting.\n\033[0m" 1>&2
+		printf "\nIf you want to create an image with a later kernel version, specify it (it's part\n" 1>&2
+		printf "of path name for needed binaries, too) with a variable 'kernel_version=<value>',\n" 1>&2
+		printf "while calling this script. The default value used is '3.10.73'.\n" 1>&2
+		exit 1
+	fi
+fi
+########################################################################################################
 #                                                                                                     #
 # extract kernel image                                                                                #
 #                                                                                                     #
