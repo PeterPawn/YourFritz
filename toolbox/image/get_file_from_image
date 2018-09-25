@@ -100,7 +100,7 @@ if ! tar -t -f "$src" 2>/dev/null 1>&2; then
 	[ $debug -eq 1 ] && printf "The specified file '%s' is not a valid TAR archive.\n" "$src" 1>&2
 	exit 1
 fi
-f="$(tar -t -f "$src" 2>/dev/null | sed -n -e "/$wanted/p")"
+f="$(tar -t -f "$src" 2>/dev/null | sed -n -e "\|$wanted|p")"
 if [ ${#f} -eq 0 ]; then
 	[ $debug -eq 1 ] && printf "The specified file does not contain a member '%s'." "$wanted" 1>&2
 	exit 1
