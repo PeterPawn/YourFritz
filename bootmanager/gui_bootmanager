@@ -60,6 +60,10 @@
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
 # version file in this order and the first file found is assumed to be a mark of the used framework.  #
 #                                                                                                     #
+# Update 29.09.2018:                                                                                  #
+# Handling of AR10 devices (7272, 3272) was added while assuming, that their construction or setup is #
+# the same as of a VR9 device.                                                                        #
+#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -241,7 +245,7 @@ get_partition()
 	if is_puma_based_device; then
 		get_puma_partition "$1" "$2"
 		rc=$?
-	elif [ "$(get_system_type)" = "VR9" ]; then
+	elif [ "$(get_system_type)" = "VR9" ] || [ "$(get_system_type)" = "AR10" ]; then
 		[ "$1" = "$kernel_name" ] && get_mtd_partition "$1" "$2" || get_vr9_image "$1" "$2"
 	elif [ "$(get_system_type)" = "GRX500" ]; then
 		get_mtd_partition "$1" "$2"
@@ -346,7 +350,7 @@ compare_strings()
 # get branding from environment                                                                       #
 #                                                                                                     #
 #######################################################################################################
-get_system_branding() 
+get_system_branding()
 (
 	sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
 )
@@ -595,7 +599,7 @@ get_modified_date()
 	v="$(stat -c %Y -- /proc/self/exe 2>/dev/null)"
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
-	if [ "$(get_system_type)" = "VR9" ] && is_active_mountpoint "$vr9_wrapper_dir"; then
+	if ( [ "$(get_system_type)" = "VR9" ] || [ "$(get_system_type)" = "AR10" ] ) && is_active_mountpoint "$vr9_wrapper_dir"; then
 		# SquashFS image file has date of last modification
 		[ -z "$1" ] && v="$(stat -c %Y -- "$vr9_image_source_active")" || v="$(stat -c %Y -- "$tempdir/$wrapper_mount_name/$vr9_rootfs_name")"
 	else
@@ -686,7 +690,7 @@ generate_html_lang_de()
 	if [ $alternative_is_missing -eq 0 ]; then
 		html '<b>das derzeit inaktive System</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
 		if [ -z "$alternative_version" ]; then
-			html '<br><br>Das System in den alternativen Partitionen kann nicht identifiziert werden.<br>Es verwendet entweder ein unbekanntes Dateisystem oder es k&ouml;nnte auch besch&auml;digt sein.<br>Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.\n' 
+			html '<br><br>Das System in den alternativen Partitionen kann nicht identifiziert werden.<br>Es verwendet entweder ein unbekanntes Dateisystem oder es k&ouml;nnte auch besch&auml;digt sein.<br>Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.\n'
 		else
 			html '<br><br>Version %s vom %s<br>\n' \
 					"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
@@ -765,8 +769,8 @@ generate_html_lang_en()
 	if [ $alternative_is_missing -eq 0 ]; then
 		html '<b>the alternative system</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
 		if [ -z "$alternative_version" ]; then
-			html '<br><br>Unable to identify the installed system in the alternative partitions.<br>It may use an unknown filesystem format, it may have been damaged, it&#39;s simply missing or it has been deleted otherwise.<br>\n' 
-			html 'Switching to this system may prevent your device from starting correctly.<br>You should be really sure, what you are doing in this case.\n' 
+			html '<br><br>Unable to identify the installed system in the alternative partitions.<br>It may use an unknown filesystem format, it may have been damaged, it&#39;s simply missing or it has been deleted otherwise.<br>\n'
+			html 'Switching to this system may prevent your device from starting correctly.<br>You should be really sure, what you are doing in this case.\n'
 		else
 			html '<br><br>version %s built on %s<br>\n' \
 				"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
