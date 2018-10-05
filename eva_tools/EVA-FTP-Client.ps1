@@ -258,7 +258,7 @@ function BootDeviceFromImage {
         Throw $ex
     }
     $memsize = GetEnvironmentValue "memsize"
-    $originalmemory = $memsize
+    $originalmemory = $memsize / 1024 * 1024
     # check, if memsize is a multiple of 32 MB, else it's already changed by an earlier attempt
     $rem = $memsize % (1024 * 1024 * 32)
     if ($rem -ne 0) {
@@ -269,8 +269,12 @@ function BootDeviceFromImage {
         # set memory size to 128 MB
         $memsize = 1024 * 1024 * 128
     }
+    else {
+        $memsize = $memsize / 1024 * 1024
+    }
     # compute the needed size values (as strings)
-    Write-Debug $("Memory size found    : {0:x8}" -f $memsize)
+    Write-Debug $("Memory size found    : 0x{0:x8} ({1} MB)" -f $originalmemory,($originalmemory / 1024 / 1024))
+    Write-Debug $("Memory size used     : 0x{0:x8} ({1} MB)" -f $memsize,($memsize / 1024 / 1024))
     Write-Debug $("Image size found     : 0x{0:x8}" -f $filesize)
     $newsize = $memsize - $filesize
     $newmemsize = "0x{0:x8}" -f $newsize
@@ -278,7 +282,7 @@ function BootDeviceFromImage {
     $firstbyte = 0x80000000
     $startaddr = "0x{0:x8}" -f [System.Int32]$($newsize + $firstbyte)
     $endaddr = "0x{0:x8}" -f [System.Int32]$($newsize + $firstbyte + $filesize)
-    Write-Debug "Set MTD ram device to: $startaddr,$endaddr"
+    Write-Debug "Set MTD RAM device to: $startaddr,$endaddr"
     # set the new environment values
     if (-not (SetEnvironmentValue "memsize" "$newmemsize")) {
         $ex = New-Object System.IO.IOException "Setting the new memory size failed."
