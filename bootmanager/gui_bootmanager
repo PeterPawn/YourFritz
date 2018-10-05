@@ -90,6 +90,7 @@ reserved_prefix="reserved"
 alt_root_mount_name="alt_root"
 defaults_dir="etc/default.$CONFIG_PRODUKT"
 tmpdir="${TMPDIR:-/var/tmp}"
+avm_rcconf="etc/init.d/rc.conf"
 semafile="/var/run/gui_bootmanager.sem"
 fdt_chosen="/proc/device-tree/chosen"
 saved_environment="/var/env"
@@ -164,6 +165,16 @@ is_puma_based_device()
 has_fdt_environment()
 {
 	[ -d "$fdt_chosen" ] && return 0 || return 1
+}
+#######################################################################################################
+#                                                                                                     #
+# check, if the host system supports branding changes via environment writes                          #
+#                                                                                                     #
+#######################################################################################################
+change_branding_support()
+{
+	has_fdt_environment && return 1
+	return 0
 }
 #######################################################################################################
 #                                                                                                     #
@@ -352,6 +363,7 @@ compare_strings()
 #######################################################################################################
 get_system_branding()
 (
+	fixed="$(get_fixed_branding)" && printf "%s" "$fixed" && exit 0
 	sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
 )
 #######################################################################################################
@@ -442,9 +454,12 @@ change_branding()
 #                                                                                                     #
 # get the contained brandings from the directory with system defaults                                 #
 #                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
 #######################################################################################################
 get_brandings()
 (
+	fixed="$(get_fixed_branding "$1")" && printf "%s" "$fixed" && exit 0
 	path=${1:-/}${1:+/}$defaults_dir
 	find $path -type d -maxdepth 1 | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
 )
@@ -457,8 +472,9 @@ get_brandings()
 #######################################################################################################
 get_version_values()
 (
+	path="${1:-/}${1:+/}$avm_version_file"
 	for v in $version_components; do
-		sed -n -e "s|^export FIRMWARE_$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1/$avm_version_file" | sed -e 's| |\ |g'
+		sed -n -e "s|^export FIRMWARE_$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$path" | sed -e 's| |\ |g'
 	done
 )
 #######################################################################################################
@@ -499,6 +515,20 @@ get_system_date()
 	eval $(get_version_values "$1")
 	v=$(parse_date_value "$DATE")
 	printf '%s' "$(get_localized_date "$v")"
+)
+#######################################################################################################
+#                                                                                                     #
+# get fixed brandings string from specified system root                                               #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_fixed_branding()
+(
+	path="${1:-/}${1:+/}$avm_rcconf"
+	b="$(sed -n -e 's|^export OEM\(=\"\?\(.*\)\"\?\)\?$|\2|p' "$path")"
+	printf "%s" "$b"
+	[ -z "$b" ] && exit 1 || exit 0
 )
 #######################################################################################################
 #                                                                                                     #
@@ -704,42 +734,50 @@ generate_html_lang_de()
 	html '</label>\n'
 	html '<br><br>\n'
 	html '<h4>Branding &auml;ndern</h4>\n'
-	if has_fdt_environment; then
-		html 'Auf diesem Modell ist keine dauerhafte Änderung der Firmware-Version möglich.\n'
+	if ! change_branding_support && [ $running_branding_fixed -eq 0 ] && [ $alternative_branding_fixed -eq 0 ]; then
+		html 'Bei diesem Ger&auml;t ist keine dauerhafte &Auml;nderung der Firmware-Version m&ouml;glich.\n'
 		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 	else
 		html '<span id=\"running_branding\">\n'
-		if [ $chg_running_branding -eq 1 ]; then
-			html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
-			html '<br>\n'
-			html '<label for=\"idRunningBranding\">\n'
-			html 'Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;\n'
-			html '</label>\n'
-			select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
+		if [ $running_branding_fixed -eq 1 ]; then
+			html 'Die Firmware-Version des aktuell laufenden Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$running_brandings"
 		else
-			html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", diese ist im Moment auch eingestellt.\n' "$current_branding"
-			html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+			if [ $chg_running_branding -eq 1 ]; then
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
+				html '<br>\n'
+				html '<label for=\"idRunningBranding\">\n'
+				html 'Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;\n'
+				html '</label>\n'
+				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
+			else
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", diese ist im Moment auch eingestellt.\n' "$current_branding"
+				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+			fi
 		fi
 		html '</span>\n'
 		html '<span id=\"alternative_branding\">\n'
-		if [ $chg_alternative_branding -eq 1 ]; then
-			html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
-			html '<br>\n'
-			html '<label for=\"idAlternativeBranding\">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;</label>\n'
-			select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
+		if [ $alternative_branding_fixed -eq 1 ]; then
+			html 'Die Firmware-Version des derzeit inaktiven Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$alternative_brandings"
 		else
-			if [ -z "$alternative_version" ];then
-				html 'Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Firmware-Versionen verf&uuml;gbar.\n'
-				html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
+			if [ $chg_alternative_branding -eq 1 ]; then
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
+				html '<br>\n'
+				html '<label for=\"idAlternativeBranding\">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;</label>\n'
+				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
 			else
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", ' "$alternative_brandings"
-				if [ "$alternative_brandings" = "$current_branding" ]; then
-					html 'diese ist im Moment auch eingestellt.\n'
+				if [ -z "$alternative_version" ];then
+					html 'Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Firmware-Versionen verf&uuml;gbar.\n'
+					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
 				else
-					html 'im Moment ist jedoch \"<b>%s</b>\" eingestellt.<br>\n' "$current_branding"
-					html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf \"<b>%s</b>\" ge&auml;ndert.\n' "$alternative_brandings"
-				fi
+					html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", ' "$alternative_brandings"
+					if [ "$alternative_brandings" = "$current_branding" ]; then
+						html 'diese ist im Moment auch eingestellt.\n'
+					else
+						html 'im Moment ist jedoch \"<b>%s</b>\" eingestellt.<br>\n' "$current_branding"
+						html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf \"<b>%s</b>\" ge&auml;ndert.\n' "$alternative_brandings"
+					fi
 				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
+				fi
 			fi
 		fi
 		html '</span>\n'
@@ -784,44 +822,52 @@ generate_html_lang_en()
 	html '</label>\n'
 	html '<br><br>\n'
 	html '<h4>Change branding</h4>\n'
-	if has_fdt_environment; then
-		html 'Unable to change the branding permanently on this model.\n'
+	if ! change_branding_support && [ $running_branding_fixed -eq 0 ] && [ $alternative_branding_fixed -eq 0 ]; then
+		html 'Unable to change the branding permanently on this device.\n'
 		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 	else
-		html '<span id=\"running_branding\">\n'
-		if [ $chg_running_branding -eq 1 ]; then
-			html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
-			html '<br>\n'
-			html '<label for=\"idRunningBranding\">\n'
-			html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
-			html '</label>\n'
-			select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
+		if [ $running_branding_fixed -eq 1 ]; then
+			html 'Branding of currently running system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$running_brandings"
 		else
-			html 'The system selected above supports only the single OEM name \"<b>%s</b>\" and this is also the current one.\n' "$current_branding"
-			html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+			html '<span id=\"running_branding\">\n'
+			if [ $chg_running_branding -eq 1 ]; then
+				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
+				html '<br>\n'
+				html '<label for=\"idRunningBranding\">\n'
+				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
+				html '</label>\n'
+				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
+			else
+				html 'The system selected above supports only the single OEM name \"<b>%s</b>\" and this is also the current one.\n' "$current_branding"
+				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+			fi
 		fi
 		html '</span>\n'
 		html '<span id=\"alternative_branding\">\n'
-		if [ $chg_alternative_branding -eq 1 ]; then
-			html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
-			html '<br>\n'
-			html '<label for=\"idRunningBranding\">\n'
-			html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
-			html '</label>\n'
-			select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
+		if [ $alternative_branding_fixed -eq 1 ]; then
+			html 'Branding of installed alternative system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$alternative_brandings"
 		else
-			if [ -z "$alternative_version" ];then
-				html 'Due to problems identifying the installed alternative system, there&#39;s no idea which values are supported by this system and the value remains unchanged.\n'
-				html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
+			if [ $chg_alternative_branding -eq 1 ]; then
+				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
+				html '<br>\n'
+				html '<label for=\"idRunningBranding\">\n'
+				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
+				html '</label>\n'
+				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
 			else
-				html 'The system selected above supports only the single OEM name \"<b>%s</b>\"' "$alternative_brandings"
-				if [ "$alternative_brandings" = "$current_branding" ]; then
-					html ' and this is also the current one.\n'
+				if [ -z "$alternative_version" ];then
+					html 'Due to problems identifying the installed alternative system, there&#39;s no idea which values are supported by this system and the value remains unchanged.\n'
+					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
 				else
-					html ', but currently \"<b>%s</b>\" is set.<br>\n' "$current_branding"
-					html 'Restarting the device now, will set the OEM name value to \"<b>%s</b>\" without any further questions.\n' "$alternative_brandings"
+					html 'The system selected above supports only the single OEM name \"<b>%s</b>\"' "$alternative_brandings"
+					if [ "$alternative_brandings" = "$current_branding" ]; then
+						html ' and this is also the current one.\n'
+					else
+						html ', but currently \"<b>%s</b>\" is set.<br>\n' "$current_branding"
+						html 'Restarting the device now, will set the OEM name value to \"<b>%s</b>\" without any further questions.\n' "$alternative_brandings"
+					fi
+					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 				fi
-				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 			fi
 		fi
 		html '</span>\n'
@@ -837,7 +883,7 @@ generate_javascript()
 	html '<script type=\"text/javascript\">\n'
 	html 'function onBootManagerClick(evt) {\n'
 	html 'var radioButton = jxl.evtTarget(evt);\n'
-	if ! has_fdt_environment; then
+	if change_branding_support; then
 		html 'if ( radioButton.id == \"radioRunning\" ) {\n'
 		html 'jxl.show(\"running_branding\");\n'
 		html 'jxl.hide(\"alternative_branding\");\n'
@@ -850,7 +896,7 @@ generate_javascript()
 	html 'function initBootManager() {\n'
 	html 'jxl.addEventHandler(\"radioRunning\",\"click\",onBootManagerClick);\n'
 	html 'jxl.addEventHandler(\"radioAlternative\",\"click\",onBootManagerClick);\n'
-	if ! has_fdt_environment; then
+	if change_branding_support; then
 		html 'jxl.display(\"running_branding\", %s);\n' $( [ $show_running -eq 1 ] && printf true || printf false )
 		html 'jxl.display(\"alternative_branding\", %s);\n' $( [ $show_running -eq 0 ] && printf true || printf false )
 	fi
@@ -880,14 +926,18 @@ collect_data()
 	running_date="$(get_system_date)"
 	running_fsdate="$(get_modified_date)"
 	running_modified="$(get_modified_by)"
-	if ! has_fdt_environment; then
+	chg_running_branding=0
+	running_branding_fixed=0
+	if change_branding_support; then
 		current_branding="$(get_system_branding)"
 		running_brandings="$(get_brandings)"
-		[ $(count_of_items "$running_brandings") -gt 1 ] && chg_running_branding=1 || chg_running_branding=0
+		[ -z "$(get_fixed_branding)" ] || running_branding_fixed=1
+		[ $(count_of_items "$running_brandings") -gt 1 ] && chg_running_branding=1
 	fi
 	current_system_switch=$(get_system_switch)
 	alternative_is_missing=1
 	chg_alternative_branding=0
+	alternative_branding_fixed=0
 	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 		alternative_is_missing=0
 		spinlock get 10 && mp="$(mount_alternative_system)"
@@ -898,9 +948,10 @@ collect_data()
 				alternative_fsdate="$(get_modified_date "$mp")"
 				alternative_modified="$(get_modified_by "$mp")"
 				if ! [ -z "$alternative_fsdate" ]; then
-					if ! has_fdt_environment; then
+					if change_branding_support; then
 						alternative_brandings="$(get_brandings "$mp")"
-						[ $(count_of_items "$alternative_brandings") -gt 1 ] && chg_alternative_branding=1 || chg_alternative_branding=0
+						[ -z "$(get_fixed_branding "$mp")" ] && alternative_branding_fixed=0 || alternative_branding_fixed=1
+						[ $(count_of_items "$alternative_brandings") -gt 1 ] && chg_alternative_branding=1
 					fi
 				fi
 			fi
@@ -941,11 +992,11 @@ tempdir="$tmpdir/$$_$(date +%s)"
 mkdir -p "$tempdir" 2>/dev/null
 trap cleanup HUP EXIT INT TERM
 rc=127
-##############################################################################
-#                                                                            #
-# check parameters and call requested function                               #
-#                                                                            #
-##############################################################################
+#######################################################################################################
+#                                                                                                     #
+# check parameters and call requested function                                                        #
+#                                                                                                     #
+#######################################################################################################
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -958,14 +1009,14 @@ case "$1" in
 		printf "system selector = %u\n" "$(get_system_switch)"
 		printf "system is switched = %s\n" "$(is_switched && printf "true" || printf "false")"
 		printf "system branding = %s\n" "$(get_system_branding)"
-		printf "system branding is changeable = %s\n" "$(has_fdt_environment && printf "false" || printf "true")"
+		printf "system branding is changeable = %s\n" "$(change_branding_support && printf "true" || printf "false")"
 		printf "active kernel = %s\n" "$(get_partition "$kernel_name" "$active_name")"
 		printf "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
 		printf "active system version = %s\n" "$(get_system_version)"
 		printf "active system date = %s\n" "$(get_system_date)"
 		printf "active system modification date = %s\n" "$(get_modified_date)"
 		printf "active system modification source = %s\n" "$(get_modified_by)"
-		printf "brandings supported on active system = %s\n" "$(get_brandings)"
+		printf "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf " (fixed)")"
 		printf "inactive kernel = %s\n" "$(get_partition "$kernel_name" "$inactive_name")"
 		printf "inactive system is installed = %s\n" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf "true" || printf "false")"
 		printf "inactive filesystem = %s\n" "$(get_partition "$filesystem_name" "$inactive_name")"
@@ -978,7 +1029,7 @@ case "$1" in
 				printf "inactive system date = %s\n" "$(get_system_date "$mp")"
 				printf "inactive system modification date = %s\n" "$(get_modified_date "$mp")"
 				printf "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
-				printf "brandings supported on inactive system = %s\n" "$(get_brandings "$mp")"
+				printf "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf " (fixed)")"
 				dismount_alternative_system
 				printf "inactive filesystem dismounted\n"
 			fi
@@ -1007,7 +1058,25 @@ case "$1" in
 				printf "inactive_brandings=\"%s\"\n" "$alternative_brandings"
 			fi
 			printf "current_branding=\"%s\"\n" "$current_branding"
-			printf "switch_branding_support=%s\n" "$(has_fdt_environment && printf false || printf true)"
+			cb_support=$(( alternative_branding_fixed + running_branding_fixed ))
+			if [ $cb_support -eq 2 ]; then
+				cb_supported="both_fixed"
+			else
+				if change_branding_support; then
+					if [ $cb_support -eq 1 ]; then
+						if [ $running_branding_fixed -eq 1 ]; then
+							cb_supported="running_fixed"
+						else
+							cb_supported="alternative_fixed"
+						fi
+					else
+						cb_supported="true"
+					fi
+				else
+					cb_supported="false"
+				fi
+			fi
+			printf "switch_branding_support=%s\n" "$cb_supported"
 			printf "current_switch_value=%s\n" "$current_system_switch"
 			rc=$?
 		else
