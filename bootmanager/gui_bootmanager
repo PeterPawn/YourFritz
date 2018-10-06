@@ -826,10 +826,10 @@ generate_html_lang_en()
 		html 'Unable to change the branding permanently on this device.\n'
 		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 	else
+		html '<span id=\"running_branding\">\n'
 		if [ $running_branding_fixed -eq 1 ]; then
 			html 'Branding of currently running system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$running_brandings"
 		else
-			html '<span id=\"running_branding\">\n'
 			if [ $chg_running_branding -eq 1 ]; then
 				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
 				html '<br>\n'
