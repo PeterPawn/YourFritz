@@ -22,7 +22,7 @@
 # License, or (at your option) any later version.                                                     #
 #                                                                                                     #
 # This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
-# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
 # General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
 #                                                                                                     #
 #######################################################################################################
@@ -37,10 +37,16 @@
 # This script implements all actions necessary to switch between the two installed system versions on #
 # AVM router devices with 'dual-boot' capabilities.                                                   #
 #                                                                                                     #
-# It should support any VR9-based device as well as devices with Puma6/7 chipsets (Puma7 support is   #
-# currently untested and solely based on already published script code from AVM). For devices with a  #
-# GRX5 SoC, switching the system is supported, too - but due to bootloader limitations, the OEM name  #
-# (aka 'the branding') cannot be changed anymore.                                                     #
+# It should support any VR9- or AR10-based device as well as devices with Puma6/7 chipsets (Puma7     #
+# support is currently untested and solely based on already published script code from AVM). Devices  #
+# with a GRX5 SoC are supported, too - but there's only switching of system possible and there's no   #
+# further distinction between bootloader versions, where the branding may be changed (some earlier    #
+# 7560 and 7580 devices) and newer devices, where a branding is always reset to the finalized value   #
+# from bootloader partition.                                                                          #
+#                                                                                                     #
+# This version is able to detect a fixed branding value, if it's set from '/etc/init.d/rc.conf' with  #
+# a modified 'export OEM' statement - in such a case, an appropriate output is generated, containing  #
+# a message about this fixed value.                                                                   #
 #                                                                                                     #
 # There are six operations supported as first argument (at least one parameter is always required):   #
 #                                                                                                     #
@@ -59,10 +65,6 @@
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
 # version file in this order and the first file found is assumed to be a mark of the used framework.  #
-#                                                                                                     #
-# Update 29.09.2018:                                                                                  #
-# Handling of AR10 devices (7272, 3272) was added while assuming, that their construction or setup is #
-# the same as of a VR9 device.                                                                        #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
