@@ -40,6 +40,7 @@ start_service()
 	sed -e "s|^\(root\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\(.*\)\$|\1:\2:\3:\4:\5:$CFG_HOMEDIR:$CFG_SHELL|" -i $(realpath /etc/passwd)
 	eval $my_executable $my_executable_params
 	[ "$(ctlmgr_ctl r box status/signed_firmware)" = "0" ] && echo clear_id 87 >/proc/tffs
+	printf "Service '%s' was started (pid %s).\n" "$my_display" "$(cat $my_pidfile 2>/dev/null)" >/dev/console
 }
 #####################################################################################
 #                                                                                   #
@@ -51,8 +52,10 @@ stop_service()
 	local pid=$(cat $my_pidfile 2>/dev/null)
 	if [ ${#pid} -gt 0 ]; then
 		if [ -d /proc/$pid ]; then
+			printf "Service '%s' (pid %s) will be stopped now ...\n" "$my_display" "$pid" >/dev/console
 			kill $pid
 			wait $pid
+			printf "Service '%s' has been stopped.\n" "$my_display" >/dev/console
 		fi
 	fi
 	rm $my_pidfile 2>/dev/null

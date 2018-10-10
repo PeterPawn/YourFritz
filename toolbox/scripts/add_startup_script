@@ -49,6 +49,7 @@ if [ "$1" = "-d" -o "$1" = "--debug" ]; then
 	debug=1
 	shift
 	exec 2<>$tmpdir/${0##*/}.log
+	printf "exit\n# <<<<< debug output of $0 $* >>>>>\n" 1>&2
 	set -x
 else
 	debug=0
@@ -66,21 +67,26 @@ shift
 #                                                                                                     #
 #######################################################################################################
 cp "$rcS" "$scr"
-sed -e "/^if ls.*S/a[ \$gruppe -eq 9 ] && /bin/sh $new_script $*" -i "$scr"
+sed -e "/^if ls.*S/i[ \$gruppe -eq 9 ] && printf \"Starting '%s %s'\\\\n\" $new_script \"$*\" >/dev/console && /bin/sh $new_script $*" -i "$scr"
 #######################################################################################################
 #                                                                                                     #
 # replace the original file                                                                           #
 #                                                                                                     #
 #######################################################################################################
 mount -o bind "$scr" "$rcS"
+#######################################################################################################
+#                                                                                                     #
+# save debug output to TFFS node                                                                      #
+#                                                                                                     #
+#######################################################################################################
 if [ $debug -eq 1 ]; then
 	cat "$rcS" 1>&2
 	tffs=$(sed -n -e 's|^[ ]*\([0-9]*\) tffs$|\1|p' /proc/devices)
 	if [ ${#tffs} -gt 0 ]; then
 		tffs_name=$tmpdir/${0##*/}.tffs
 		mknod $tffs_name c $tffs 141
-		[ -c $tffs_name ] && cat $tffs_name $tmpdir/${0##*/}.log >$tmpdir/${0##*/}.new && cat $tmpdir/${0##*/}.new > $tffs_name
-		rm $tffs_name
+		[ -c $tffs_name ] && cat $tffs_name $tmpdir/${0##*/}.log >$tmpdir/${0##*/}.new && cat $tmpdir/${0##*/}.new >$tffs_name
+		rm $tffs_name $tmpdir/${0##*/}.new 2>/dev/null
 	fi
 fi
 #######################################################################################################
