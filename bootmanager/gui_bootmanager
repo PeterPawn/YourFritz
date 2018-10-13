@@ -54,13 +54,16 @@
 #                dual-boot selection                                                                  #
 # is_blocked   - check the used semaphore file, if there's already a running instance                 #
 # html_display - creates a little HTML snippet (containing JS code, too), which may be included into  #
-#                the original reboot.lua page (tested up to version 06.93)                            #
+#                the original reboot.lua page (tested up to version 07.01)                            #
+#              - if the second parameter is 'nocache', an existing cache file (where those data is    #
+#                stored otherwise - ready to be displayed on next call) gets ignored                  #
 # switch_to    - switches to the 'running' or 'alternative' system (2nd parameter) and (optionally)   #
 #                sets the OEM name to the 3rd parameter (which isn't checked any further)             #
 # get_values   - provide a list of relevant values for implementers of other interfaces, without the  #
 #                needs to implement the full logic once again                                         #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
+# clear_cache  - remove cached HTML output from an earlier 'html_display' call without 'nocache'      #
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
@@ -75,12 +78,15 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
+html_cache_file="/var/tmp/gui_bootmanager.html"
+html_cache_error="/var/tmp/gui_bootmanager.rc"
 urlader_environment="/proc/sys/urlader/environment"
 system_select_name="linux_fs_start"
 active_name="active"
 inactive_name="inactive"
 branding_name="firmware_version"
 proc_mtd="/proc/mtd"
+proc_devices="/proc/devices"
 mtd_prefix="mtd"
 mtdblock_prefix="/dev/mtdblock"
 mtdblock_mask="${mtdblock_prefix}%u"
@@ -91,6 +97,9 @@ filesystem_name="filesystem"
 reserved_prefix="reserved"
 alt_root_mount_name="alt_root"
 defaults_dir="etc/default.$CONFIG_PRODUKT"
+sysfs_block_dir="/sys/block"
+loop_driver_name="loop"
+backing_file_name="backing_file"
 tmpdir="${TMPDIR:-/var/tmp}"
 avm_rcconf="etc/init.d/rc.conf"
 semafile="/var/run/gui_bootmanager.sem"
@@ -298,7 +307,7 @@ count_of_items()
 )
 #######################################################################################################
 #                                                                                                     #
-# create a locked section using a semaphore file                                                      #
+# create a locked section using a semaphore file, cleanup older orphaned locks automatically          #
 #                                                                                                     #
 # $1 - operation (get or release)                                                                     #
 # $2 - maximum wait time for 'get'                                                                    #
@@ -314,9 +323,16 @@ spinlock()
 		i=0
 		while [ $i -le $maxwait ]; do
 			while [ -f "$semafile" ]; do
-				sleep 1
-				i=$(( i + 1 ))
-				[ $i -ge $maxwait ] && exit 1
+				pid="$(cat "$semafile")"
+				if [ -d "/proc/$pid" ]; then
+					sleep 1
+					i=$(( i + 1 ))
+					[ $i -ge $maxwait ] && exit 1
+				else
+					if [ -d "/proc" ]; then
+						rm "$semafile" 2>/dev/null
+					fi
+				fi
 			done
 			printf "%d" $spinlock_pid >"$semafile"
 			pid="$(cat "$semafile")"
@@ -539,8 +555,54 @@ get_fixed_branding()
 #######################################################################################################
 is_active_mountpoint()
 (
-	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$proc_mountinfo")"
+	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* ${1:-/} .* - .*|p" "$proc_mountinfo")"
 	[ ${#line} -eq 0 ] && exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# find an active mountpoint with the specified device                                                 #
+#                                                                                                     #
+#######################################################################################################
+find_mountpoint_for_device()
+(
+	line="$(sed -n -e "s|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* \(.*\) .* - [^ ]* $1 .*|\1|p" "$proc_mountinfo")"
+	[ ${#line} -eq 0 ] || printf "%s" "$line"
+	[ ${#line} -eq 0 ] && exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# find the device for an active mountpoint                                                            #
+#                                                                                                     #
+#######################################################################################################
+find_device_of_mountpoint()
+(
+	line="$(sed -n -e "s|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - [^ ]* \([^ ]*\) .*|\1|p" "$proc_mountinfo")"
+	[ ${#line} -eq 0 ] || printf "%s" "$line"
+	[ ${#line} -eq 0 ] && exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# check, if the specified mountpoint is from a loop device                                            #
+#                                                                                                     #
+#######################################################################################################
+get_ids_of_mountpoint()
+(
+	line="$(sed -n -e "s|^[0-9]\+ [0-9]\+ *\([0-9]*:[0-9]*\) [^ ]* ${1:-/} .* - [^ ]* \([^ ]*\) .*|\1|p" "$proc_mountinfo")"
+	[ ${#line} -eq 0 ] || printf "%s" "$line"
+	[ ${#line} -eq 0 ] && exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# check, if the specified mountpoint is from a loop device                                            #
+#                                                                                                     #
+#######################################################################################################
+is_loopdevice_mountpoint()
+(
+	loop_major="$(sed -n -e "s|^ *\([0-9]*\) *$loop_driver_name[ \t]\?.*\$|\1|p" "$proc_devices")"
+	[ ${#loop_major} -eq 0 ] && exit 1
+	dev="$(get_ids_of_mountpoint "$1")"
+	[ ${#dev} -eq 0 ] && exit 1
+	[ "${dev%:*}" = "$loop_major" ] && exit 0 || exit 1
 )
 #######################################################################################################
 #                                                                                                     #
@@ -567,7 +629,12 @@ mount_alternative_system()
 	if ! [ -z "$device" ]; then
 		wr="$tempdir/$wrapper_mount_name"
 		mkdir -p "$wr" 2>/dev/null || exit 1
-		mount -t yaffs2 -o ro "$device" "$wr" 2>/dev/null || exit 1
+		wre="$(find_mountpoint_for_device "$device")"
+		if [ $? -ne 0 ]; then
+			mount -t yaffs2 -o ro "$device" "$wr" 2>/dev/null || exit 1
+		else
+			wr="$wre"
+		fi
 	fi
 	mount -t squashfs -o ro "$wr$file" "$mp" 2>/dev/null || exit 1
 	printf "%s" "$mp"
@@ -581,10 +648,10 @@ mount_alternative_system()
 dismount_alternative_system()
 (
 	is_active_mountpoint "$tempdir/$alt_root_mount_name" || exit 0
-	umount "$tempdir/$alt_root_mount_name" 2>/dev/null || exit 1
+	umount -d "$tempdir/$alt_root_mount_name" 2>/dev/null || exit 1
 	rmdir "$tempdir/$alt_root_mount_name" 2>/dev/null
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
-	umount "$tempdir/$wrapper_mount_name" 2>/dev/null || exit 1
+	umount -d "$tempdir/$wrapper_mount_name" 2>/dev/null || exit 1
 	rmdir "$tempdir/$wrapper_mount_name" 2>/dev/null
 	exit 0
 )
@@ -606,7 +673,7 @@ get_localized_date()
 #######################################################################################################
 get_modified_by()
 (
-	base="${1:-/}"
+	base="${1:-}"
 	i=0
 	for f in $version_files; do
 		i=$(( i + 1 ))
@@ -621,6 +688,9 @@ get_modified_by()
 #######################################################################################################
 #                                                                                                     #
 # get date of last modification from specified system root                                            #
+# - take the date and time from any existing modification file or                                     #
+# - take date and time from SquashFS image, if it's a file (mounted via a loop device)                #
+#                                                                                                     #
 #                                                                                                     #
 # $1 - mounted system root directory (optional)                                                       #
 #                                                                                                     #
@@ -631,20 +701,27 @@ get_modified_date()
 	v="$(stat -c %Y -- /proc/self/exe 2>/dev/null)"
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
-	if ( [ "$(get_system_type)" = "VR9" ] || [ "$(get_system_type)" = "AR10" ] ) && is_active_mountpoint "$vr9_wrapper_dir"; then
-		# SquashFS image file has date of last modification
-		[ -z "$1" ] && v="$(stat -c %Y -- "$vr9_image_source_active")" || v="$(stat -c %Y -- "$tempdir/$wrapper_mount_name/$vr9_rootfs_name")"
-	else
-		base="${1:-/}"
-		for f in $version_files; do
-			if [ -f "$base/$f" ]; then
-				v="$(stat -c %Y -- "$base/$f")"
+	unset v
+	base="${1:-}"
+	for f in $version_files; do
+		if [ -f "$base/$f" ]; then
+			v="$(stat -c %Y -- "$base/$f")"
+			break
+		fi
+	done
+	if [ -z "$v" ] && is_loopdevice_mountpoint "${base:-/}"; then
+		dev="$(get_ids_of_mountpoint "${base:-/}")"
+		[ -z "$dev" ] && exit 1
+		for device in "$sysfs_block_dir"/*; do
+			if [ "$(cat $device/dev 2>/dev/null)" = "$dev" ]; then
+				file="$(cat $device/$loop_driver_name/$backing_file_name 2>/dev/null)"
+				[ ${#file} -eq 0 ] && exit 1
 				break
 			fi
-			unset v
 		done
-		[ -z "$v" ] && exit 1
+		v="$(stat -c %Y -- "$file")"
 	fi
+	[ -z "$v" ] && exit 1
 	get_localized_date "$v"
 	exit 0
 )
@@ -657,8 +734,8 @@ get_modified_date()
 cleanup()
 {
 	[ -z "$tempdir" ] && return
-	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount "$tempdir/$alt_root_mount_name" 2>/dev/null
-	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount "$tempdir/$wrapper_mount_name" 2>/dev/null
+	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount -d "$tempdir/$alt_root_mount_name" 2>/dev/null
+	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount -d "$tempdir/$wrapper_mount_name" 2>/dev/null
 	rm -r "$tempdir" 2>/dev/null
 	[ -z "$spinlock_pid" ] && return
 	[ -f "$semafile" ] || return
@@ -1086,17 +1163,41 @@ case "$1" in
 		fi
 		;;
 	("html_display")
-		if is_dualboot_supported; then
-			[ "$Language" = "de" ] || Language="en"
-			spinlock_pid=$$
-			collect_data
-			eval generate_html_lang_$Language
-			generate_javascript
-			rc=$?
-		else
-			not_supported
-			rc=1
+		skip_generate=0
+		if ! [ "$2" = "nocache" ]; then
+			if [ -f "$html_cache_file" ] && [ -f "$html_cache_error" ]; then
+				cat "$html_cache_file" 2>/dev/null
+				rc="$(cat "$html_cache_error" 2>/dev/null)"
+				skip_generate=1
+			fi
 		fi
+		if [ $skip_generate -eq 0 ]; then
+			if ! [ "$2" = "nocache" ]; then
+				exec 4>&1
+				exec 1>"$html_cache_file"
+			fi
+			if is_dualboot_supported; then
+				[ "$Language" = "de" ] || Language="en"
+				spinlock_pid=$$
+				collect_data
+				eval generate_html_lang_$Language
+				generate_javascript
+				rc=$?
+			else
+				not_supported
+				rc=1
+			fi
+			if ! [ "$2" = "nocache" ]; then
+				exec 1>&-
+				exec 1>&4
+				printf "%u" "$rc" >"$html_cache_error"
+				cat "$html_cache_file"
+			fi
+		fi
+		;;
+	("clear_cache")
+		[ -f "$html_cache_file" ] && rm "$html_cache_file" "$html_cache_error" 2>/dev/null
+		rc=0
 		;;
 	("switch_to")
 		switch_system_to $2 $3
