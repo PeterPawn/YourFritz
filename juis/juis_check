@@ -74,6 +74,9 @@ usage_text()
 		__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "nicht neu starten mit der 'bash' als Shell"
 		__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "die Antwort vom AVM-Server wird in $(__undl "filename") gespeichert"
 		__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "keine Konfigurationsdatei verwenden"
+		__nl; __option_show_opt 30 "-c" "--current"; __option_show_desc "aktuelle Version ermitteln ('Patch' - s.u. - wird dekrementiert)"
+		__nl; __option_show_opt 30 "-l" "--local"; __option_show_desc "die Daten der Box verwenden, auf der das Skript läuft"
+		__nl; __option_show_opt 30 "-p" "--print-version"; __option_show_desc "die Versionsnummer der gefundenen Firmware zusätzlich ausgeben auf STDOUT"
 		__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "die echte Seriennummer (maca) der Box senden"
 		__options_end
 		__nl "Das Skript versucht, eine Konfigurationsdatei zur Anpassung an die lokalen Gegebenheiten"
@@ -235,6 +238,9 @@ usage_text()
 		__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "do not respawn with 'bash', even if it's possible"
 		__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "save SOAP response to $(__undl "filename") for further processing"
 		__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "skip configuration file processing"
+		__nl; __option_show_opt 30 "-c" "--current"; __option_show_desc "try to get current version URL ('Patch' - see below - gets decremented)"
+		__nl; __option_show_opt 30 "-l" "--local"; __option_show_desc "use data from local device, do not try to read via network"
+		__nl; __option_show_opt 30 "-p" "--print-version"; __option_show_desc "show version number of found firmware on STDOUT"
 		__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "send real Serial value read from device"
 		__options_end
 		__nl "The script attempts to read a configuration file with its own name (or better expressed:"
@@ -365,6 +371,10 @@ L10N_DBG_015_en="Skipping configuration file processing ...\\\\n"
 L10N_DBG_015_de="Die Verarbeitung der Konfigurationsdatei wird übergangen ...\\\\n"
 L10N_DBG_016_en="SOAP response saved to: %%s\\\\n"
 L10N_DBG_016_de="Die SOAP-Antwort wurde in folgender Datei gespeichert: %%s\\\\n"
+L10N_DBG_017_en="Reading values from local file '%%s'.\\\\n"
+L10N_DBG_017_de="Lesen der Parameter aus der lokalen Datei '%%s'.\\\\n"
+L10N_DBG_018_en="Just decremented the version number to get an answer with URL for current version.\\\\n"
+L10N_DBG_018_de="Die Versionsnummer wurde dekrementiert, um eine Antwort mit der URL für die aktuelle Version zu erhalten.\\\\n"
 L10N_ERR_OPT_en="Unknown option '%%s' specified."
 L10N_ERR_OPT_de="Unbekannte Option '%%s' beim Aufruf angegeben."
 L10N_ERR_SCR_en="Missing another needed executable: %%s."
@@ -391,8 +401,8 @@ L10N_ERR_008_en="Unexpected error code %s returned from %s."
 L10N_ERR_008_de="Es wurde ein unerwarteter Statuscode (%%s) von %%s gesendet."
 L10N_ERR_009_en="No newer version found, check was made with source version '%%s'."
 L10N_ERR_009_de="Es wurde keine neue Version gefunden, die Prüfung erfolgte ausgehend von der Version '%%s'."
-L10N_ERR_010_en="(unused)"
-L10N_ERR_010_de="(unused)"
+L10N_ERR_010_en="No data file '%%s' found - make sure it's a FRITZ!OS device, if you use '--local' option."
+L10N_ERR_010_de="Die Datei '%%s' existiert nicht - die Option '--local' ist nur sinnvoll, wenn das Skript auf einer FRITZ!Box aufgerufen wird."
 L10N_ERR_011_en="(unused)"
 L10N_ERR_011_de="(unused)"
 L10N_ERR_012_en="Error saving SOAP response to '%%s'."
@@ -627,6 +637,8 @@ serial_name="Serial"
 version_parts="%Major%.%Minor%.%Patch%[-%Buildnumber%]"
 version_compound="\$Version-\$Buildnumber"
 version_string="\$(printf "%d.%02d.%02d-%s" \$Major \$Minor \$Patch \$$buildnumber_name)"
+version_decrement="Patch Minor"
+version_decrement_clear="$buildnumber_name=00000"
 boxinfo1_replace_names=""
 boxinfo2_replace_names="Revision:Buildnumber"
 alt_names="$version_name:Major $version_name:Minor $version_name:Patch $version_name:$buildnumber_name"
@@ -651,6 +663,8 @@ hostbase="jws.avm.de"
 juisport=80
 juisurl="/Jason/UpdateInfoService"
 remote_timeout=20
+# path of local data file on a FRITZ!OS device
+local_dir="/var"
 # HTTP header related constants
 headerline_0="POST %s HTTP/1.1\r\n"
 headerline_1="Host: %s:%u\r\n"
@@ -705,6 +719,9 @@ $__debug_option__
 __no_cfgfile=0
 __no_respawn=0
 __use_real_serial=0
+__get_current=0
+__use_local=0
+__show_new_version=0
 __save_output=""
 while [ $# -gt 0 ]; do
 	parameters="$*"
@@ -722,7 +739,27 @@ while [ $# -gt 0 ]; do
 		continue
 	elif __check_option "$1" "-r" "--use-real-serial" >/dev/null; then
 		__use_real_serial=1
+		options="${options:+${options} }--use-real-serial"
 		shift
+		parameters="$*"
+		continue
+	elif __check_option "$1" "-c" "--current" >/dev/null; then
+		__get_current=1
+		options="${options:+${options} }--current"
+		shift
+		parameters="$*"
+		continue
+	elif __check_option "$1" "-l" "--local" >/dev/null; then
+		__use_local=1
+		options="${options:+${options} }--local"
+		shift
+		parameters="$*"
+		continue
+	elif __check_option "$1" "-p" "--print-version" >/dev/null; then
+		__show_new_version=1
+		options="${options:+${options} }--print-version"
+		shift
+		parameters="$*"
 		continue
 	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
 		if [ ${#2} -eq 0 ] || __is_option "$2"; then
@@ -884,7 +921,7 @@ extract_xml()
 		# replace read serial number with a random value after OUI
 		serial="$(sed -n -e "s|.*<$ns:$tag>\(.*\)</$ns:$tag>.*|\1|p" $input)"
 		oui="$(expr "$serial" : "\([0-9a-fA-F]\{6\}\).*")"
-		rn="$(expr "$serial" : "^[0-9a-fA-F]\{6\}\(.*\)")"
+		rn="$(expr "$serial" : "[0-9a-fA-F]\{6\}\(.*\)")"
 		rand="$rn"
 		mask="%06X"
 		[ -z "$(expr "$serial" : ".*\([a-f]\).*")" ] || mask="%06x"
@@ -1163,12 +1200,14 @@ if [ $__no_cfgfile -eq 0 ]; then
 		fi
 		__debug "$(__get_localized DBG_002)"
 	else
-		if [ -z "$1" ]; then
+		if [ -z "$1" ] && [ $__use_local -eq 0 ]; then
 			__emsg "$(__get_localized ERR_001)"
 			exit 1
 		fi
-		Box="$1"
-		[ -z "$1" ] || shift
+		if [ $__use_local -eq 0 ]; then
+			Box="$1"
+			[ -z "$1" ] || shift
+		fi
 	fi
 else
 	__debug "$(__get_localized DBG_015)"
@@ -1226,28 +1265,40 @@ done
 #                                                                                                     #
 #######################################################################################################
 if [ $detect -eq 1 ]; then
-	if [ -z "$Box" ]; then
-		__emsg "$(__get_localized ERR_002)"
-		exit 1
-	fi
 	boxinfo="$(mktmp -p "$td")"
-	device_read "$Box" "$boxport" "$boxinfo1" >"$boxinfo"
-	if [ $? -ne 0 ]; then
-		__debug "$(__get_localized ERR_003)\n" "$boxinfo1" "$Box" "$boxport"
-		rm "$boxinfo" 2>/dev/null
-		device_read "$Box" "$boxport" "$boxinfo2" >"$boxinfo"
-		if [ $? -ne 0 ]; then
-			__emsg "$(__get_localized ERR_003)" "$boxinfo2" "$Box" "$boxport"
+	if [ $__use_local -eq 1 ]; then
+		if ! [ -f "$local_dir/$boxinfo1" ]; then
+			__emsg "$(__get_localized ERR_010)" "$local_dir/$boxinfo1"
 			exit 3
-		else
-			names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
-			ns="j"
-			replace="$boxinfo2_replace_names"
 		fi
-	else
+		__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo1"
+		cat "$local_dir/$boxinfo1" >"$boxinfo"
 		names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
 		ns="q"
 		replace="$boxinfo1_replace_names"
+	else
+		if [ -z "$Box" ]; then
+			__emsg "$(__get_localized ERR_002)"
+			exit 1
+		fi
+		device_read "$Box" "$boxport" "$boxinfo1" >"$boxinfo"
+		if [ $? -ne 0 ]; then
+			__debug "$(__get_localized ERR_003)\n" "$boxinfo1" "$Box" "$boxport"
+			rm "$boxinfo" 2>/dev/null
+			device_read "$Box" "$boxport" "$boxinfo2" >"$boxinfo"
+			if [ $? -ne 0 ]; then
+				__emsg "$(__get_localized ERR_003)" "$boxinfo2" "$Box" "$boxport"
+				exit 3
+			else
+				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+				ns="j"
+				replace="$boxinfo2_replace_names"
+			fi
+		else
+			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
+			ns="q"
+			replace="$boxinfo1_replace_names"
+		fi
 	fi
 	if ! [ -z "$replace" ]; then
 		for v in $replace; do
@@ -1365,13 +1416,27 @@ if [ -z "$HW" ]; then
 fi
 hostname="$HW.$hostbase"
 [ -z "$nonce" ] && nonce=$(get_nonce)
-eval $version_name="$version_string"
-__debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
 Flag_XML=""
 for f in $Flag; do
 	[ ${#Flag_XML} -gt 0 ] && Flag_XML="$(printf "%s</q:$flags_name><q:$flags_name>" "$Flag_XML")"
 	Flag_XML="$Flag_XML$f"
 done
+#######################################################################################################
+#                                                                                                     #
+# decrement version number to get an answer with an URL in every case                                 #
+#                                                                                                     #
+#######################################################################################################
+if [ $__get_current -eq 1 ]; then
+	for dec_value in $version_decrement; do
+		eval [ \$$dec_value -eq 0 ] && eval $dec_value=99 && continue
+		eval $dec_value=$(( $dec_value - 1 ))
+		eval $version_decrement_clear
+		break
+	done
+	__debug "$(__get_localized DBG_018)"
+fi
+eval $version_name="$version_string"
+__debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
 #######################################################################################################
 #                                                                                                     #
 # show debug info regarding final variable content                                                    #
@@ -1387,12 +1452,6 @@ if __is_debug; then
 	done
 	__debug "$delimiter_line"
 fi
-#######################################################################################################
-#                                                                                                     #
-# replace real serial number (or better 'maca' value) with a dummy value, as long as the '-r' option  #
-# was not specified                                                                                   #
-#                                                                                                     #
-#######################################################################################################
 #######################################################################################################
 #                                                                                                     #
 # prepare temporary files for the check request                                                       #
@@ -1477,6 +1536,7 @@ Version="$(extract_xml "$xmlresp" "ns3" "Version")"
 __info "$(__get_localized INF_001)" "$Version" 1>&2
 printf "URL=%s\n" "$URL"
 [ -z "$delay" ] || printf "DelayDownload=%s\n" "$delay"
+[ $__show_new_version -eq 1 ] && printf "NewVersion=%s\n" "$Version"
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
