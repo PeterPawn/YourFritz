@@ -18,4 +18,5 @@
 
 # firmware image files (tar archives)
 *.image binary
+*.png binary
 *.tar archive
