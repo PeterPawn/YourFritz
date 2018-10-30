@@ -370,14 +370,12 @@ compare_strings()
 	trap "rm -r $t 2>/dev/null" EXIT HUP INT
 	printf "%s\377" "$1" >"$t/left"
 	printf "%s\377" "$2" >"$t/right"
-	cmp -l "$t/left" "$t/right" 2>/dev/null >"$t/cmp"
-	v=0
-	while read pos left right; do
-		[ $left -lt $right ] && v=$(( v - 1 )) || v=$(( v + 1 ))
-		break
-	done <"$t/cmp"
-	printf "%d" $v
-	exit 0
+	cmp -l "$t/left" "$t/right" 2>/dev/null | read pos left right 2>/dev/null
+	if [ -z "$left" ] || [ -z "$right" ]; then
+		printf "0"
+	else
+		[ $left -lt $right ] && printf "-1" || printf "1"
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -411,7 +409,7 @@ is_kernel_present()
 	__read_bytes()
 	{
 		while read line left right; do
-			[ $left -ne 377 -a $left -ne 0 ] && return 0
+			[ $left -ne 377 ] && [ $left -ne 0 ] && return 0
 		done
 		return 1
 	}
@@ -423,7 +421,7 @@ is_kernel_present()
 #                                                                                                     #
 # - if a FDT exists, the started system may be found there                                            #
 # - if a saved environment exists, we take the value from there and treat it as the original one      #
-# - if neither of the places above contain a valid value, the partition of 'kernel' type with the     #
+# - if neither of the places above contains a valid value, the partition of 'kernel' type with the    #
 #   lowest device index is assumed to be from system selector value 0                                 #
 #                                                                                                     #
 #######################################################################################################
