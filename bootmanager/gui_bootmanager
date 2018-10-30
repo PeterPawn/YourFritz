@@ -267,12 +267,17 @@ get_partition()
 	if is_puma_based_device; then
 		get_puma_partition "$1" "$2"
 		rc=$?
-	elif [ "$(get_system_type)" = "VR9" ] || [ "$(get_system_type)" = "AR10" ]; then
-		[ "$1" = "$kernel_name" ] && get_mtd_partition "$1" "$2" || get_vr9_image "$1" "$2"
-	elif [ "$(get_system_type)" = "GRX500" ]; then
-		get_mtd_partition "$1" "$2"
 	else
-		rc=1
+		st="$(get_system_type)"
+		if [ "$st" = "VR9" ] || [ "$st" = "AR10" ]; then
+			[ "$1" = "$kernel_name" ] && get_mtd_partition "$1" "$2" || get_vr9_image "$1" "$2"
+			rc=$?
+		elif [ "$st" = "GRX500" ] || [ "$st" = "GRX350" ]; then
+			get_mtd_partition "$1" "$2"
+			rc=$?
+		else
+			rc=1
+		fi
 	fi
 	exit $rc
 )
