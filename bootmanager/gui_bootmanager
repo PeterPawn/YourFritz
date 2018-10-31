@@ -78,76 +78,76 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-html_cache_file="/var/tmp/gui_bootmanager.html"
-html_cache_error="/var/tmp/gui_bootmanager.rc"
-urlader_environment="/proc/sys/urlader/environment"
-system_select_name="linux_fs_start"
-active_name="active"
-inactive_name="inactive"
-branding_name="firmware_version"
-proc_mtd="/proc/mtd"
-proc_devices="/proc/devices"
-mtd_prefix="mtd"
-mtdblock_prefix="/dev/mtdblock"
-mtdblock_mask="${mtdblock_prefix}%u"
-proc_cpuinfo="/proc/cpuinfo"
-proc_mountinfo="/proc/self/mountinfo"
-kernel_name="kernel"
-filesystem_name="filesystem"
-reserved_prefix="reserved"
-alt_root_mount_name="alt_root"
-defaults_dir="etc/default.$CONFIG_PRODUKT"
-sysfs_block_dir="/sys/block"
-loop_driver_name="loop"
-backing_file_name="backing_file"
-tmpdir="${TMPDIR:-/var/tmp}"
-avm_rcconf="etc/init.d/rc.conf"
-semafile="/var/run/gui_bootmanager.sem"
-fdt_chosen="/proc/device-tree/chosen"
-saved_environment="/var/env"
-version_components="VERSION SUBVERSION DATE"
-radio_button_checked=" checked=\\\"checked\\\""
+readonly html_cache_file="/var/tmp/gui_bootmanager.html"
+readonly html_cache_error="/var/tmp/gui_bootmanager.rc"
+readonly urlader_environment="/proc/sys/urlader/environment"
+readonly system_select_name="linux_fs_start"
+readonly active_name="active"
+readonly inactive_name="inactive"
+readonly branding_name="firmware_version"
+readonly proc_mtd="/proc/mtd"
+readonly proc_devices="/proc/devices"
+readonly mtd_prefix="mtd"
+readonly mtdblock_prefix="/dev/mtdblock"
+readonly mtdblock_mask="${mtdblock_prefix}%u"
+readonly proc_cpuinfo="/proc/cpuinfo"
+readonly proc_mountinfo="/proc/self/mountinfo"
+readonly kernel_name="kernel"
+readonly filesystem_name="filesystem"
+readonly reserved_prefix="reserved"
+readonly alt_root_mount_name="alt_root"
+readonly defaults_dir="etc/default.$CONFIG_PRODUKT"
+readonly sysfs_block_dir="/sys/block"
+readonly loop_driver_name="loop"
+readonly backing_file_name="backing_file"
+readonly tmpdir="${TMPDIR:-/var/tmp}"
+readonly avm_rcconf="etc/init.d/rc.conf"
+readonly semafile="/var/run/gui_bootmanager.sem"
+readonly fdt_chosen="/proc/device-tree/chosen"
+readonly saved_environment="/var/env"
+readonly version_components="VERSION SUBVERSION DATE"
+readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
 #                                                                                                     #
 # various sources for version numbers                                                                 #
 #                                                                                                     #
 #######################################################################################################
-yourfritz_version_file="etc/.yourfritz_version"
-freetz_version_file="etc/.freetz-version"
-modfs_version_file="etc/.modfs_version"
-avm_version_file="etc/version"
-version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file $avm_version_file"
-modified_by="YourFritz Freetz modfs -"
+readonly yourfritz_version_file="etc/.yourfritz_version"
+readonly freetz_version_file="etc/.freetz-version"
+readonly modfs_version_file="etc/.modfs_version"
+readonly avm_version_file="etc/version"
+readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file $avm_version_file"
+readonly modified_by="YourFritz Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
 # GRX5 and VR9 specific settings                                                                      #
 #                                                                                                     #
 #######################################################################################################
-mtd_filesystem_name_active="${filesystem_name}"
-mtd_filesystem_name_inactive="${reserved_prefix}-${filesystem_name}"
-mtd_kernel_name_active="${kernel_name}"
-mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
+readonly mtd_filesystem_name_active="${filesystem_name}"
+readonly mtd_filesystem_name_inactive="${reserved_prefix}-${filesystem_name}"
+readonly mtd_kernel_name_active="${kernel_name}"
+readonly mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
 #                                                                                                     #
 #######################################################################################################
-wrapper_mount_name="wrapper"
-vr9_wrapper_dir="/wrapper"
-vr9_rootfs_name="/filesystem_core.squashfs"
-vr9_image_source_active="${vr9_wrapper_dir}${vr9_rootfs_name}"
-vr9_image_source_inactive="mount:%s:${vr9_rootfs_name}"
+readonly wrapper_mount_name="wrapper"
+readonly vr9_wrapper_dir="/wrapper"
+readonly vr9_rootfs_name="/filesystem_core.squashfs"
+readonly vr9_image_source_active="${vr9_wrapper_dir}${vr9_rootfs_name}"
+readonly vr9_image_source_inactive="mount:%s:${vr9_rootfs_name}"
 ########################################################################################################
 #                                                                                                     #
 # Puma6 / Puma7 specific settings                                                                     #
 #                                                                                                     #
 #######################################################################################################
-puma_helper="/etc/puma6_helper.sh"
-puma_partitions="/proc/avm_partitions"
-puma_filesystem_name_active="${filesystem_name}_ATOM"
-puma_filesystem_name_inactive="${filesystem_name}_${reserved_prefix}_ATOM"
-puma_kernel_name_active="${kernel_name}_ATOM"
-puma_kernel_name_inactive="${kernel_name}_${reserved_prefix}_ATOM"
+readonly puma_helper="/etc/puma6_helper.sh"
+readonly puma_partitions="/proc/avm_partitions"
+readonly puma_filesystem_name_active="${filesystem_name}_ATOM"
+readonly puma_filesystem_name_inactive="${filesystem_name}_${reserved_prefix}_ATOM"
+readonly puma_kernel_name_active="${kernel_name}_ATOM"
+readonly puma_kernel_name_inactive="${kernel_name}_${reserved_prefix}_ATOM"
 #######################################################################################################
 #                                                                                                     #
 # sub-functions                                                                                       #
@@ -1004,10 +1004,10 @@ not_supported()
 #######################################################################################################
 collect_data()
 {
-	running_version="$(get_system_version)"
-	running_date="$(get_system_date)"
-	running_fsdate="$(get_modified_date)"
-	running_modified="$(get_modified_by)"
+	readonly running_version="$(get_system_version)"
+	readonly running_date="$(get_system_date)"
+	readonly running_fsdate="$(get_modified_date)"
+	readonly running_modified="$(get_modified_by)"
 	chg_running_branding=0
 	running_branding_fixed=0
 	if change_branding_support; then
@@ -1016,7 +1016,7 @@ collect_data()
 		[ -z "$(get_fixed_branding)" ] || running_branding_fixed=1
 		[ $(count_of_items "$running_brandings") -gt 1 ] && chg_running_branding=1
 	fi
-	current_system_switch=$(get_system_switch)
+	readonly current_system_switch=$(get_system_switch)
 	alternative_is_missing=1
 	chg_alternative_branding=0
 	alternative_branding_fixed=0
@@ -1070,7 +1070,7 @@ is_dualboot_supported()
 #######################################################################################################
 exec 2>&1
 set -e
-tempdir="$tmpdir/$$_$(date +%s)"
+readonly tempdir="$tmpdir/$$_$(date +%s)"
 mkdir -p "$tempdir" 2>/dev/null
 trap cleanup HUP EXIT INT TERM
 rc=127
