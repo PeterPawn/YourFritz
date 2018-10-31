@@ -120,46 +120,44 @@ progress()
 #                                                                                                     #
 #######################################################################################################
 check_modulus()
-{
-	local modulus="$1"
-	local key_size=1024
-	local bytes=$(( key_size / 8 ))
+(
+	modulus="$1"
+	key_size=1024
+	bytes=$(( key_size / 8 ))
 	if [ ${#modulus} -ne $(( bytes * 2 )) ]; then
 		if [ "$(expr \( "$modulus" : "\(..\).*" \) )" = "00" ] && [ ${#modulus} -ne $(( ( bytes + 1 ) * 2 )) ]; then
-			return 1
+			exit 1
 		fi
 	fi
 	if [ "$(expr \( "$modulus" : "\([0-9a-f]*\)" \) )" = "$modulus" ]; then
-		return 0
+		exit 0
 	fi
-	return 1
-}
+	exit 1
+)
 #######################################################################################################
 #                                                                                                     #
 # find free directory                                                                                 #
 #                                                                                                     #
 #######################################################################################################
 is_directory_a_mountpoint()
-{
-	local dir="$1"
-	[ "$(sed -n -e "s|^[^ ]* \($dir\) .*$|\1|p" $procfs_mounts)" = "$dir" ] && return 0
-	return 1
-}
+(
+	dir="$1"
+	[ "$(sed -n -e "s|^[^ ]* \($dir\) .*$|\1|p" $procfs_mounts)" = "$dir" ] && exit 0
+	exit 1
+)
 #######################################################################################################
 #                                                                                                     #
 # find the next usable key file name                                                                  #
 #                                                                                                     #
 #######################################################################################################
 get_key_index()
-{
-	local exists=$1
-	local index=$2
-	local name
-	local i
+(
+	exists=$1
+	index=$2
 	if [ $exists -eq 0 ]; then
 		if ! [ -f $key_location/$plugin_pubkey_mask ] && ! [ -h $key_location/$plugin_pubkey_mask ]; then
 			printf "%u" $(( index + 1 ))
-			return 0
+			exit 0
 		fi
 		while [ $index -ge $pubkey_min ]; do
 			name="$(printf "$pubkey_mask" $index)"
@@ -168,17 +166,17 @@ get_key_index()
 				continue
 			fi
 			printf "%u" $index
-			return 0
+			exit 0
 		done
 		printf "-1"
-		return 1
+		exit 1
 	else
 		while [ $index -ge $pubkey_min ]; do
 			name="$(printf "$pubkey_mask" $index)"
 			if [ -f $key_location/$name ] && ! [ -h $key_location/$name ]; then
 				if ! [ "$(sed -n -e "s|^[^ ]* \($key_location/$name\) .*|\1|p" $procfs_mounts)" = "$key_location/$name" ]; then
 					printf "%u" $index
-					return 0
+					exit 0
 				fi
 			fi
 			index=$(( index - 1 ))
@@ -191,8 +189,8 @@ get_key_index()
 		done
 	fi
 	printf "-1"
-	return 1
-}
+	exit 1
+)
 #######################################################################################################
 #                                                                                                     #
 # check mode parameter                                                                                #

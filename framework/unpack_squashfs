@@ -134,9 +134,8 @@ is_puma_based_device()
 #######################################################################################################
 is_active_mountpoint()
 {
-	local line
-	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
-	[ ${#line} -eq 0 ] && return 1 || return 0
+	__line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
+	[ ${#__line} -eq 0 ] && return 1 || return 0
 }
 #######################################################################################################
 #                                                                                                     #
@@ -145,10 +144,9 @@ is_active_mountpoint()
 #######################################################################################################
 get_filesystem_device()
 {
-	local line
-	line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
-	[ ${#line} -eq 0 ] && exit 1
-	set -- $line
+	__line="$(sed -n -e "\|^[0-9]\+ [0-9]\+ [0-9:]* [^ ]* $1 .* - .*|p" "$mount_info")"
+	[ ${#__line} -eq 0 ] && exit 1
+	set -- $__line
 	while [ $# -gt 0 ]; do
 		[ "$1" = "-" ] && printf "%s" "$3" && exit 0
 		shift
@@ -193,11 +191,9 @@ get_update_image_name()
 #######################################################################################################
 get_filesystem()
 {
-	local name
-	local mtd
 	if is_puma_based_device; then
-		eval name="\$puma_filesystem_name_$1"
-		sed -n -e "s|^${name}=\(.*\)|\1|p" "$puma_partitions"
+		eval __name="\$puma_filesystem_name_$1"
+		sed -n -e "s|^${__name}=\(.*\)|\1|p" "$puma_partitions"
 		return 0
 	elif [ "$(get_system_type)" = "VR9" ]; then
 		if [ -d "$vr9_wrapper" ]; then
@@ -205,9 +201,9 @@ get_filesystem()
 				printf "%s/%s" "$vr9_wrapper" "$vr9_root_filesystem"
 				return 0
 			elif [ "$1" = "inactive" ]; then
-				name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
-				mtd="$(printf "$mtd_block_name" "$(get_mtd_number "$name")")"
-				printf "mount:%s:%s" "$mtd" "$vr9_root_filesystem"
+				__name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
+				__mtd="$(printf "$mtd_block_name" "$(get_mtd_number "$__name")")"
+				printf "mount:%s:%s" "$__mtd" "$vr9_root_filesystem"
 				return 0
 			fi
 		else
@@ -215,8 +211,8 @@ get_filesystem()
 			exit 1
 		fi
 	elif [ "$(get_system_type)" = "GRX500" ]; then
-		name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
-		printf "$mtd_block_name" "$(get_mtd_number "$name")"
+		__name="$(eval printf "\$filesystem_name" "\$$1_prefix")"
+		printf "$mtd_block_name" "$(get_mtd_number "$__name")"
 		return 0
 	fi
 	printf "Unknown and therefore unsupported system found.\n" 1>&2
