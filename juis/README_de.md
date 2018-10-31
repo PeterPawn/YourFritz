@@ -25,6 +25,9 @@ Verfügbare Optionen sind:
 -n, --no-respawn               - nicht neu starten mit der 'bash' als Shell
 -s, --save-response <filename> - die Antwort vom AVM-Server wird in <filename> gespeichert
 -i, --ignore-cfgfile           - keine Konfigurationsdatei verwenden
+-c, --current                  - aktuelle Version ermitteln ('Patch' - s.u. - wird dekrementiert)
+-l, --local                    - die Daten der Box verwenden, auf der das Skript läuft
+-p, --print-version            - die Versionsnummer der gefundenen Firmware zusätzlich ausgeben auf STDOUT
 -r, --use-real-serial          - die echte Seriennummer (maca) der Box senden
 ```
 

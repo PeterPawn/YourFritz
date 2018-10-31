@@ -33,6 +33,9 @@ Supported options are:
 -n, --no-respawn               - do not respawn with 'bash', even if it's possible
 -s, --save-response <filename> - save SOAP response to <filename> for further processing
 -i, --ignore-cfgfile           - skip configuration file processing
+-c, --current                  - try to get current version URL ('Patch' - see below - gets decremented)
+-l, --local                    - use data from local device, do not try to read via network
+-p, --print-version            - show version number of found firmware on STDOUT
 -r, --use-real-serial          - send real Serial value read from device
 ```
 
@@ -61,7 +64,7 @@ following known settings:
 | - | Minor | main version number of FRITZ!OS |
 | - | Patch | second part of version number |
 | - | Buildnumber | an incrementing value, presumably the consecutive number for a whole build process, it's called ```Revision``` in older firmware (and in the ```jason_boxinfo.xml``` file) |
-| Serial | | the serial number of the FRITZ!Box device (usually the same as ```maca```)<br>**Due to GDPR-based privacy concerns, a random value is used now. If you need to submit the real value of your device, you may call the script with '-r' option - the data will be sent without further notification or information in this case.** |
+| Serial | | the serial number of the FRITZ!Box device (usually the same as ```maca```)<br />**Due to GDPR-based privacy concerns, a random value is used now. If you need to submit the real value of your device, you may call the script with '-r' option - the data will be sent without further notification or information in this case.** |
 | Name | | the product name |
 | HW | | the hardware revision |
 | OEM | | the OEM value used (also known as the "branding") |
