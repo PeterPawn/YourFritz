@@ -834,7 +834,7 @@ use_devtcp()
 	cat <&5 >"$out" &
 	catpid=$!
 	cat >&5
-	while ! [ -s "$out" ] && kill -0 $catpid; do
+	while ! [ -s "$out" ] && kill -s 0 $catpid; do
 		i=$(( i + 1 ))
 		__is_debug && printf "." 1>&7
 		[ $i -gt $timeout ] && break
@@ -843,7 +843,7 @@ use_devtcp()
 	sleep 1
 	exec 5>&-
 	sleep 1
-	kill -0 $catpid && kill $catpid
+	kill -s 0 $catpid && kill $catpid
 	trap '' EXIT
 	exec 2>&7
 	__is_debug && printf "\n" 1>&2
@@ -869,7 +869,7 @@ run_nc()
 	nc "$hostname" "$port" >"$out" <"$pin" &
 	ncpid=$!
 	cat - 1>&6
-	while ! [ -s "$out" ] && kill -0 $ncpid; do
+	while ! [ -s "$out" ] && kill -s 0 $ncpid; do
 		i=$(( i + 1 ))
 		__is_debug && printf "." 1>&7
 		[ $i -gt $timeout ] && break
@@ -879,7 +879,7 @@ run_nc()
 	sleep 1
 	exec 6>&-
 	sleep 1
-	kill -0 $ncpid && kill $ncpid
+	kill -s 0 $ncpid && kill $ncpid
 	rm "$pin"
 	exec 2>&7
 )
@@ -894,7 +894,7 @@ getrandomorder()
 	i=0;
 	n="8 5 2 1 4 7 6 3"
 	while [ $i -lt 8 ]; do
-		x=$(( (( v >> ( y * ( 3 + ( y & 1 )))) & 7 ) + 1 ))
+		x=$(( ( ( v >> ( y * ( 3 + ( y & 1 ) ) ) ) & 7 ) + 1 ))
 		set -- $n
 		[ $x -gt $# ] && x=$#
 		eval y=\$$x
@@ -990,7 +990,7 @@ get_nonce()
 	{
 		if ! [ $1 = eof ]; then
 			l=$(( l + 1 ))
-			v=$(( ( v << 8 ) + $1 ))
+			v=$(( ( v * 256 ) + $1 ))
 		else
 			[ $l -eq 0 ] && return
 			v=$(( v << ( 8 * ( 3 - l ) ) ))
