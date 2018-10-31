@@ -54,7 +54,7 @@ tmpdir="/tmp"
 # check debug option                                                                                  #
 #                                                                                                     #
 #######################################################################################################
-if [ "$1" = "-d" -o "$1" = "--debug" ]; then
+if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
 	debug=1
 	shift
 else
@@ -65,7 +65,7 @@ fi
 # check 'keep checksum' option                                                                        #
 #                                                                                                     #
 #######################################################################################################
-if [ "$1" = "-k" -o "$1" = "--keep-chksum" ]; then
+if [ "$1" = "-k" ] || [ "$1" = "--keep-chksum" ]; then
 	noremove=1
 	shift
 else
@@ -146,7 +146,8 @@ if [ "$sig" = "43 336 123 304" ]; then
 	[ $debug -eq 1 ] && printf "A TI checksum signature was found on '%s', file will be truncated by 8 byte.\n" "$f" 1>&2
 	dd if="$name" bs=$(( fs - 8 )) count=1 2>/dev/null
 else
-	cat "$name" 2>/dev/null # it's faster than 'dd' for the complete file
+	# it's faster than 'dd' for the complete file
+	cat "$name" 2>/dev/null
 fi
 #######################################################################################################
 #                                                                                                     #

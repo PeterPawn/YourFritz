@@ -49,7 +49,7 @@ start_service()
 #####################################################################################
 stop_service()
 {
-	local pid=$(cat $my_pidfile 2>/dev/null)
+	pid="$(cat $my_pidfile 2>/dev/null)"
 	if [ ${#pid} -gt 0 ]; then
 		if [ -d /proc/$pid ]; then
 			printf "Service '%s' (pid %s) will be stopped now ...\n" "$my_display" "$pid" >/dev/console
