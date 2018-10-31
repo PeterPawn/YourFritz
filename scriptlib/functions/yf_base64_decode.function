@@ -48,7 +48,7 @@ yf_base64_decode()
 				for c in $part; do
 					[ $c = = ] \
 						&& f=$(( f + 1 )) \
-						|| v=$(( ( v << 6 ) + $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 ))
+						|| v=$(( ( v * 64 ) + $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" $c) - 1 ))
 				done
 				[ $f -gt 0 ] && v=$(( v >> ( f * 2 ) ))
 				s=16

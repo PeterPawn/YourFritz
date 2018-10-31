@@ -51,16 +51,18 @@ yf_ipv4_address()
 				error=1
 				break
 			fi
-			addr=$(( ( addr << 8 ) + tupel ))
+			addr=$(( ( addr * 256 ) + tupel ))
 			shifts=$(( shifts - 1 ))
 		else
-			addr=$(( ( addr << ( shifts * 8 ) ) + tupel ))
+			addr=$(( ( addr * ( shifts * 256 ) ) + tupel ))
 		fi
 	done
-	if [ $addr -lt $(( 0x01000000 )) ] || [ $addr -gt $(( 0xFFFFFFFF )) ]; then
-		addr=0
-		error=1
+	if [ $error -eq 0 ]; then
+		if [ $addr -lt $(( 0x01000000 )) ] || [ $addr -gt $(( 0xFFFFFFFF )) ]; then
+			addr=0
+			error=1
+		fi
+		yf_dec2hex $addr
 	fi
-	yf_dec2hex $addr
 	return $error
 )

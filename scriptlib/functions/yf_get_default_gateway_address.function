@@ -32,7 +32,7 @@ yf_get_default_gateway_address()
 (
 	addr="$(sed -n -e "s|[^\t]*\t*0\{8\}\t*\([^\t]*\)\t*.*0\{8\}\t*.*\$|\1|p" /proc/net/route)"
 	[ ${#addr} -eq 0 ] && return 1
-	if [ $(yf_endianess) == L ]; then
+	if [ "$(yf_endianess)" = "L" ]; then
 		addr="$(yf_reverse_hex "$addr")"
 	fi
 	yf_print_ip "$addr"

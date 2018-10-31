@@ -46,7 +46,7 @@ yf_base32_decode()
 			v=0
 			j=0
 			for c in $part; do
-				v=$(( ( v << 5 ) + $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" $c) - 1 ))
+				v=$(( ( v * 32 ) + $(yf_index "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" $c) - 1 ))
 				j=$(( j + 1 ))
 				[ $(( j % 4 )) -ne 0 ] && continue
 				# process 16 and 24 bits in two separate steps, this avoids

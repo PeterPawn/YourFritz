@@ -35,12 +35,12 @@ yf_base32()
 	{
 		for x in $*; do
 			b=$(( b + 8 ))
-			v=$(( ( v << 8 ) + $x ))
+			v=$(( ( v * 256 ) + $x ))
 			while [ $b -ge 5 ]; do
 				b=$(( b - 5 ))
 				d=$(( v >> b ))
 				printf "%c" $(expr "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456" : ".\{$d\}\(.\).*")
-				v=$(( v % ( 2 ** b ) ))
+				v=$(( v % ( 1 << b ) ))
 			done
 		done
 	}

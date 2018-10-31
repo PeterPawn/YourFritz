@@ -42,21 +42,21 @@ yf_bin2dec()
 		ff=0
 		while read pos left right; do
 			if [ $ff -eq 1 ]; then
-				[ $e -eq 0 ] && v=$(( v << 8 )) || s=$(( s + 8 ))
+				[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
 				[ $e -eq 0 ] && ff=255 || ff=$(( 255 << s )) 
 				v=$(( v + ff ))
 				i=$(( i + 1 ))
 				ff=0
 			fi
 			while [ $i -lt $pos ]; do # insert zeros for missing bytes
-				[ $e -eq 0 ] && v=$(( v << 8 )) || s=$(( s + 8 ))
+				[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
 				i=$(( i + 1 ))
 			done
 			if [ $right = 377 ] && [ $ff -eq 0 ]; then
 				ff=1
 				continue
 			fi
-			[ $e -eq 0 ] && v=$(( v << 8 )) || s=$(( s + 8 ))
+			[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
 			[ $e -eq 0 ] && right=$(( 0$right )) || right=$(( 0$right << s )) 
 			v=$(( v + right ))
 			i=$(( pos + 1 ))

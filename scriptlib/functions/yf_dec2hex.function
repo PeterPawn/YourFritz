@@ -41,7 +41,7 @@ yf_dec2hex()
 	else
 		yf_is_decimal "$len" || return 1	
 	fi
-	len=$(( len << 1 ))
+	len=$(( len * 2 ))
 	mask="%0${len}x"
 	printf "$mask" $val
 	return 0

@@ -86,11 +86,11 @@ yf_pack()
 				;;
 		esac
 		if [ ! -z $endian ]; then
-			if [ $endian == L ]; then
+			if [ "$endian" = "L" ]; then
 				hex="$(yf_reverse_hex "$hex")"				
 			fi
 		else
-			if [ $(yf_endianess) == L ]; then
+			if [ "$(yf_endianess)" = "L" ]; then
 				hex="$(yf_reverse_hex "$hex")"
 			fi
 		fi

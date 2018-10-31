@@ -70,7 +70,7 @@ yf_hex2bin()
 				fi
 				h=1
 			else
-				v=$(( c << 4 ))
+				v=$(( c * 16 ))
 				h=0
 			fi
 		done

@@ -32,7 +32,7 @@ yf_hex2dec()
 	while [ ${#val} -gt 0 ]; do
 		byte=$(yf_substring "$val" 0 2)
 		val="$(yf_substring "$val" 2)"
-		out=$(( ( out << 8 ) + 0x$byte ))
+		out=$(( ( out * 256 ) + 0x$byte ))
 	done
 	printf "%u" "$out"
 	return 0

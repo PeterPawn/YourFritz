@@ -43,71 +43,56 @@
 #######################################################################################
 yf_readable_size()
 (
-	[ $(( 2 ** 32 )) -eq 0 ] && return 2	
+	v1K=1024
+	v1M=$(( v1K * v1K ))
+	v1G=$(( v1M * v1K ))
+	v1T=$(( v1G * v1K ))
+	[ $v1T -lt $v1M ] && return 2
 	[ -z "$1" ] && return 1
-	u="$(printf "$1" | sed -n -e "s|^[0-9,\.]* \?\([kKmMgGtT]\)\?\$|\1|p" | sed -e "y/kmgt/KMGT/")"
-	v="$(printf "$1" | sed -n -e "s|^\([0-9,\.]*\) \?[kKmMgGtT]\?\$|\1|p" | sed -e "s|,||")"
-	if ! [ -z $u ]; then
-		case $u in
-			(K)
-				iu=$(( 2 ** 10 ))
-				;;
-			(M)
-				iu=$(( 2 ** 20 ))
-				;;
-			(G)
-				iu=$(( 2 ** 30 ))
-				;;
-			(T)
-				iu=$(( 2 ** 40 ))
-				;;
-			(*)
-				return 1
-				;;
-		esac
-	else
-		iu=1
-	fi
+	u="$(printf "%s\n" "$1" | sed -n -e "s|^[0-9,\.]* \?\([kKmMgGtT]\)\?\$|\1|p" | sed -e "y/kmgt/KMGT/")"
+	v="$(printf "%s\n" "$1" | sed -n -e "s|^\([0-9,\.]*\) \?[kKmMgGtT]\?\$|\1|p" | sed -e "s|,||")"
+	iu=1
+	[ -z $u ] || iu=$(eval printf "%u" "\$v1$u")
 	f=0
 	[ $(yf_index $v .) -gt 0 ] && [ $iu -eq 1 ] && return 1
 	if [ $(yf_index $v .) -gt 0 ]; then
-		l=$(printf "$v" | sed -e "s|[^\.]||g")
+		l=$(printf "$v\n" | sed -e "s|[^\.]||g")
 		[ ${#l} -gt 1 ] && return 1
-		f=$(printf "${v##*.}000" | sed -n -e "s|^\([0-9]\{3\}\).*\$|\1|p" | sed -e "s|^0*||")
+		f=$(printf "%s000\n" "${v##*.}" | sed -n -e "s|^\([0-9]\{3\}\).*\$|\1|p" | sed -e "s|^0*||")
 		v=${v%%.*}
 		f=$(( f * iu ))
-		f=$(( ( f * 2 ** 10 ) / 10 ** 3 )) 
+		f=$(( ( f * v1K ) / 1000 )) 
 	fi
-	[ $(( v * iu )) -ge $(( 2 ** 53 )) ] && return 1
-	v=$(( v * iu * 2 ** 10 ))
+	[ $(( v * iu )) -ge $(( 16384 * v1T )) ] && return 1
+	v=$(( v * iu * v1K ))
 	v=$(( v + f ))
 	if ! [ -z "$2" ]; then
 		case "$2" in
 			([Kk])
-				c=$(( v ))
+				c=$(( v / v1K ))
 				ou=$2
 				;;
 			([Mm])
-				c=$(( v / 2 ** 10 ))
+				c=$(( v / v1M ))
 				ou=$2
 				;;
 			([Gg])
-				c=$(( v / 2 ** 20 ))
+				c=$(( v / v1G ))
 				ou=$2
 				;;
 			([Tt])
-				c=$(( v / 2 ** 30 ))
+				c=$(( v / v1T ))
 				ou=$2
 				;;
 			(*)
 				return 1
 				;;
 		esac
-		d=$(( c % 2 ** 20 ))
-		c=$(( c / 2 ** 20 ))
+		d=$(( c % v1K ))
+		c=$(( c / v1K ))
 	else
 		ou=""
-		while [ $v -gt $(( 2 ** 20 )) ]; do
+		while [ $v -gt $v1M ]; do
 			case $ou in
 				(T)
 					break
@@ -125,28 +110,28 @@ yf_readable_size()
 					ou=K
 					;;
 			esac
-			c=$(( v / 2 ** 10 ))
-			d=$(( v % 2 ** 10 ))
-			v=$(( v / 2 ** 10 ))
+			c=$(( v / v1K ))
+			d=$(( v % v1K ))
+			v=$(( v / v1K ))
 		done
-		d=$(( c % 2 ** 10 ))
-		c=$(( c / 2 ** 10 ))
+		d=$(( c % v1K ))
+		c=$(( c / v1K ))
 	fi
 	if [ $d -ne 0 ]; then
-		while [ $d -gt $(( 2 ** 10 * 10 )) ]; do
-			d=$(( d / 2 ** 10 ))
+		while [ $d -gt $(( v1K * 10 )) ]; do
+			d=$(( d / v1K ))
 		done
-		d=$(( d * 10 ** 3 / 2 ** 10 ))
-		while [ $d -gt $(( 10 ** 3 )) ]; do
+		d=$(( d * 1000 / v1K ))
+		while [ $d -gt 1000 ]; do
 			d=$(( ( d + 5 ) / 10 ))
 		done
 		d=$(( ( d + 5 ) / 10 ))
-		d=$(printf "%02u" $d | sed -n -e "s|^\([0-9]\{2\}\).*\$|\1|p")
+		d=$(printf "%02u\n" $d | sed -n -e "s|^\([0-9]\{2\}\).*\$|\1|p")
 		while [ ${d%0} != $d ]; do
 			d=${d%0}
 		done
-		printf "%u.%s %c" $c $d $ou
+		printf "%u.%s %c\n" $c $d $ou
 	else
-		printf "%u %c" $c $ou
+		printf "%u %c\n" $c $ou
 	fi				
 )

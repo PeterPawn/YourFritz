@@ -16,17 +16,22 @@
 #        used (the same size is used by 'showshringbuf', if the file does not exist), #
 #        the size has to be specified in KBytes (1KByte = 1024 Byte) and it has to be #
 #        a value between 8 and 64                                                     #
+#   $3 - 'old' to use the format, which was supported up to FRITZ!OS 07.0x            #
+#        'new' to use the format, which was introduced in FRITZ!OS 07.0x              #
+#        If this parameter is missing, '/usr/bin/showshringbuf -?' is used to deter-  #
+#        mine the format on the system, where this script was called.                 #
 #                                                                                     #
 # return code:                                                                        #
 #   0 - ring buffer file created                                                      #
 #   1 - parameter error, e.g. the specified facility is invalid (too long or contains #
 #       invalid character) or the specified size is invalid                           #
 #   2 - ring buffer file does already exist, the file was not changed                 #
+#   3 - no binary found for auto-detection of used format                             #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
 # U: printf dd                                                                        #
-# W: -                                                                                #
+# W: showshringbuf grep                                                               #
 # F: yf_is_decimal yf_pack                                                            #
 # I: -                                                                                #
 # K: fritzbox                                                                         #
@@ -38,19 +43,37 @@ yf_initialize_ringbuffer()
 	size="${2:-8}"
 	[ ${#facility} -eq 0 ] && return 1
 	[ ${#facility} -gt 8 ] && return 1
-	check=$(printf "$facility" | sed -e "s|[a-z0-9]||g")
+	check=$(printf "%s\n" "$facility" | sed -e "s|[a-z0-9]||g")
 	[ ${#check} -gt 0 ] && return 1
 	yf_is_decimal $size || return 1
-	[ $size -ge 8 -a $size -le 64 ] || return 1
+	( [ $size -ge 8 ] && [ $size -le 64 ] ) || return 1
 	filename=/var/.srb_$facility
 	[ -f $filename ] && return 2
-	maxoffset=$(( ( size * 1024 ) - 1 ))
-	# file starts with signature 0xF913668E, followed by first, next and last entry and
-	# finally by the maximum usable offset
-	yf_pack 8 249 8 19 8 102 8 142 32 20 32 20 32 20 32 $maxoffset >$filename
-	# first 1K block
-	dd if=/dev/zero bs=$(( 1024 - 20 )) count=1 >>$filename
-	# remaining blocks
-	dd if=/dev/zero bs=1024 count=$(( size - 1 )) >>$filename
+	f=0
+	[ "$3" = "old" ] && f=1
+	[ "$3" = "new" ] && f=2
+	[ $f -eq 0 ] && showshringbuf -? 2>&1 | grep -q -- '-m[ \t]*- print' && f=2
+	[ $f -eq 0 ] && return 3
+	dd if=/dev/zero of=$filename bs=1024 count=$size 2>/dev/null
+	printf "\371\023\146\216" | $bb dd of=$filename bs=4 count=1 conv=notrunc seek=0 2>/dev/null
+	if [ $f -eq 1 ]; then
+		value=$(( size * 1024 - 1 ))
+		# first entry
+		printf "\024" | $bb dd of=$file bs=1 count=1 conv=notrunc seek=7 2>/dev/null
+		# last entry
+		printf "\024" | $bb dd of=$file bs=1 count=1 conv=notrunc seek=11 2>/dev/null
+		# next entry
+		printf "\024" | $bb dd of=$file bs=1 count=1 conv=notrunc seek=15 2>/dev/null
+		offset=19
+	else
+		value=$(( size * 1024 ))
+		offset=15
+	fi
+	while [ $value -gt 0 ]; do
+		mask=$(printf "\\%03o" $(( value % 256 )))
+		printf "$mask" | $bb dd of=$file bs=1 count=1 conv=notrunc seek=$offset 2>/dev/null
+		offset=$(( offset - 1 ))
+		value=$(( value >> 8 ))
+	done
 	return 0
 )
