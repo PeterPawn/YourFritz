@@ -1,0 +1,103 @@
+#! /bin/sh
+#
+# replace all occurrences of localized strings in the specified Lua file, optionally
+# use a different I10N database to do this
+#
+# usage screen
+#
+usage()
+{
+	printf "Usage:\n\n"
+	printf "%s <input_file> [ <language_database> ]\n\n" "$0"
+	printf "Replace all occurrences of localized strings in the specified file with the\n"
+	printf "text from specified language database. If no database was specified, the\n"
+	printf "current one (of the host, where this script is running) will be used.\n\n"
+	printf "This script has to be executed on a FRITZ!OS device, otherwise the embedded\n"
+	printf "Lua code will fail to translate the selector into a text message.\n"
+}
+#
+# get the Lua statements required to access the I10N database and to create the appropriate
+# editor commands at the same time - this avoids multiple invocations (because the generated
+# "s"-command needs the old AND the new value)
+#
+get_lua_chunk()
+{
+delim="|"
+entity="&#124;"
+cat <<-EOF
+	#! /bin/luavar
+	txtlib = require("libluatextdb")
+	while true do
+		local line = io.read("*line");
+		if (line == nil) then
+			break;
+		end
+		local text = txtlib.get_text(line);
+		if (text == nil) then
+			text=""
+		end
+		while (string.find(text, "^.*${delim}.*\$")) do
+			text = string.gsub(text, "$delim", "\\\\$entity");
+		end
+		print(string.format("s${delim}{?%s?}${delim}%s${delim}g", line, text));
+	end
+EOF
+}
+#
+# get all localized variables from input file, both formats ("{?number:number?}" and
+# "{?keyword?}" are supported here
+#
+get_variables()
+{
+	sed -n -e "s|.*{?\([0-9]*:[0-9]*\)?}.*|\1|p" -e "s|.*{?\([a-zA-Z]*\)?}.*|\1|p"
+}
+#
+# build editor command file to translate indices to string values
+#
+get_editor_commands()
+{
+	get_variables < "$1" | "$luafile"
+}
+#
+# check parameters
+#
+[ -z "$1" ] && usage 1>&2 && exit 2
+! [ -f "$1" ] && usage 1>&2 && exit 1
+infile="$1"
+if ! [ -z "$2" ]; then
+	if [ "$3" = "private_ns" ]; then
+		mount -o bind,private "$2" /var/htmltext.db
+	else
+		! [ -f "$2" ] && usage 1>&2 && exit 1
+		if [ "$(dd if="$2" count=1 bs=4 2>/dev/null | base64)" = "UkRYVA==" ]; then
+			[ -n "$(expr "$-" : "\(x\)")" ] && debug="-x "
+			unshare --mount --propagation=private /bin/sh $debug $0 "$1" "$2" private_ns
+			exit $?
+		else
+			printf "Missing language database signature (RDXT) on file '%s'.\a\n" 1>&2
+			exit 1
+		fi
+	fi
+fi
+#
+# prepare working directory and clean exit
+#
+tmpdir="$(mktemp -d)"
+trap 'rm -r "$tmpdir" 2>/dev/null' EXIT HUP KILL
+#
+# prepare Lua file to get text from database
+#
+luafile="$(mktemp -p "$tmpdir")"
+get_lua_chunk > "$luafile"
+chmod 500 "$luafile"
+#
+# process the file
+#
+cmdfile="$(mktemp -p "$tmpdir")"
+get_editor_commands "$infile" > "$cmdfile"
+! [ -s "$cmdfile" ] && cat "$infile" && exit 0 # nothing to replace
+sed -f "$cmdfile" "$infile"
+#
+# end of script, time to call janitor
+#
+exit 0
