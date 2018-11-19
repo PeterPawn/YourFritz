@@ -641,6 +641,7 @@ version_decrement="Patch Minor"
 version_decrement_clear="$buildnumber_name=00000"
 boxinfo1_replace_names=""
 boxinfo2_replace_names="Revision:Buildnumber"
+numeric_values="Major Minor Patch"
 alt_names="$version_name:Major $version_name:Minor $version_name:Patch $version_name:$buildnumber_name"
 # flag option name, may contain more than one value (delimited by comma), will be splitted to multiple XML entities
 flags_name="Flag"
@@ -1112,6 +1113,16 @@ replace_in_file()
 )
 #######################################################################################################
 #                                                                                                     #
+# convert values with preceding zeros to their decimal value, any leading zero would switch the       #
+# meaning of following number to 'octal digit'                                                        #
+#                                                                                                     #
+#######################################################################################################
+get_decimal_value()
+(
+	expr "$1" : "0*\([0-9]\+\)"
+)
+#######################################################################################################
+#                                                                                                     #
 # split old style version number into parts with the new names                                        #
 #                                                                                                     #
 #######################################################################################################
@@ -1420,6 +1431,15 @@ Flag_XML=""
 for f in $Flag; do
 	[ ${#Flag_XML} -gt 0 ] && Flag_XML="$(printf "%s</q:$flags_name><q:$flags_name>" "$Flag_XML")"
 	Flag_XML="$Flag_XML$f"
+done
+#######################################################################################################
+#                                                                                                     #
+# convert values to surely decimal content                                                            #
+#                                                                                                     #
+#######################################################################################################
+for n in $numeric_values; do
+	eval v=\$$n
+	eval $n=$(get_decimal_value $v)
 done
 #######################################################################################################
 #                                                                                                     #
