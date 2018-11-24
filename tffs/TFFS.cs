@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
 
 namespace YourFritz.TFFS
 {
     public class TFFSHelpers
     {
+        private TFFSHelpers() { }
+
         // combine two or more byte array to one single bigger-one
         internal static byte[] CombineByteArrays(byte[][] inputArrays)
         {
@@ -14,7 +18,7 @@ namespace YourFritz.TFFS
             byte[] output = new byte[count];
             count = 0;
 
-            Array.ForEach<byte[]>(inputArrays, delegate (byte[] buffer) { System.Array.Copy(buffer, 0, output, count, buffer.Length); count += buffer.Length; });
+            Array.ForEach<byte[]>(inputArrays, delegate (byte[] buffer) { Array.Copy(buffer, 0, output, count, buffer.Length); count += buffer.Length; });
 
             return output;
         }
@@ -22,24 +26,24 @@ namespace YourFritz.TFFS
         // TFFS uses big endian order for numbers, get the bytes for a 32-bit value
         internal static byte[] GetBytesBE(int input)
         {
-            byte[] output = System.BitConverter.GetBytes(input);
+            byte[] output = BitConverter.GetBytes(input);
 
-            if (System.BitConverter.IsLittleEndian)
+            if (BitConverter.IsLittleEndian)
             {
-                System.Array.Reverse(output, 0, sizeof(int));
+                Array.Reverse(output, 0, sizeof(int));
             }
 
             return output;
         }
 
         // TFFS uses big endian order for numbers, get the bytes for a 16-bit value
-        internal static byte[] GetBytesBE(System.UInt16 input)
+        internal static byte[] GetBytesBE(UInt16 input)
         {
-            byte[] output = System.BitConverter.GetBytes(input);
+            byte[] output = BitConverter.GetBytes(input);
 
-            if (System.BitConverter.IsLittleEndian)
+            if (BitConverter.IsLittleEndian)
             {
-                System.Array.Reverse(output, 0, sizeof(System.UInt16));
+                Array.Reverse(output, 0, sizeof(UInt16));
             }
 
             return output;
@@ -279,6 +283,7 @@ namespace YourFritz.TFFS
         MTD14 = 454,
         MTD15 = 455,
         WLAN_SSID = 456,
+        GPON_Serial = 457,
         UrladerVersion = 509,
         NameTableVersion = 510,
         NameTableID = 511,
@@ -308,21 +313,21 @@ namespace YourFritz.TFFS
     }
 
     public class TFFSEnvironmentEntry
-    { 
-        private string p_Name;
-        private TFFSEnvironmentID p_ID;
+    {
+        private string p_Name = String.Empty;
+        private TFFSEnvironmentID p_ID = TFFSEnvironmentID.Free;
 
         public TFFSEnvironmentEntry(TFFSEnvironmentID ID, string Name)
         {
-            this.p_ID = ID;
-            this.p_Name = Name;
+            p_ID = ID;
+            p_Name = Name;
         }
 
         public TFFSEnvironmentID ID
         {
             get
             {
-                return this.p_ID;
+                return p_ID;
             }
         }
 
@@ -330,29 +335,53 @@ namespace YourFritz.TFFS
         {
             get
             {
-                return this.p_Name;
+                return p_Name;
             }
+        }
+
+        public override bool Equals(object obj)
+        {
+            return (((TFFSEnvironmentEntry)obj).Name.CompareTo(p_Name) == 0) && (((TFFSEnvironmentEntry)obj).ID == p_ID);
+        }
+
+        public override int GetHashCode()
+        {
+            return new { p_ID, p_Name }.GetHashCode();
         }
 
         public byte[] ImageBytes
         {
             get
             {
-                byte[] name = System.Text.Encoding.ASCII.GetBytes(this.p_Name);
+                byte[] name = Encoding.ASCII.GetBytes(p_Name);
                 byte[] aligned = new byte[((name.Length + 1) + 3) & ~3];
-                System.Array.Copy(name, aligned, name.Length);
-                return TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((int)this.p_ID), aligned });
+                Array.Copy(name, aligned, name.Length);
+                return TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((int)p_ID), aligned });
             }
         }
     }
 
-    public class TFFSEnvironmentEntries : System.Collections.Generic.Dictionary<TFFSEnvironmentID, TFFSEnvironmentEntry>
+    public class TFFSEnvironmentEntries : Dictionary<TFFSEnvironmentID, TFFSEnvironmentEntry>
     {
+        public TFFSEnvironmentEntry[] ToArray()
+        {
+            TFFSEnvironmentEntry[] output = new TFFSEnvironmentEntry[Count];
+            int index = 0;
+
+            foreach(TFFSEnvironmentEntry e in Values)
+            {
+                output[index++] = e;
+            }
+
+            return output;
+        }
     }
 
     public class TFFSEntryFactory
     {
         static private TFFSEnvironmentEntries sp_Entries;
+
+        private TFFSEntryFactory() { }
 
         public static TFFSEnvironmentEntries GetEntries()
         {
@@ -446,38 +475,38 @@ namespace YourFritz.TFFS
             entries.Add(TFFSEnvironmentID.WLANCalibration, new TFFSEnvironmentEntry(TFFSEnvironmentID.WLANCalibration, "wlan_cal"));
             entries.Add(TFFSEnvironmentID.WLANKey, new TFFSEnvironmentEntry(TFFSEnvironmentID.WLANKey, "wlan_key"));
             entries.Add(TFFSEnvironmentID.WLAN_SSID, new TFFSEnvironmentEntry(TFFSEnvironmentID.WLAN_SSID, "wlan_ssid"));
+            entries.Add(TFFSEnvironmentID.GPON_Serial, new TFFSEnvironmentEntry(TFFSEnvironmentID.GPON_Serial, "gpon_serial"));
             entries.Add(TFFSEnvironmentID.Removed, new TFFSEnvironmentEntry(TFFSEnvironmentID.Removed, "zuende"));
 
             return TFFSEntryFactory.sp_Entries;
         }
     }
 
-    public class TFFSNameTableEntries : System.Collections.Generic.List<TFFSEnvironmentID>
+    public class TFFSNameTableEntries : List<TFFSEnvironmentID>
     {
     }
 
     public class TFFSNameTable
     {
         private TFFSEnvironmentEntry p_Version;
-        private TFFSEnvironmentEntries p_Entries;
-        private TFFSNameTableEntries p_Order;
+        private TFFSEnvironmentEntries p_Entries = new TFFSEnvironmentEntries();
+        private TFFSNameTableEntries p_Order = new TFFSNameTableEntries();
 
         public TFFSNameTable(string Version, TFFSNameTableEntries Entries)
         {
-            this.p_Entries = new TFFSEnvironmentEntries();
-            this.p_Version = new TFFSEnvironmentEntry(TFFSEnvironmentID.NameTableVersion, Version);
+            p_Version = new TFFSEnvironmentEntry(TFFSEnvironmentID.NameTableVersion, Version);
             foreach (TFFSEnvironmentID entry in Entries)
             {
-                this.p_Entries.Add(entry, (TFFSEntryFactory.GetEntries()[entry]));
+                p_Entries.Add(entry, (TFFSEntryFactory.GetEntries()[entry]));
             }
-            this.p_Order = Entries;
+            p_Order = Entries;
         }
 
         public string Version
         {
             get
             {
-                return this.p_Version.Name;
+                return p_Version.Name;
             }
         }
 
@@ -485,7 +514,7 @@ namespace YourFritz.TFFS
         {
             get
             {
-                return this.p_Entries;
+                return p_Entries;
             }
         }
 
@@ -495,16 +524,29 @@ namespace YourFritz.TFFS
             get
             {
                 // we start with our version entry
-                byte[] output = this.p_Version.ImageBytes;
+                byte[] output = p_Version.ImageBytes;
 
                 // and append each other entry in the correct order
-                this.p_Order.ForEach(id => output = TFFSHelpers.CombineByteArrays(new byte[][] { output, this.p_Entries[id].ImageBytes }));
+                p_Order.ForEach(id => output = TFFSHelpers.CombineByteArrays(new byte[][] { output, p_Entries[id].ImageBytes }));
 
                 // prepend it with the correct environment ID and length of the table
-                output = TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((System.UInt16)TFFSEnvironmentID.NameTableID), TFFSHelpers.GetBytesBE((System.UInt16)output.Length), output });
+                output = TFFSHelpers.CombineByteArrays(new byte[][] { TFFSHelpers.GetBytesBE((UInt16)TFFSEnvironmentID.NameTableID), TFFSHelpers.GetBytesBE((UInt16)output.Length), output });
 
                 return output;
             }
+        }
+
+        public TFFSEnvironmentID FindID(string Name)
+        {
+            foreach(TFFSEnvironmentEntry e in Entries.Values)
+            {
+                if (e.Name.CompareTo(Name) == 0)
+                {
+                    return e.ID;
+                }
+            }
+
+            return TFFSEnvironmentID.Free;
         }
 
         // generate name tables in various (known) versions
@@ -526,9 +568,10 @@ namespace YourFritz.TFFS
                 Version.CompareTo("@I") != 0 &&
                 Version.CompareTo("@J") != 0 &&
                 Version.CompareTo("@K") != 0 &&
-                Version.CompareTo("@L") != 0)
+                Version.CompareTo("@L") != 0 &&
+                Version.CompareTo("@N") != 0)
             {
-                throw new TFFSException("Only name table versions from @G (used in 2010) to @L (current) are supported yet.");
+                throw new TFFSException("Only name table versions from @G (used in 2010) to @N (current) are supported yet.");
             }
 
             entries.Add(TFFSEnvironmentID.AutoMDIX);
@@ -572,6 +615,13 @@ namespace YourFritz.TFFS
             }
 
             entries.Add(TFFSEnvironmentID.FlashSize);
+
+            if (Version.CompareTo("@L") == 1)
+            {
+                // gpon_serial was added in @N
+                entries.Add(TFFSEnvironmentID.GPON_Serial);
+            }
+
             entries.Add(TFFSEnvironmentID.JFFS2Size);
             entries.Add(TFFSEnvironmentID.KernelArgs);
             entries.Add(TFFSEnvironmentID.KernelArgs1);
@@ -685,17 +735,11 @@ namespace YourFritz.TFFS
 
             return new TFFSNameTable(Version, entries);
         }
-    }
 
-    public class DumpNameTable
-    {
-        static void Main(string[] args)
+        // get the latest implemented name table
+        public static TFFSNameTable GetLatest()
         {
-            string version = "@L";
-
-            if (args.Length > 0 && args[0].Length > 0) version = args[0];
-
-            Console.Write(YourFritz.Helpers.HexDump.Dump(TFFSNameTable.GetNameTable(version).ImageBytes));
+            return TFFSNameTable.GetNameTable("@N");
         }
     }
 }
