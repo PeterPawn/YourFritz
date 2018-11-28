@@ -2572,6 +2572,30 @@ Class FirmwareImage : TarFile
         $this.extractMemberAndRemoveChecksum($member).WriteTo([System.IO.File]::Create($outputName));
     }
 
+    # get the image to start from RAM of a FRITZ!Box device
+    [System.IO.MemoryStream] getBootableImage()
+    {
+        [TarMember] $kernel = $this.getMemberByName("./var/tmp/kernel.image");
+        [TarMember] $filesystem = $this.getMemberByName("./var/tmp/filesystem.image");
+        if ($kernel -eq $null -or $filesystem -eq $null)
+        {
+            throw "Missing 'kernel.image' and/or 'filesystem.image' member in the loaded firmware image.";
+        }
+
+        [System.IO.MemoryStream] $output = [System.IO.MemoryStream]::new();
+        $this.extractMemberAndRemoveChecksum($kernel).CopyTo($output);
+        $this.extractMemberAndRemoveChecksum($filesystem).CopyTo($output);
+
+        $output.Seek(0, [System.IO.SeekOrigin]::Begin);
+        return $output;
+    }
+
+    # store the bootable image to a file
+    [void] getBootableImage([string] $outputName)
+    {
+        $this.getBootableImage().WriteTo([System.IO.File]::Create($outputName));
+    }
+
     # verify the current signature with the specified public key, which was loaded from somewhere else
     [bool] verifySignature([SigningKey[]] $keys)
     {

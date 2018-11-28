@@ -43,6 +43,7 @@ It contains some PowerShell classes (therefore you need at least PowerShell vers
 - creating/storing/loading keys,
 - signing an image file,
 - verifying a signature
+- extracting a bootable image (to be loaded via EVA) from a firmware file
 
 from a PowerShell command prompt.
 
@@ -92,6 +93,16 @@ False
 ```
 
 In the case above, the file wasn't signed with any of the specified keys or someone later tampered with it.
+
+To retrieve the bootable image from a complete firmware image file, you may use the `getBootableImage` function as follows:
+
+```Powershell
+[FirmwareImage]::new("$pwd\original.image").getBootableImage("$pwd\bootable.image")
+```
+
+This call extracts a stream with the contained files `./var/tmp/kernel.image` and `./var/tmp/filesystem.image` (any existing TI checksum gets removed) from input file `original.image` as one single stream and writes the result to file `bootable.image`.
+
+The new file may be used to start a FRITZ!Box device from RAM. Please have a look at the `eva_tools` sub-folder to get an impression, how to cope with such a task, using other PowerShell scripts.
 
 ---
 
