@@ -1284,7 +1284,9 @@ Class TarFile
     # write the data stream of the specified member to $outputName
     [void] extractMember([TarMember] $member, [string] $outputName)
     {
-        $member.data.WriteTo([System.IO.File]::Create($outputName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputName);
+        $member.data.WriteTo($file);
+        $file.Close();
     }
 
     # search the members collection for an entry with name exactly $memberName (no wildcards)
@@ -2070,7 +2072,9 @@ Class SigningKey
     # save the stream from 'toDERStream' to file $outputFileName
     [void] toDERFile([bool] $withPrivateData, [string] $outputFileName)
     {
-        $this.toDERStream($withPrivateData).WriteTo([System.IO.File]::Create($outputFileName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputFileName);
+        $this.toDERStream($withPrivateData).WriteTo($file);
+        $file.Close();
     }
 
     # get an array containing the public key parts in PEM format
@@ -2102,7 +2106,9 @@ Class SigningKey
     # save stream from 'toRSAPublicKeyStream' to file $outputFileName
     [void] toRSAPublicKeyFile([string] $outputFileName)
     {
-        $this.toRSAPublicKeyStream().WriteTo([System.IO.File]::Create($outputFileName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputFileName);
+        $this.toRSAPublicKeyStream().WriteTo($file);
+        $file.Close();
     }
 
     # get an array containing the private key in PEM format, optionally encrypted and with
@@ -2163,7 +2169,9 @@ Class SigningKey
     # save the outcome of 'toRSAPrivateKeyStream' to file $outputFileName
     [void] toRSAPrivateKeyFile([string] $outputFileName, [string] $keyPassword)
     {
-        $this.toRSAPrivateKeyStream($keyPassword).WriteTo([System.IO.File]::Create($outputFileName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputFileName);
+        $this.toRSAPrivateKeyStream($keyPassword).WriteTo($file);
+        $file.Close();
     }
 
     # read a text file containing modulus and exponent as hexadecimal string (AVM's public key file format)
@@ -2569,7 +2577,9 @@ Class FirmwareImage : TarFile
     # get the specified member data after removing the TI checksum, if any - save data to $outputName
     [void] extractMemberAndRemoveChecksum([TarMember] $member, [string] $outputName)
     {
-        $this.extractMemberAndRemoveChecksum($member).WriteTo([System.IO.File]::Create($outputName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputName);
+        $this.extractMemberAndRemoveChecksum($member).WriteTo($file);
+        $file.Close();
     }
 
     # get the image to start from RAM of a FRITZ!Box device
@@ -2593,7 +2603,9 @@ Class FirmwareImage : TarFile
     # store the bootable image to a file
     [void] getBootableImage([string] $outputName)
     {
-        $this.getBootableImage().WriteTo([System.IO.File]::Create($outputName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputName);
+        $this.getBootableImage().WriteTo($file);
+        $file.Close();
     }
 
     # verify the current signature with the specified public key, which was loaded from somewhere else
@@ -2699,7 +2711,9 @@ Class FirmwareImage : TarFile
     [void] addSignature([SigningKey] $key, [string] $outputFileName)
     {
         $this.addSignature($key);
-        $this.contentStream().WriteTo([System.IO.File]::Create($outputFileName));
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputFileName);
+        $this.contentStream().WriteTo($file);
+        $file.Close();
     }
 
     # add a new signature to the whole image data, replaces any existing signature or creates a new one
