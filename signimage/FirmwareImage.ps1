@@ -2574,6 +2574,14 @@ Class FirmwareImage : TarFile
         return $memberStream;
     }
 
+    # get the specified member (by name) and remove a TI checksum, if any - save data to $outputName
+    [void] extractMemberAndRemoveChecksum([string] $member, [string] $outputName)
+    {
+        [System.IO.FileStream] $file = [System.IO.File]::Create($outputName);
+        $this.extractMemberAndRemoveChecksum($this.getMemberByName($member)).WriteTo($file);
+        $file.Close();
+    }
+
     # get the specified member data after removing the TI checksum, if any - save data to $outputName
     [void] extractMemberAndRemoveChecksum([TarMember] $member, [string] $outputName)
     {
