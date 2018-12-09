@@ -57,10 +57,16 @@
 #                the original reboot.lua page (tested up to version 07.01)                            #
 #              - if the second parameter is 'nocache', an existing cache file (where those data is    #
 #                stored otherwise - ready to be displayed on next call) gets ignored                  #
+#              - the data for 'get_values' is cached at the same time, if 'nocache' wasn't specified  #
 # switch_to    - switches to the 'running' or 'alternative' system (2nd parameter) and (optionally)   #
 #                sets the OEM name to the 3rd parameter (which isn't checked any further)             #
 # get_values   - provide a list of relevant values for implementers of other interfaces, without the  #
 #                needs to implement the full logic once again                                         #
+#              - if the second parameter is 'nocache', an existing cache file (where those data is    #
+#                stored otherwise - ready for output on next call) gets ignored                       #
+#              - while the call for 'html_display' creates the cache file for this function too, this #
+#                one doesn't create a cached HTML output and any later call to 'html_display' w/o the #
+#                'nocache' parameter will refresh the cached data of this function again              #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
 # clear_cache  - remove cached HTML output from an earlier 'html_display' call without 'nocache'      #
@@ -80,6 +86,7 @@
 #######################################################################################################
 readonly html_cache_file="/var/tmp/gui_bootmanager.html"
 readonly html_cache_error="/var/tmp/gui_bootmanager.rc"
+readonly data_cache_file="/var/tmp/gui_bootmanager.data"
 readonly urlader_environment="/proc/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
@@ -1053,6 +1060,49 @@ collect_data()
 }
 #######################################################################################################
 #                                                                                                     #
+# implement 'get_values' action, if no cached data exists                                             #
+#                                                                                                     #
+#######################################################################################################
+get_values()
+{
+	printf "active_version=\"%s\"\n" "$running_version"
+	printf "active_date=\"%s\"\n" "$running_date"
+	printf "active_modified_by=\"%s\"\n" "$running_modified"
+	printf "active_modified_at=\"%s\"\n" "$running_fsdate"
+	printf "active_brandings=\"%s\"\n" "$running_brandings"
+	if [ $alternative_is_missing -eq 1 ]; then
+		printf "inactive_version=\"%s\"\n" "missing"
+	else
+		printf "inactive_version=\"%s\"\n" "$alternative_version"
+		printf "inactive_date=\"%s\"\n" "$alternative_date"
+		printf "inactive_modified_by=\"%s\"\n" "$alternative_modified"
+		printf "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
+		printf "inactive_brandings=\"%s\"\n" "$alternative_brandings"
+	fi
+	printf "current_branding=\"%s\"\n" "$current_branding"
+	cb_support=$(( alternative_branding_fixed + running_branding_fixed ))
+	if [ $cb_support -eq 2 ]; then
+		cb_supported="both_fixed"
+	else
+		if change_branding_support; then
+			if [ $cb_support -eq 1 ]; then
+				if [ $running_branding_fixed -eq 1 ]; then
+					cb_supported="running_fixed"
+				else
+					cb_supported="alternative_fixed"
+				fi
+			else
+				cb_supported="true"
+			fi
+		else
+			cb_supported="false"
+		fi
+	fi
+	printf "switch_branding_support=%s\n" "$cb_supported"
+	printf "current_switch_value=%s\n" "$current_system_switch"
+}
+#######################################################################################################
+#                                                                                                     #
 # check dual-boot support                                                                             #
 #                                                                                                     #
 #######################################################################################################
@@ -1123,44 +1173,13 @@ case "$1" in
 		;;
 	("get_values")
 		if is_dualboot_supported; then
-			spinlock_pid=$$
-			collect_data
-			printf "active_version=\"%s\"\n" "$running_version"
-			printf "active_date=\"%s\"\n" "$running_date"
-			printf "active_modified_by=\"%s\"\n" "$running_modified"
-			printf "active_modified_at=\"%s\"\n" "$running_fsdate"
-			printf "active_brandings=\"%s\"\n" "$running_brandings"
-			if [ $alternative_is_missing -eq 1 ]; then
-				printf "inactive_version=\"%s\"\n" "missing"
-			else
-				printf "inactive_version=\"%s\"\n" "$alternative_version"
-				printf "inactive_date=\"%s\"\n" "$alternative_date"
-				printf "inactive_modified_by=\"%s\"\n" "$alternative_modified"
-				printf "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
-				printf "inactive_brandings=\"%s\"\n" "$alternative_brandings"
+			if [ "$2" = "nocache" ] || ! [ -f "$data_cache_file" ]; then
+				spinlock_pid=$$
+				collect_data
+				[ "$2" = "nocache" ] && get_values ||  get_values >"$data_cache_file"
 			fi
-			printf "current_branding=\"%s\"\n" "$current_branding"
-			cb_support=$(( alternative_branding_fixed + running_branding_fixed ))
-			if [ $cb_support -eq 2 ]; then
-				cb_supported="both_fixed"
-			else
-				if change_branding_support; then
-					if [ $cb_support -eq 1 ]; then
-						if [ $running_branding_fixed -eq 1 ]; then
-							cb_supported="running_fixed"
-						else
-							cb_supported="alternative_fixed"
-						fi
-					else
-						cb_supported="true"
-					fi
-				else
-					cb_supported="false"
-				fi
-			fi
-			printf "switch_branding_support=%s\n" "$cb_supported"
-			printf "current_switch_value=%s\n" "$current_system_switch"
-			rc=$?
+			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>/dev/null
+			rc=0
 		else
 			rc=1
 		fi
@@ -1183,6 +1202,7 @@ case "$1" in
 				[ "$Language" = "de" ] || Language="en"
 				spinlock_pid=$$
 				collect_data
+				[ "$2" = "nocache" ] || get_values >"$data_cache_file"
 				eval generate_html_lang_$Language
 				generate_javascript
 				rc=$?
@@ -1200,6 +1220,7 @@ case "$1" in
 		;;
 	("clear_cache")
 		[ -f "$html_cache_file" ] && rm "$html_cache_file" "$html_cache_error" 2>/dev/null
+		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>/dev/null
 		rc=0
 		;;
 	("switch_to")
