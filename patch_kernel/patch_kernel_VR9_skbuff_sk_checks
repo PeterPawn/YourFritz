@@ -1,8 +1,16 @@
 #! /bin/sh
 #
+# HWRevisions supported in this file
+#
+devices="185"
+#
 # functions to patch, followed by maximum numbers of instructions to check, while scanning for the expected TNE instruction
 #
-to_patch="netif_receive_skb,10 __netif_receive_skb,10"
+to_patch_TNE="netif_receive_skb,10 __netif_receive_skb,10"
+#
+# another patch location, here the 'lw v0,16(a0)' instruction gets replaced by a 'li v0,0' (it's really a 'addiu v0,zero,0' instruction)
+#
+to_patch_LIV0="ip_forward,10"
 #
 # helper functions
 #
@@ -24,11 +32,7 @@ get_address()
 get_platform_address()
 {
 	[ ${#1} -eq 0 ] && return 2
-	if grep -q "VR9" /proc/cpuinfo; then
-		addr=$(( 0x$1 & 0x3FFFFFFF ))
-	else
-		addr=$(( 0x$1 | 0x80000000 ))
-	fi
+	addr=$(( 0x$1 & 0x3FFFFFFF ))
 	printf "%08X" $addr
 	return 0
 }
@@ -44,11 +48,22 @@ get_incremented_address()
 	return 0
 }
 #
+# check, if the HWRevision value is a supported one
+#
+supported=0
+for dev in $devices; do
+	[ "$dev" = "$HWRevision" ] && supported=1 && break
+done
+if [ $supported -eq 0 ]; then
+	printf "HWRevision value '%s' is not in the list of supported devices.\n" "$HWRevision" 1>&2
+	exit 1
+fi
+#
 # locate functions, look for TNE or NOP instructions
 #
-for entry in $to_patch; do
+for entry in $to_patch_TNE; do
 	OIFS="$IFS"
-	IFS="," 
+	IFS=","
 	set -- $entry
 	IFS="$OIFS"
 	func_name="$1"
@@ -83,6 +98,47 @@ for entry in $to_patch; do
 	done
 done
 #
+# locate functions, look for 'lw v0,16(a0)' or 'li v0,0' instructions this time
+#
+for entry in $to_patch_LIV0; do
+	OIFS="$IFS"
+	IFS=","
+	set -- $entry
+	IFS="$OIFS"
+	func_name="$1"
+	max_loops=$2
+	func_addr=$(get_address "$func_name")
+	if [ -z "$func_addr" ]; then
+		printf "Unable to get address for symbol name '%s'.\n" "$func_name" 1>&2
+		continue
+	fi
+	mem_addr=$(get_platform_address "$func_addr")
+	printf "Found symbol '%s' at memory address 0x%s.\n" "$func_name" "$mem_addr" 1>&2
+	printf "Looking for 'lw v0,16(a0)' instruction with max. distance of %d.\n" "$max_loops" 1>&2
+	i=0
+	while [ $i -lt $max_loops ]; do
+		value=$(devmem 0x$mem_addr 32)
+		if [ ${#value} -eq 0 ]; then
+			printf "Error reading memory content with 'devmem' applet, make sure it's available.\n" 1>&2
+			exit 2
+		fi
+		if [ "$value" = "0x24020000" ]; then
+			printf "Found 'li v0,0' instruction at 0x%s, looks like the patch was applied already.\n" "$mem_addr" 1>&2
+			break
+		fi
+		if [ "$value" = "0x8C820010" ]; then
+			printf "Found 'lw v0,16(a0)' instruction (%s) at 0x%s, replacing it with a 'li v0,0' instruction.\n" "$value" "$mem_addr" 1>&2
+			devmem "0x$mem_addr" 32 "0x24020000"
+			break
+		fi
+		i=$(( i + 1 ))
+		mem_addr=$(get_incremented_address $mem_addr)
+	done
+done
+#
 # all done
 #
 exit 0
+#
+# end of script
+#
