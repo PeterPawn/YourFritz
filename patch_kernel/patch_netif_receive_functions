@@ -1,0 +1,88 @@
+#! /bin/sh
+#
+# functions to patch, followed by maximum numbers of instructions to check, while scanning for the expected TNE instruction
+#
+to_patch="netif_receive_skb,10 __netif_receive_skb,10"
+#
+# helper functions
+#
+SYMBOLS="/proc/kallsyms"
+#
+# find the specified kernel symbol
+#
+get_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	addr="$(grep "^[0-9a-f]* [Tt] $1\$" "$SYMBOLS" | sed -n -e "s|^\([0-9a-f]*\) [tT] $1\$|\1|p")"
+	[ ${#addr} -gt 0 ] && printf "%s" "$addr" && return 0
+	return 1
+}
+#
+# add or remove MIPS memory high order bits (KSEGx)
+# $1 - hexadecimal value without 0x prefix
+#
+get_platform_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	if grep -q "VR9" /proc/cpuinfo; then
+		addr=$(( 0x$1 & 0x3FFFFFFF ))
+	else
+		addr=$(( 0x$1 | 0x80000000 ))
+	fi
+	printf "%08X" $addr
+	return 0
+}
+#
+# increment the specified address by 4
+# $1 - hexadecimal value without 0x prefix
+#
+get_incremented_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	addr=$(( 0x$1 + 4 ))
+	get_platform_address $(printf "%08X" $addr)
+	return 0
+}
+#
+# locate functions, look for TNE or NOP instructions
+#
+for entry in $to_patch; do
+	OIFS="$IFS"
+	IFS="," 
+	set -- $entry
+	IFS="$OIFS"
+	func_name="$1"
+	max_loops=$2
+	func_addr=$(get_address "$func_name")
+	if [ -z "$func_addr" ]; then
+		printf "Unable to get address for symbol name '%s'.\n" "$func_name" 1>&2
+		continue
+	fi
+	mem_addr=$(get_platform_address "$func_addr")
+	printf "Found symbol '%s' at memory address 0x%s.\n" "$func_name" "$mem_addr" 1>&2
+	printf "Looking for TNE instruction with max. distance of %d.\n" "$max_loops" 1>&2
+	i=0
+	while [ $i -lt $max_loops ]; do
+		value=$(devmem 0x$mem_addr 32)
+		if [ ${#value} -eq 0 ]; then
+			printf "Error reading memory content with 'devmem' applet, make sure it's available.\n" 1>&2
+			exit 2
+		fi
+		if [ "$value" = "0x00000000" ]; then
+			printf "Found NOP instruction at 0x%s, looks like the patch was applied already.\n" "$mem_addr" 1>&2
+			break
+		fi
+		v=$(printf "%08X" $(( $value & 0xFFE0FFFF )))
+		if [ "$v" = "00000336" ]; then
+			printf "Found TNE instruction (%s) at 0x%s, replacing it with a NOP (all bits zero means => sll r0,r0,0).\n" "$value" "$mem_addr" 1>&2
+			devmem 0x$mem_addr 32 0
+			break
+		fi
+		i=$(( i + 1 ))
+		mem_addr=$(get_incremented_address $mem_addr)
+	done
+done
+#
+# all done
+#
+exit 0
