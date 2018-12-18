@@ -1,0 +1,175 @@
+#! /bin/sh
+#
+# firmware versions supported       
+#
+firmware_versions="07.01"
+#
+# HWRevisions supported in this file
+#
+devices="226"
+#
+# functions to patch, followed by maximum numbers of instructions to check, while scanning for the expected TNE instruction
+#
+to_patch_TNE="netif_receive_skb,15 __netif_receive_skb,5"
+#
+# another patch location, here the 'lw v0,16(a0)' instruction gets replaced by a 'li v0,0' (it's really a 'addiu v0,zero,0' instruction)
+#
+to_patch_LIV0="ip_forward,10"
+#
+# helper functions
+#
+SYMBOLS="/proc/kallsyms"
+#
+# find the specified kernel symbol
+#
+get_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	addr="$(grep "^[0-9a-f]* [Tt] $1\$" "$SYMBOLS" | sed -n -e "s|^\([0-9a-f]*\) [tT] $1\$|\1|p")"
+	[ ${#addr} -gt 0 ] && printf "%s" "$addr" && return 0
+	return 1
+}
+#
+# add or remove MIPS memory high order bits (KSEGx)
+# $1 - hexadecimal value without 0x prefix
+#
+get_platform_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	addr=$(( 0x$1 | 0x80000000 ))
+	printf "%08X" $addr
+	return 0
+}
+#
+# increment the specified address by 4
+# $1 - hexadecimal value without 0x prefix
+#
+get_incremented_address()
+{
+	[ ${#1} -eq 0 ] && return 2
+	addr=$(( 0x$1 + 4 ))
+	get_platform_address $(printf "%08X" $addr)
+	return 0
+}
+#
+# check, if the firmware version is supported
+#
+supported=0
+for version in $firmware_versions; do
+	[ "$CONFIG_VERSION" = "$version" ] && supported=1 && break
+done
+if [ $supported -eq 0 ]; then
+	printf "Firmware version %s is not in the list of supported versions.\n" "$CONFIG_VERSION" 1>&2
+	exit 1
+else
+	printf "Found supported firmware version %s.\n" "$CONFIG_VERSION" 1>&2
+fi
+#
+# check, if the HWRevision value is a supported one
+#
+supported=0
+for dev in $devices; do
+	[ "$dev" = "$HWRevision" ] && supported=1 && break
+done
+if [ $supported -eq 0 ]; then
+	printf "HWRevision value '%s' is not in the list of supported devices.\n" "$HWRevision" 1>&2
+	exit 1
+else
+	printf "Found supported HWRevision %s.\n" "$HWRevision" 1>&2
+fi
+#
+# locate functions, look for TNE or NOP instructions
+#
+for entry in $to_patch_TNE; do
+	OIFS="$IFS"
+	IFS=","
+	set -- $entry
+	IFS="$OIFS"
+	func_name="$1"
+	max_loops=$2
+	func_addr=$(get_address "$func_name")
+	if [ -z "$func_addr" ]; then
+		printf "Unable to get address for symbol name '%s'.\n" "$func_name" 1>&2
+		continue
+	fi
+	mem_addr=$(get_platform_address "$func_addr")
+	printf "Found symbol '%s' at memory address 0x%s.\n" "$func_name" "$mem_addr" 1>&2
+	printf "Looking for TNE instruction with max. distance of %d.\n" "$max_loops" 1>&2
+	i=0
+	last_was_load_v0=0
+	while [ $i -lt $max_loops ]; do
+		value=$(devmem 0x$mem_addr 32)
+		if [ ${#value} -eq 0 ]; then
+			printf "Error reading memory content with 'devmem' applet, make sure it's available.\n" 1>&2
+			exit 2
+		fi
+		if [ "$value" = "0x00000000" ] && [ $last_was_load -eq 1 ]; then
+			printf "Found NOP instruction after loading v[0|1], looks like the patch was applied already.\n" "$mem_addr" 1>&2
+			break
+		fi
+		if ( [ "$value" = "0x00020336" ] || [ "$value" = "0x00030336" ] ) && [ $last_was_load -eq 1 ]; then
+			trap_reg=$(expr "$value" : "0x000\([23]\)0336")
+			if [ "$trap_reg" = "$loaded_reg" ]; then
+				printf "Found TNE instruction (%s) at 0x%s, replacing it with a NOP instruction.\n" "$value" "$mem_addr" 1>&2
+				devmem 0x$mem_addr 32 0
+				break
+			fi
+		fi
+		if [ "$value" = "0x8C820020" ] || [ "$value" = "0x8C830020" ]; then
+			printf "Found 'lw v[0|1],32(a0)' instruction at 0x%s, checking next instruction now.\n" "$mem_addr" 1>&2
+			loaded_reg=$(expr "$value" : "0x8C8\([23]\)0020")
+			if [ ${#loaded_reg} -gt 0 ]; then
+				last_was_load=1
+			fi
+		else
+			last_was_load=0
+		fi
+		i=$(( i + 1 ))
+		mem_addr=$(get_incremented_address $mem_addr)
+	done
+done
+#
+# locate functions, look for 'lw v0,32(a0)' or 'li v0,0' instructions this time
+#
+for entry in $to_patch_LIV0; do
+	OIFS="$IFS"
+	IFS=","
+	set -- $entry
+	IFS="$OIFS"
+	func_name="$1"
+	max_loops=$2
+	func_addr=$(get_address "$func_name")
+	if [ -z "$func_addr" ]; then
+		printf "Unable to get address for symbol name '%s'.\n" "$func_name" 1>&2
+		continue
+	fi
+	mem_addr=$(get_platform_address "$func_addr")
+	printf "Found symbol '%s' at memory address 0x%s.\n" "$func_name" "$mem_addr" 1>&2
+	printf "Looking for 'lw v0,32(a0)' instruction with max. distance of %d.\n" "$max_loops" 1>&2
+	i=0
+	while [ $i -lt $max_loops ]; do
+		value=$(devmem 0x$mem_addr 32)
+		if [ ${#value} -eq 0 ]; then
+			printf "Error reading memory content with 'devmem' applet, make sure it's available.\n" 1>&2
+			exit 2
+		fi
+		if [ "$value" = "0x24020000" ]; then
+			printf "Found 'li v0,0' instruction at 0x%s, looks like the patch was applied already.\n" "$mem_addr" 1>&2
+			break
+		fi
+		if [ "$value" = "0x8C820020" ]; then
+			printf "Found 'lw v0,32(a0)' instruction (%s) at 0x%s, replacing it with a 'li v0,0' instruction.\n" "$value" "$mem_addr" 1>&2
+			devmem "0x$mem_addr" 32 "0x24020000"
+			break
+		fi
+		i=$(( i + 1 ))
+		mem_addr=$(get_incremented_address $mem_addr)
+	done
+done
+#
+# all done
+#
+exit 0
+#
+# end of script
+#
