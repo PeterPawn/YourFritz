@@ -1,5 +1,9 @@
 #! /bin/sh
 #
+# firmware versions supported       
+#
+firmware_versions="07.01"
+#
 # HWRevisions supported in this file
 #
 devices="185"
@@ -48,6 +52,19 @@ get_incremented_address()
 	return 0
 }
 #
+# check, if the firmware version is supported
+#
+supported=0
+for version in $firmware_versions; do
+	[ "$CONFIG_VERSION" = "$version" ] && supported=1 && break
+done
+if [ $supported -eq 0 ]; then
+	printf "Firmware version %s is not in the list of supported versions.\n" "$CONFIG_VERSION" 1>&2
+	exit 1
+else
+	printf "Found supported firmware version %s.\n" "$CONFIG_VERSION" 1>&2
+fi
+#
 # check, if the HWRevision value is a supported one
 #
 supported=0
@@ -57,6 +74,8 @@ done
 if [ $supported -eq 0 ]; then
 	printf "HWRevision value '%s' is not in the list of supported devices.\n" "$HWRevision" 1>&2
 	exit 1
+else
+	printf "Found supported HWRevision %s.\n" "$HWRevision" 1>&2
 fi
 #
 # locate functions, look for TNE or NOP instructions
