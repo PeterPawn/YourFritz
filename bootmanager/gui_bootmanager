@@ -112,7 +112,6 @@ readonly avm_rcconf="etc/init.d/rc.conf"
 readonly semafile="/var/run/gui_bootmanager.sem"
 readonly fdt_chosen="/proc/device-tree/chosen"
 readonly saved_environment="/var/env"
-readonly version_components="VERSION SUBVERSION DATE"
 readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
 #                                                                                                     #
@@ -122,8 +121,13 @@ readonly radio_button_checked=" checked=\\\"checked\\\""
 readonly yourfritz_version_file="etc/.yourfritz_version"
 readonly freetz_version_file="etc/.freetz-version"
 readonly modfs_version_file="etc/.modfs_version"
-readonly avm_version_file="etc/version"
-readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file $avm_version_file"
+readonly avm_version_file1="etc/version"
+readonly avm_version_file1_prefix="FIRMWARE_"
+readonly avm_version_file2="etc/init.d/rc.conf"
+readonly avm_version_file2_prefix="CONFIG_"
+readonly avm_version_main_components="VERSION SUBVERSION"
+readonly avm_version_date="DATE"
+readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file"
 readonly modified_by="YourFritz Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
@@ -493,17 +497,72 @@ get_brandings()
 )
 #######################################################################################################
 #                                                                                                     #
-# extract firmware variables from AVM's version file                                                  #
+# extract firmware variables from AVM's firmware info source                                          #
+#                                                                                                     #
+# $1 - info source file                                                                               #
+# $2 - values prefix in this file                                                                     #
+#                                                                                                     #
+#######################################################################################################
+get_version_main_values()
+(
+	for v in $avm_version_main_components; do
+		sed -n -e "s|^[ \t]*export $2$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1"
+	done
+)
+#######################################################################################################
+#                                                                                                     #
+# extract firmware variables from AVM's firmware new info source                                      #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_new_version_main_values()
+(
+	path="${1:-/}${1:+/}$avm_version_file2"
+	prefix="$avm_version_file2_prefix"
+	get_version_main_values "$path" "$prefix"
+)
+#######################################################################################################
+#                                                                                                     #
+# extract firmware variables from AVM's firmware old info source                                      #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_old_version_main_values()
+(
+	path="${1:-/}${1:+/}$avm_version_file1"
+	prefix="$avm_version_file1_prefix"
+	get_version_main_values "$path" "$prefix"
+)
+#######################################################################################################
+#                                                                                                     #
+# check, if version info is specified in the older or newer place                                     #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+has_old_version_info()
+(
+	path="${1:-/}${1:+/}$avm_version_file1"
+	set -- $avm_version_main_components
+	[ -z "$(sed -n -e "s|^[ \t]*export $avm_version_file1_prefix$1=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")" ] \
+		&& exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# get system version from specified system root                                                       #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
 #                                                                                                     #
 #######################################################################################################
 get_version_values()
 (
-	path="${1:-/}${1:+/}$avm_version_file"
-	for v in $version_components; do
-		sed -n -e "s|^export FIRMWARE_$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$path" | sed -e 's| |\ |g'
-	done
+	if has_old_version_info "$1"; then
+		get_old_version_main_values "$1"
+	else
+		get_new_version_main_values "$1"
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -533,15 +592,20 @@ parse_date_value()
 )
 #######################################################################################################
 #                                                                                                     #
-# get system build date from specified system root                                                    #
+# get system build date from specified root, it's a file modification time in the newer versions      #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
 #                                                                                                     #
 #######################################################################################################
 get_system_date()
 (
-	eval $(get_version_values "$1")
-	v=$(parse_date_value "$DATE")
+	path="${1:-/}${1:+/}$avm_version_file1"
+	if has_old_version_info "$1"; then
+		d="$(sed -n -e "s|^[ \t]*export $avm_version_file1_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
+		v=$(parse_date_value "$d")
+	else
+		v=$(stat -c %Y "$path")
+	fi
 	printf '%s' "$(get_localized_date "$v")"
 )
 #######################################################################################################
@@ -672,7 +736,7 @@ dismount_alternative_system()
 #######################################################################################################
 get_localized_date()
 {
-	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" -d @$1 || date +"%d.%m.%Y %H:%M:%S" -d @$1
+	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" -d @$1 || date +"%m/%d/%Y %r" -d @$1
 }
 #######################################################################################################
 #                                                                                                     #
