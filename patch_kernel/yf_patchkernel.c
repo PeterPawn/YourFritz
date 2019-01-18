@@ -84,7 +84,7 @@ static patchEntry_t patchesForTunDevice[] = {
 	},
 	{
 		.fname = "netif_receive_skb",
-		.maxOffset = 6,
+		.maxOffset = 10,
 		.lookFor = MIPS_LW + (MIPS_REG_A0 << MIPS_BASE_SHFT) + offsetof(struct sk_buff, sk),
 		.andMask = MIPS_AND_MASK - MIPS_RT_MASK,
 		.verifyOffset = 1,
