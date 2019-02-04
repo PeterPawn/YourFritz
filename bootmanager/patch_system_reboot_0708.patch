@@ -1,0 +1,27 @@
+--- usr/www/$TARGET_BRANDING/system/reboot.lua
++++ usr/www/$TARGET_BRANDING/system/reboot.lua
+@@ -66,2 +66,12 @@
+ --
++local function data_bootmanager()
++local values = {}
++local pipe = io.popen("/usr/bin/gui_bootmanager get_values")
++local line
++for line in pipe:lines() do
++table.insert(values, { name = line:match("^([^=]-)="), value = line:match("^.-=(.*)") } )
++end
++pipe:close()
++return values
++end
+ local function on_load()
+@@ -71,2 +81,3 @@
+ data.actions = data_actions()
++data.bootmanager = data_bootmanager()
+ return data
+@@ -75,2 +86,7 @@
+ local savecookie = {}
++if box.post.linux_fs_start then
++local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")
++local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""
++os.execute("/usr/bin/gui_bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")
++end
+ webuicookie.set_action_allowed_time()
