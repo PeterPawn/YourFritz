@@ -1095,14 +1095,14 @@ collect_data()
 		alternative_is_missing=0
 		spinlock get 10 && mp="$(mount_alternative_system)"
 		if ! [ -z "$mp" ]; then
-			alternative_version="$(get_system_version "$mp")"
+			readonly alternative_version="$(get_system_version "$mp")"
 			if ! [ -z "$alternative_version" ]; then
-				alternative_date="$(get_system_date "$mp")"
-				alternative_fsdate="$(get_modified_date "$mp")"
-				alternative_modified="$(get_modified_by "$mp")"
+				readonly alternative_date="$(get_system_date "$mp")"
+				readonly alternative_fsdate="$(get_modified_date "$mp")"
+				readonly alternative_modified="$(get_modified_by "$mp")"
 				if ! [ -z "$alternative_fsdate" ]; then
 					if change_branding_support; then
-						alternative_brandings="$(get_brandings "$mp")"
+						readonly alternative_brandings="$(get_brandings "$mp")"
 						[ -z "$(get_fixed_branding "$mp")" ] && alternative_branding_fixed=0 || alternative_branding_fixed=1
 						[ $(count_of_items "$alternative_brandings") -gt 1 ] && chg_alternative_branding=1
 					fi
