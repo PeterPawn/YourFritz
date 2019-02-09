@@ -20,7 +20,8 @@
 #                                                                                     #
 #######################################################################################
 Param([Parameter(Mandatory = $False, Position = 0, HelpMessage = 'the IP address, where EVA is awaiting our compliments (holding the apple behind her back), defaults to 192.168.178.1')][string]$Address = "192.168.178.1",
-      [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'an optional script block, which will be executed in the context of an active FTP session')][ScriptBlock]$ScriptBlock
+      [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'an optional script block, which will be executed in the context of an active FTP session')][ScriptBlock]$ScriptBlock,
+      [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'specify this switch, if you request write access to MTD2, which is usually the boot-loader partition and should not get overwritten without explicit intention')][switch]$WriteBootloader
 )
 
 $Global:LogoutBeforeClose = $False
@@ -329,6 +330,12 @@ function WriteFile {
           [Parameter(Mandatory = $True, Position = 1, HelpMessage = 'the parameters for the "STOR" command')][String]$target,
           [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the command to be used for passive data transfers, defaults to "P@SW"')][String]$passive_cmd = "P@SW"
     )
+
+    # do not write to MTD2, if it's not explicitly enabled
+    if ($target.ToUpper().CompareTo("MTD2") -eq 0 -and -not $WriteBootloader) {
+        $ex = New-Object System.IO.IOException "Write access to bootloader partition is locked."
+        Throw $ex
+    }
 
     if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
     Write-Debug "Uploading file '$filename' to '$target' ..."
