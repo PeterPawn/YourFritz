@@ -863,7 +863,7 @@ generate_html_lang_de()
 	html '<label for=\"radioRunning\">\n'
 	html '<b>das aktuell laufende System</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
 	html '<br><br>Version %s vom %s<br>\n' "$running_version" "$running_date"
-	[ "$running_modified" = "-" ] || \
+	[ -z "$running_modified" ] || \
 		html 'zuletzt modifiziert am %s durch \"%s\"\n' "$running_fsdate" "$running_modified"
 	html '</label>\n'
 	html '<br><br>\n'
@@ -877,7 +877,7 @@ generate_html_lang_de()
 		else
 			html '<br><br>Version %s vom %s<br>\n' \
 					"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ "$alternative_modified" = "-" ] || \
+			[ -z "$alternative_modified" ] || \
 				html 'zuletzt modifiziert am %s durch \"%s\"\n' \
 					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
 		fi
@@ -950,7 +950,7 @@ generate_html_lang_en()
 	html '<label for=\"radioRunning\">\n'
 	html '<b>the currently running system</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
 	html '<br><br>version %s built on %s<br>\n' "$running_version" "$running_date"
-	[ "$running_modified" = "-" ] || \
+	[ -z "$running_modified" ] || \
 		html 'last modified on %s using \"%s\"\n' "$running_fsdate" "$running_modified"
 	html '</label>\n'
 	html '<br><br>\n'
@@ -965,7 +965,7 @@ generate_html_lang_en()
 		else
 			html '<br><br>version %s built on %s<br>\n' \
 				"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ "$alternative_modified" = "-" ] || \
+			[ -z "$alternative_modified" ] || \
 				html 'last modified on %s using \"%s\"\n' \
 					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
 		fi
