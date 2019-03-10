@@ -22,10 +22,17 @@ To install it to your own firmware image, best copy it to location ```/usr/bin/g
 
 `add_to_system_reboot.sh`
 
-A shell script (it needs `bash` - with process substitution - or an environment variable `TMP` pointing to a writable place), which adds the needed code to AVM's files to integrate `gui_bootmanager` into the 'Reboot' page from GUI. It supports the pre-07.08 approach, where HTML code is emitted from `reboot.lua` and also the newer one, where only JSON data gets generated.
+A shell script, which adds the needed code to AVM's files to integrate `gui_bootmanager` into the 'Reboot' page from GUI. It supports the pre-07.08 approach, where HTML code is emitted from `reboot.lua` and also the newer one, where only JSON data gets generated.
 
 If your firmware image contains more than a single *branding*, you'll probably need to apply the patch to more than one sub-tree below ```/usr/www```.
 
 The use of `sed` to change the original content forecloses any protection against double invocation for the same file and it's the caller's business to prevent errors from double-patch attempts.
 
-You have to set the environment variables `SYSTEM_TARGET_VERSION` and `SYSTEM_TARGET_BRANDING` to the correct values before you call this script.
+You have to set the environment variables 
+
+- `TARGET_BRANDING` (e.g. `avm`)
+- `TARGET_SYSTEM_VERSION` (e.g. `113.07.08`)
+- `TARGET_DIR` (root of filesystem to modify) and
+- `TMP` (a writable place in your system for a temporary file)
+
+to the correct values, before you call this script.
