@@ -20,31 +20,12 @@ The code checks, if any of the present systems was modified by a supported frame
 
 To install it to your own firmware image, best copy it to location ```/usr/bin/gui_bootmanager``` and set the wanted attributes and owner/group ID. The other files from here expect it there ... if you put it elsewhere, you probably have to change the location in other files, too.
 
-`patch_system_reboot_lua.patch`
+`add_to_system_reboot.sh`
 
-It's a minimalistic unified ```diff``` file with the short code to be integrated, if you want:
-
-- to display the current and alternative system properties and
-- to switch the active system to the alternative one on reboot
-
-from the original Lua page by AVM in the last recent OS versions.
-
-There were no important changes from version 06.5x up to 07.00 in the code from the file to change (```usr/www/$OEM/system/reboot.lua```). Therefore the same patch should work for all versions in this range.
-
-If you want to apply it somewhere, change the name of file to be patched at the beginning of this ```diff``` output somehow or use a filter (e.g. a ```sed``` call like this:
-
-```shell
-sed -e 's|$TARGET_BRANDING|avm|g' patch_system_reboot_lua.patch | patch -p0
-```
-
-) to specify the subdirectory, wherein the Lua file should be changed.
+A shell script (it needs `bash` - with process substitution - or an environment variable `TMP` pointing to a writable place), which adds the needed code to AVM's files to integrate `gui_bootmanager` into the 'Reboot' page from GUI. It supports the pre-07.08 approach, where HTML code is emitted from `reboot.lua` and also the newer one, where only JSON data gets generated.
 
 If your firmware image contains more than a single *branding*, you'll probably need to apply the patch to more than one sub-tree below ```/usr/www```.
 
-`change_system_reboot_lua.sh`
+The use of `sed` to change the original content forecloses any protection against double invocation for the same file and it's the caller's business to prevent errors from double-patch attempts.
 
-An alternative approach to change the original file - it uses the ```sed``` command to add the needed lines to the specified file (the name of file is the first and only parameter).
-
-Due to the *limited anchor code* for the changes, this manner may still work, if a line of the above provided ```diff``` file will no longer match the original code.
-
-At the same time this limitation forecloses any protection against double invocation for the same file.
+You have to set the environment variables `SYSTEM_TARGET_VERSION` and `SYSTEM_TARGET_BRANDING` to the correct values before you call this script.

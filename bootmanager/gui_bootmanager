@@ -7,13 +7,13 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# gui_bootmanager, version 0.5                                                                        #
+# gui_bootmanager, version 0.6                                                                        #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2014-2018 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2014-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -87,6 +87,7 @@
 readonly html_cache_file="/var/tmp/gui_bootmanager.html"
 readonly html_cache_error="/var/tmp/gui_bootmanager.rc"
 readonly data_cache_file="/var/tmp/gui_bootmanager.data"
+readonly boot_cache_file="/var/tmp/gui_bootmanager.boot"
 readonly urlader_environment="/proc/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
@@ -111,7 +112,6 @@ readonly tmpdir="${TMPDIR:-/var/tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
 readonly semafile="/var/run/gui_bootmanager.sem"
 readonly fdt_chosen="/proc/device-tree/chosen"
-readonly saved_environment="/var/env"
 readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
 #                                                                                                     #
@@ -381,7 +381,8 @@ compare_strings()
 	trap "rm -r $t 2>/dev/null" EXIT HUP INT
 	printf "%s\377" "$1" >"$t/left"
 	printf "%s\377" "$2" >"$t/right"
-	cmp -l "$t/left" "$t/right" 2>/dev/null | read pos left right 2>/dev/null
+	cmp -l "$t/left" "$t/right" 2>/dev/null >"$t/out"
+	read pos left right 2>/dev/null <"$t/out"
 	if [ -z "$left" ] || [ -z "$right" ]; then
 		printf "0"
 	else
@@ -441,8 +442,8 @@ is_switched()
 	if [ -d "$fdt_chosen" ]; then
 		! [ "$(cat "$fdt_chosen/$system_select_name")" = "$(get_system_switch)" ]
 	else
-		if [ -f "$saved_environment" ]; then
-			! [ "$(get_system_switch)" = "$(get_system_switch "$saved_environment")" ]
+		if [ -f "$boot_cache_file" ]; then
+			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
 			k1="$(get_partition "$kernel_name" "$active_name")"
 			k2="$(get_partition "$kernel_name" "$inactive_name")"
@@ -470,7 +471,11 @@ switch_system()
 #######################################################################################################
 switch_system_to()
 (
-	is_switched && ( [ "$1" = "running" ] && switch_system ) || ( [ "$1" = "alternative" ] && switch_system )
+	if is_switched; then
+		[ "$1" = "running" ] && switch_system
+	else
+		[ "$1" = "alternative" ] && switch_system
+	fi
 	[ -z "$2" ] || change_branding "$2"
 )
 #######################################################################################################
@@ -574,7 +579,7 @@ get_version_values()
 get_system_version()
 (
 	eval $(get_version_values "$1")
-	printf '%s%s' "$VERSION" "$SUBVERSION"
+	has_old_version_info "$1" && printf '%s%s' "$VERSION" "$SUBVERSION" || printf '%s.%s%s' "$CONFIG_VERSION_MAJOR" "$VERSION" "$SUBVERSION"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1162,6 +1167,7 @@ get_values()
 	fi
 	printf "switch_branding_support=%s\n" "$cb_supported"
 	printf "current_switch_value=%s\n" "$current_system_switch"
+	printf "system_is_switched=%s\n" $(is_switched && printf "true" || printf "false")
 }
 #######################################################################################################
 #                                                                                                     #
@@ -1174,6 +1180,15 @@ is_dualboot_supported()
 	[ -z "$(get_partition "$kernel_name" "$inactive_name")" ] && exit 1
 	[ -z "$(get_partition "$filesystem_name" "$inactive_name")" ] && exit 1
 	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# save initial environment at first call                                                              #
+#                                                                                                     #
+#######################################################################################################
+save_environment()
+(
+	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>/dev/null
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1242,6 +1257,7 @@ case "$1" in
 			fi
 			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>/dev/null
 			rc=0
+			save_environment
 		else
 			rc=1
 		fi
@@ -1278,6 +1294,7 @@ case "$1" in
 				printf "%u" "$rc" >"$html_cache_error"
 				cat "$html_cache_file"
 			fi
+			save_environment
 		fi
 		;;
 	("clear_cache")
