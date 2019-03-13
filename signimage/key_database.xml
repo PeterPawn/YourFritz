@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
   <devices>
-    <device HWRevision="185" name="FRITZ!Box 7490" key_location="/etc">
+    <device HWRevision="185" VersionMajor="113" name="FRITZ!Box 7490" key_location="/etc">
       <key source="vendor" original_name="avm_firmware_public_key1">
         <modulus>cbdcfcc6ac9a1657a1c6f197e3056f1d68b8bb7deb480249e5f0ded677c54fde10be5a14b1e6a395483bd4bee608c09d385b1e90564ca84b9272926c45bfd328d7da876567e3e15f719800a53ecc21af583431d0c40806ca89f6f958e188ec69572df09e24de71eaa0782c01877158f286afd95037e7eb059367c466095944e1</modulus>
         <exponent>010001</exponent>
@@ -15,7 +15,7 @@
         <exponent>010001</exponent>
       </key>
     </device>
-    <device HWRevision="213" name="FRITZ!Box Cable 6490" key_location="/etc">
+    <device HWRevision="213" VersionMajor="141" name="FRITZ!Box Cable 6490" key_location="/etc">
       <key source="vendor" original_name="avm_firmware_public_key1">
         <modulus>98ef668b9156913907e7e2d6c5ff74c23fd3a065cb1f382b19691655aa3cb5f5a010cf00f90c89a5f6bf2f9c029bb90c80ee53064b88067af1c2879a6464430688dad838a7b6d693ee00f37d3d0844bd49ca418213678660d5f918037d0a72225195fd02d40b90035932684311c8bdc7ffa4eb8d75701f8bf5a26d5914147e7f</modulus>
         <exponent>010001</exponent>
@@ -29,7 +29,7 @@
         <exponent>010001</exponent>
       </key>
     </device>
-    <device HWRevision="156" name="FRITZ!Box 7390" key_location="/etc">
+    <device HWRevision="156" VersionMajor="84" name="FRITZ!Box 7390" key_location="/etc">
       <key source="vendor" original_name="avm_firmware_public_key1">
         <modulus>ab54b73f000e9fc5bf3c0d229e56ae1644507877ca1eaf364708975de1e50236754fdc8577bd9e9ec4c94bd595c22195a9cfa2ac57840c507b483ccf1c5d4d1448c6d8c8bdab629df4e5bcd65a52695064819d1f5157afeb8fea43dedd9c7b091c344cfb42434f5f7bc77bbf2c0469400d10a29d04d6c1b2807fd3be68800eaf</modulus>
         <exponent>010001</exponent>
@@ -48,4 +48,18 @@
       </key>
     </device>
   </devices>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <Reference URI="">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <DigestValue></DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue />
+  </Signature>
 </database>
