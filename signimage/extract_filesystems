@@ -1,0 +1,30 @@
+#! /bin/bash
+srcdir="$1"
+
+( [ -z "$srcdir" ] || ! [ -d "$srcdir" ] ) &&  exit 1
+
+rm "$srcdir/tar_list" 2>/dev/null
+mkfifo "$srcdir/tar_list"
+
+for f in $(find "$srcdir" -type f -name "*.image"); do
+	tar --list --verbose --file=$f --wildcards ./var/tmp/\*.image &>"$srcdir/tar_list" &
+	while read line; do
+		filename="$(expr "$line" : ".* \./var/tmp/\([^ ]*\)")"
+		filesize="$(expr "$line" : "[^ \t]*[ \t]*[^ \t]*[ \t]*\([^ \t]*\)[ \t].*")"
+		if [ "$filename" = "filesystem.image" ]; then
+			if [ "$filesize" -ne 0 ]; then
+				tar --extract --file=$f --to-stdout ./var/tmp/filesystem.image >"$srcdir/filesystem"
+				printf ">>> %s\n" "$f"
+				process_filesystem "$srcdir/filesystem"
+				break
+			else
+				tar --extract --file=$f --to-stdout ./var/tmp/kernel.image >"$srcdir/filesystem"
+				printf ">>> %s\n" "$f"
+				process_filesystem "$srcdir/filesystem"
+			fi
+		fi
+	done <"$srcdir/tar_list"
+done
+
+rm "$srcdir/tar_list" "$srcdir/filesystem" 2>/dev/null
+

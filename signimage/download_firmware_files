@@ -1,0 +1,33 @@
+#! /bin/bash
+server="$1"
+directory="$2"
+tempdir="$3"
+
+[ -z "$tempdir" ] && exit 1
+
+rm -r "$tempdir" 2>/dev/null
+mkdir -p "$tempdir"
+
+wget \
+	--https-only \
+	--secure-protocol=tlsv1_2 \
+	--recursive --relative \
+	--mirror \
+	--no-parent \
+	--no-directories \
+	--timestamping \
+	--directory-prefix="$tempdir" \
+	--accept="*.zip,*.image" \
+	--pinnedpubkey=$server.pem \
+	--quiet \
+	https://$server/$directory/
+
+for f in $(find "$tempdir" -type f -name "*.zip"); do
+	image=$(unzip -l $f | /bin/grep "\.image" | sed -n -e "s|^.* \([^ ]*\)\$|\1|p")
+	[ -z "$image" ] && continue;
+	unzip -q $f $image -d "$tempdir" 2>/dev/null
+done
+
+find "$tempdir" -type f -not -name "*.image" -exec rm '{}' \;
+
+

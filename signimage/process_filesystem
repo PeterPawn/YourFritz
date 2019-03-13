@@ -1,0 +1,45 @@
+#! /bin/bash
+fs="$1"
+type="$(file "$fs")"
+if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
+	if [ -n "$(expr "$type" : ".*\(version 0\.0\).*")" ]; then
+		# ext2 filesystem with 'sqsh' header
+		rm "$fs.ext2" 2>/dev/null
+		mv "$fs" "$fs.ext2" 2>/dev/null
+		loop="$(losetup --offset 256 --find --read-only --show "$fs.ext2" 2>/dev/null)"
+		if expr "$loop" : "/dev/loop.*" >/dev/null 2>/dev/null; then
+			mkdir ext2 2>/dev/null
+			mount -o ro "$loop" "./ext2"
+			cp "ext2/filesystem_core.squashfs" "$fs"
+			umount "$loop"
+			losetup -d "$loop" 2>/dev/null
+			rmdir ext2 2>/dev/null
+			rm "$fs.ext2" 2>/dev/null
+		fi
+		type="$(file "$fs")"
+		[ -z "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ] && exit 1
+	fi
+	[ -n "$(expr "$type" : ".*\(big endian\).*")" ] && endianess=be || endianess=le
+	stat="$(./unsquashfs4-$endianess -stat -k "$fs" 2>&1)"
+elif [ -n "$(expr "$type" : ".*\(: data\).*")" ]; then
+	stat="$(./unsquashfs4-le -stat -k "$fs" 2>&1)"
+	if [ -n "$(expr "$stat" : ".*\(Found a valid little endian\).*")" ]; then
+		endianess=le
+	else
+		stat="$(./unsquashfs4-be -stat -k "$fs" 2>&1)"
+		if [ -n "$(expr "$stat" : ".*\(Found a valid big endian\).*")" ]; then
+			endianess=be
+		else
+			exit 1
+		fi
+	fi
+fi
+
+rm -r ./squashfs-root 2>/dev/null
+
+./unsquashfs4-$endianess -k "$fs" etc 2>/dev/null 1>&2
+
+extract_version_values ./squashfs-root
+
+rm -r ./squashfs-root 2>/dev/null
+

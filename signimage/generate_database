@@ -1,0 +1,38 @@
+#! /bin/bash
+
+write_header()
+{
+	cat << 'EndOfData'
+<?xml version="1.0"?><database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
+EndOfData
+}
+
+write_signature_entries()
+{
+	cat << 'EndOfData'
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" /><DigestValue></DigestValue></Reference></SignedInfo><SignatureValue /></Signature>
+EndOfData
+}
+
+write_footer()
+{
+	cat << 'EndOfData'
+</database>	
+EndOfData
+}
+
+write_entries_header()
+{
+	cat << 'EndOfData'
+<devices>
+EndOfData
+}
+
+write_entries_closure()
+{
+	cat << 'EndOfData'
+</devices>
+EndOfData
+}
+
+

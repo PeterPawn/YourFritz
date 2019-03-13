@@ -1,0 +1,22 @@
+#! /bin/bash
+[ -z "$1" ] && printf "\033[1mCall this script with the DNS name of a HTTPS server as parameter.\033[0m\n" && exit 1
+server="$1"
+printf "\033[1mPlease verify the certificate chain shown for the TLS certificate from '\033[1;93m%s\033[1;37m' carefully, before its public key gets used as pinned public key for further 'wget' downloads.\033[0m\n\n" "$server"
+echo | openssl s_client -connect "$server":443 | openssl x509 -outform pem -pubkey -noout -out "$server.pem.new"
+[ $? -ne 0 ] && printf "\033[1;91mError accessing server at '\033[1;93m%s\033[1;91m:443'.\033[0m\n" "$server" && exit 1
+printf "\n\033[1mContinue only, if the certificate chain was successfully verified and the presented certificate is for the right domain.\033[0m\n"
+while [ 0 -eq 0 ]; do
+	printf "\033[1;37mContinue? (enter '\033[1;93myes\033[1;37m' or '\033[1;93mno\033[1;37m') \033[1;94m"
+	read answer
+	[ "$answer" = "yes" ] && break
+	[ "$answer" = "no" ] && break
+done
+if [ "$answer" = "no" ]; then
+	rm -f "$server.pem.new"
+	printf "\033[1;91mDownloaded public key for '\033[1;93m%s\033[1;91m' was NOT saved.\033[0m\n" "$server"
+	exit 1
+fi
+mv "$server.pem.new" "$server.pem"
+printf "\033[1;37mDownloaded public key from '\033[1;93m%s\033[1;37m' was stored as '\033[1;93m%s\033[1;37m'.\033[0m\n" "$server" "$server.pem"
+printf "\033[1;37mIt may be used now to ensure the identity of the server, while downloading firmware files from this source.\033[0m\n"
+exit 0

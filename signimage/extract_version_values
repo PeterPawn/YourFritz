@@ -1,0 +1,94 @@
+#! /bin/bash
+src="$1"
+
+files=$(find "$src" -type f | wc -l)
+[ "$files" -lt 2 ] && printf "Unsupported filesystem format.\n" 1>&2 && exit 1
+
+# values from rc.conf
+
+# main version
+version="$(sed -n -e "s|^export CONFIG_VERSION=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# may be empty for release versions
+subversion="$(sed -n -e "s|^export CONFIG_SUBVERSION=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# model identification
+version_major="$(sed -n -e "s|^export CONFIG_VERSION_MAJOR=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf" | sed -n -e "2p")"
+
+# zero or a single occurence of CONFIG_VERSION_MAJOR in rc.conf
+[ -z "$version_major" ] && version_major="$(sed -n -e "s|^export CONFIG_VERSION_MAJOR=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# build type (known values are at least 1, 1000, 1001, 1004, 1007)
+buildtype="$(sed -n -e "s|^export CONFIG_BUILDTYPE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# incrementing build number from vendor - covers all builds, as far as it's known
+buildnumber="$(sed -n -e "s|^export CONFIG_BUILDNUMBER=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# build type description for BETA/LABOR versions
+labor_id_name="$(sed -n -e "s|^export CONFIG_LABOR_ID_NAME=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# release value - '1'=public release, '0'=private build, '2'=labor/beta version
+release="$(sed -n -e "s|^export CONFIG_RELEASE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# sub-classification for beta versions - '1'=beta (release has to be '1', too), all other values are handled like 'release'
+beta_release="$(sed -n -e "s|^export CONFIG_BETA_RELEASE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# build was made with tampered source files
+build_dirty="$(sed -n -e "s|^export CONFIG_BUILD_DIRTY=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# date of firmware build
+date="$(date +"%d.%m.%Y %H:%M:%S" --date @$(stat -c %Y "$src/etc/version"))"
+
+if grep -q "^[ \t]*export FIRMWARE_.*\$" "$src/etc/version" 2>/dev/null; then # use old version values to fill gaps
+	[ -z "$version" ] && version="$(sed -n -e "s|^export FIRMWARE_VERSION=\${CONFIG_VERSION_MAJOR}\.\([^\"]*\)\$|\1|p" "$src/etc/version")"
+	[ -z "$subversion" ] && subversion="$(sed -n -e "s|^export FIRMWARE_SUBVERSION=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/version")"
+	grep -q "^[ \t]*export FIRMWARE_DATE=.*\$" "$src/etc/version" 2>/dev/null && date="$(sed -n -e "s|^export FIRMWARE_DATE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/version")"
+fi
+
+if [ -z "$subversion" ]; then
+	if [ -n "$buildnumber" ]; then
+		subversion="-$buildnumber"
+	else
+		subversion="$(sed -n -e "/^[ \t]*--project)\$/{N;p}" "$src/etc/version" | sed -n -e "s|^[ \t]*echo \(.*\)\$|\1|p")"
+		[ -n "$subversion" ] && subversion="-${subversion}"
+	fi
+fi
+
+# product identification, used for defaults subdirectory of '/etc'
+model="$(sed -n -e "s|^export CONFIG_PRODUKT=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf")"
+
+# supported brandings
+if [ -n "$model" ]; then
+	brandings=""
+	for d in $src/etc/default.$model/*; do
+		brandings="$brandings${brandings:+ }${d##*/}"
+	done
+else
+	brandings="avm"
+fi
+
+# product name, may be set more than once, if it depends on branding value
+product="$(sed -n -e "s|^export CONFIG_PRODUKT_NAME=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf" | sed -n -e "1p")"
+
+# output data
+printf "Model=\"%s\"\n" "$model"
+printf "Product=\"%s\"\n" "$product"
+printf "Date=\"%s\"\n" "$date"
+printf "Version=\"%s.%s\"\n" "$version_major" "$version"
+printf "Subversion=\"%s\"\n" "$subversion"
+printf "Buildnumber=\"%s\"\n" "$buildnumber"
+printf "Buildtype=\"%s\"\n" "$buildtype"
+printf "Brandings=\"%s\"\n" "$brandings"
+printf "Release=\"%s\"\n" "$release"
+printf "BetaRelease=\"%s\"\n" "$beta_release"
+printf "LaborName=\"%s\"\n" "$labor_id_name"
+printf "DirtyBuild=\"%s\"\n" "$build_dirty"
+for k in $src/etc/avm_firmware_public_key* $src/etc/plugin_global_key.pem; do
+	[ -f "$k" ] || continue
+	key="$(expr "$k" : ".*avm_firmware_public_key\(.*\)")"
+	[ -z "$key" ] && key="PluginKey" || key="PublicKey$key"
+	keyvalue="$(sed -n -e "1p" "$k")"
+	printf "%s=\"%s\"\n" "$key" "$keyvalue"
+done
+
+exit 0
