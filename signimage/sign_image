@@ -167,7 +167,7 @@ is_fritzos_environment()
 # check parameters                                                                 #
 #                                                                                  #
 ####################################################################################
-if [ -z $1 ]; then
+if [ -z "$1" ]; then
 		usage 1>&2
 		exit 1
 else
