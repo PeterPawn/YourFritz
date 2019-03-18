@@ -318,7 +318,7 @@ read_openssl_file()
 # check image file                                                                 #
 #                                                                                  #
 ####################################################################################
-if [ -z $1 ]; then
+if [ -z "$1" ]; then
 		usage 1>&2
 		exit 2
 else
@@ -410,6 +410,16 @@ else
 fi
 ####################################################################################
 #                                                                                  #
+# use 'force-local' option with GNU TAR, if the image name contains a colon        #
+#                                                                                  #
+####################################################################################
+if [ -n "$(expr "$image_file" : ".*\(:\).*")" ]; then
+	"$YF_SIGNIMAGE_TAR" --help 2>&1 | grep -q 'force-local' 2>/dev/null && force_local="--force-local"
+else
+	force_local=""
+fi
+####################################################################################
+#                                                                                  #
 # If the signature isn't the last file (we've checked the length already), we have #
 # to find the offset of the last member with the signature name - the last one is  #
 # important, because the archive may contain more than one member with the same    #
@@ -428,7 +438,7 @@ fi
 #                                                                                  #
 ####################################################################################
 offset=0
-"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" | 
+"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" $force_local |
 sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
 while read line; do
 	eval $line
@@ -462,7 +472,7 @@ if [ $SIZE -eq 0 -o $SIZE -gt 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
 	exit 5
 fi
-"$YF_SIGNIMAGE_TAR" -x -f "$image_file" -C "$tmp" ./var/signature 2>/dev/null
+"$YF_SIGNIMAGE_TAR" -x -f "$image_file" -C "$tmp" $force_local ./var/signature 2>/dev/null
 fs=$(stat -c %s "$tmp/var/signature")
 if [ $fs -ne 128 -a $fs -ne 256 -a $fs -ne 512 ]; then
 	echo -e "The specified image file \x1B[1m$image_file\x1B[0m contains an invalid signature file." 1>&2
@@ -477,7 +487,7 @@ skip_blocks=$BLOCKS
 ####################################################################################
 touch "$tmp/public_keys"
 shift
-if [ -z $1 ]; then
+if [ -z "$1" ]; then
 	usage 1>&2
 	exit 2
 fi

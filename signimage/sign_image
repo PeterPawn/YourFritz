@@ -239,6 +239,16 @@ else
 fi
 ####################################################################################
 #                                                                                  #
+# use 'force-local' option with GNU TAR, if the image name contains a colon        #
+#                                                                                  #
+####################################################################################
+if [ -n "$(expr "$image_file" : ".*\(:\).*")" ]; then
+	"$YF_SIGNIMAGE_TAR" --help 2>&1 | grep -q 'force-local' 2>/dev/null && force_local="--force-local"
+else
+	force_local=""
+fi
+####################################################################################
+#                                                                                  #
 # verify input file format                                                         #
 #                                                                                  #
 ####################################################################################
@@ -266,7 +276,7 @@ trap "rm -r \"$tmp\"" EXIT HUP
 #                                                                                  #
 ####################################################################################
 offset=0
-"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" |
+"$YF_SIGNIMAGE_TAR" -t -v -f "$image_file" $force_local |
 sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" |
 while read line; do
 	eval $line
