@@ -2,19 +2,29 @@
 fs="$1"
 type="$(file "$fs")"
 if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
-	if [ -n "$(expr "$type" : ".*\(version 0\.0\).*")" ]; then
-		# ext2 filesystem with 'sqsh' header
-		rm "$fs.ext2" 2>/dev/null
-		mv "$fs" "$fs.ext2" 2>/dev/null
-		loop="$(losetup --offset 256 --find --read-only --show "$fs.ext2" 2>/dev/null)"
-		if expr "$loop" : "/dev/loop.*" >/dev/null 2>/dev/null; then
-			mkdir ext2 2>/dev/null
-			mount -o ro "$loop" "./ext2"
-			cp "ext2/filesystem_core.squashfs" "$fs"
-			umount "$loop"
-			losetup -d "$loop" 2>/dev/null
-			rmdir ext2 2>/dev/null
-			rm "$fs.ext2" 2>/dev/null
+	version="$(expr "$type" : ".*version \([0-9]\.0\).*")"
+	if [ "$version" = "0.0" ] || [ "$version" = "3.0" ]; then
+		# ext2 filesystem with 'sqsh' header or SquashFS 3 filesystem on versions prior to 06.5x
+		rm "$fs.img" 2>/dev/null
+		mv "$fs" "$fs.img" 2>/dev/null
+		if [ "$version" = "0.0" ]; then
+			loop="$(losetup --offset 256 --find --read-only --show "$fs.img" 2>/dev/null)"
+			if expr "$loop" : "/dev/loop.*" >/dev/null 2>/dev/null; then
+				mkdir img 2>/dev/null
+				mount -o ro "$loop" "./img"
+				cp "img/filesystem_core.squashfs" "$fs"
+				umount "$loop"
+				losetup -d "$loop" 2>/dev/null
+				rmdir img 2>/dev/null
+				rm "$fs.img" 2>/dev/null
+			fi
+		else
+			endianess="$(expr "$type" : ".*, \(big\|little\) endian,.*")"
+			[ "$endianess" = "big" ] && endianess="be" || endianess="le"
+			unsquashfs4-$endianess "$fs.img" "filesystem_core.squashfs" 2>/dev/null 1>&2
+			rm "$fs.img" 2>/dev/null
+			mv "squashfs-root/filesystem_core.squashfs" "$fs"
+			rm -r ./squashfs-root 2>/dev/null
 		fi
 		type="$(file "$fs")"
 		[ -z "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ] && exit 1
