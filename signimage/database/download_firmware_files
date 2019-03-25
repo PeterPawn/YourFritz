@@ -30,4 +30,4 @@ done
 
 find "$tempdir" -type f -not -name "*.image" -exec rm '{}' \;
 
-
+printf "%u new files stored locally.\n" "$(find "$tempdir" -type f | wc -l)" 1>&2
