@@ -14,13 +14,14 @@ for f in $(find "$srcdir" -type f -name "*.image"); do
 		if [ "$filename" = "filesystem.image" ]; then
 			if [ "$filesize" -ne 0 ]; then
 				tar --extract --file=$f --to-stdout ./var/tmp/filesystem.image >"$srcdir/filesystem"
-				printf ">>> %s\n" "$f"
-				process_filesystem "$srcdir/filesystem"
+				printf ">>> %s\n" "$f" 1>&2
+				[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
+				/proc/self/exe $xtrace process_filesystem "$srcdir/filesystem"
 				break
 			else
 				tar --extract --file=$f --to-stdout ./var/tmp/kernel.image >"$srcdir/filesystem"
-				printf ">>> %s\n" "$f"
-				process_filesystem "$srcdir/filesystem"
+				printf ">>> %s\n" "$f" 1>&2
+				/proc/self/exe $xtrace process_filesystem "$srcdir/filesystem"
 			fi
 		fi
 	done <"$srcdir/tar_list"
