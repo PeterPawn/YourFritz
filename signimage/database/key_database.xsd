@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:yourfritz-de:signimage" xmlns:si="urn:yourfritz-de:signimage" elementFormDefault="qualified">
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" targetNamespace="urn:yourfritz-de:signimage" xmlns:si="urn:yourfritz-de:signimage" elementFormDefault="qualified">
   <xs:import namespace="http://www.w3.org/2000/09/xmldsig#" schemaLocation="xmldsig-core-schema.xsd"/>
   <xs:simpleType name="rsa_modulus">
     <xs:restriction base="xs:token">
@@ -63,8 +63,8 @@
     <xs:complexType>
       <xs:sequence>
         <xs:element ref="si:devices" minOccurs="0"/>
+        <xs:element ref="ds:Signature" minOccurs="1" maxOccurs="1"/>
       </xs:sequence>
     </xs:complexType>
-    <xs:element name="signature" type="ds:SignatureType"/>
   </xs:element>
 </xs:schema>
