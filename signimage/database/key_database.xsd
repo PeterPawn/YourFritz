@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:yourfritz-de:signimage" xmlns:si="urn:yourfritz-de:signimage" elementFormDefault="qualified">
+  <xs:import namespace="http://www.w3.org/2000/09/xmldsig#" schemaLocation="xmldsig-core-schema.xsd"/>
   <xs:simpleType name="rsa_modulus">
     <xs:restriction base="xs:token">
       <xs:pattern value="[0-9a-f]{256}"/>
@@ -16,6 +17,15 @@
       <xs:enumeration value="customer"/>
     </xs:restriction>
   </xs:simpleType>
+   <xs:simpleType name="key_usage">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="firmware"/>
+      <xs:enumeration value="accessoires"/>
+      <xs:enumeration value="inhouse"/>
+      <xs:enumeration value="unknown"/>
+      <xs:enumeration value="extension"/>
+    </xs:restriction>
+  </xs:simpleType>
   <xs:element name="key">
     <xs:complexType>
       <xs:all>
@@ -23,6 +33,7 @@
         <xs:element name="exponent" type="si:rsa_exponent"/>
       </xs:all>
       <xs:attribute name="source" type="si:key_source" use="required"/>
+      <xs:attribute name="usage" type="si:key_usage"/>
       <xs:attribute name="original_name" type="xs:string"/>
     </xs:complexType>
   </xs:element>
@@ -54,5 +65,6 @@
         <xs:element ref="si:devices" minOccurs="0"/>
       </xs:sequence>
     </xs:complexType>
+    <xs:element name="signature" type="ds:SignatureType"/>
   </xs:element>
 </xs:schema>
