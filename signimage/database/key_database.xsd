@@ -21,6 +21,7 @@
     <xs:restriction base="xs:string">
       <xs:enumeration value="firmware"/>
       <xs:enumeration value="accessoires"/>
+      <xs:enumeration value="plugins"/>
       <xs:enumeration value="inhouse"/>
       <xs:enumeration value="unknown"/>
       <xs:enumeration value="extension"/>

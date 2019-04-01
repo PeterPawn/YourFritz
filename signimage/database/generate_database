@@ -35,4 +35,19 @@ write_entries_closure()
 EndOfData
 }
 
-
+get_key_usage()
+{
+	if [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key1" ]; then
+		printf "firmware"
+	elif [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key3" ]; then
+		printf "accessoires"
+	if [ "$1" = "vendor" ] && [ "$2" = "plugin_global_key.pem" ]; then
+		printf "plugins"
+	if [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key4" ]; then
+		printf "inhouse"
+	if [ "$1" = "customer" ]; then
+		printf "extension"
+	else
+		printf "unknown"
+	fi
+}

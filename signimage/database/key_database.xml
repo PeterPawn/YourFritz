@@ -2,47 +2,47 @@
 <database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
   <devices>
     <device HWRevision="185" VersionMajor="113" name="FRITZ!Box 7490" key_location="/etc">
-      <key source="vendor" original_name="avm_firmware_public_key1">
+      <key source="vendor" usage="firmware" original_name="avm_firmware_public_key1">
         <modulus>cbdcfcc6ac9a1657a1c6f197e3056f1d68b8bb7deb480249e5f0ded677c54fde10be5a14b1e6a395483bd4bee608c09d385b1e90564ca84b9272926c45bfd328d7da876567e3e15f719800a53ecc21af583431d0c40806ca89f6f958e188ec69572df09e24de71eaa0782c01877158f286afd95037e7eb059367c466095944e1</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key2">
+      <key source="vendor" usage="unknown" original_name="avm_firmware_public_key2">
         <modulus>c381540e8255baf78d29b7ac182e088cf8f2f4f418c186e927510cb469b5c16b6d161e6b0354c199d9721a5fda037047d4ec6f6e6bfc02ce5335023b24e757b7d8241e91f39fa43381b7b028ef65007e97593fe1b86d406767db7984fa7d780178ae2cfea9dc9ab7656692e643755397dd49ffdd2eb4abfc9cacc0bd6746fcdb</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key3">
+      <key source="vendor" usage="accessoires" original_name="avm_firmware_public_key3">
         <modulus>f2ee9ffd8556211f5644da48a252b107124b330d4c20dcf3b9bac892924cabaa4df4f53e1c62e3f2aa12a23eb1d770df1520a998078738407e6a71b077f73ba976363836b880b0dd88741bc3b83ab061691226e823404b7fc88ed278d8130fe5336eb925c78f2f8ad7cb87d9586286f768ab3236fa8fb51ae7c4bbe1e041d849</modulus>
         <exponent>010001</exponent>
       </key>
     </device>
     <device HWRevision="213" VersionMajor="141" name="FRITZ!Box Cable 6490" key_location="/etc">
-      <key source="vendor" original_name="avm_firmware_public_key1">
+      <key source="vendor" usage="firmware" original_name="avm_firmware_public_key1">
         <modulus>98ef668b9156913907e7e2d6c5ff74c23fd3a065cb1f382b19691655aa3cb5f5a010cf00f90c89a5f6bf2f9c029bb90c80ee53064b88067af1c2879a6464430688dad838a7b6d693ee00f37d3d0844bd49ca418213678660d5f918037d0a72225195fd02d40b90035932684311c8bdc7ffa4eb8d75701f8bf5a26d5914147e7f</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key2">
+      <key source="vendor" usage="unknown" original_name="avm_firmware_public_key2">
         <modulus>a9f66483756be21dd7eb6bbcf13f5edf4795c2cf9dee03ebafd760a4683d195fd859e82ba7ca34050d53de58909486a454d0268256a164ae90359404c1ebbc6f32a26612f30764093a37d39817d70d79cd85e032a7d9a0c55eb98a78bf44927ef8dd616e04865dbfeb79cb00823fb6a1911ac2a545975acfbfd412a58cd733d7</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key3">
+      <key source="vendor" usage="accessoires" original_name="avm_firmware_public_key3">
         <modulus>f2ee9ffd8556211f5644da48a252b107124b330d4c20dcf3b9bac892924cabaa4df4f53e1c62e3f2aa12a23eb1d770df1520a998078738407e6a71b077f73ba976363836b880b0dd88741bc3b83ab061691226e823404b7fc88ed278d8130fe5336eb925c78f2f8ad7cb87d9586286f768ab3236fa8fb51ae7c4bbe1e041d849</modulus>
         <exponent>010001</exponent>
       </key>
     </device>
     <device HWRevision="156" VersionMajor="84" name="FRITZ!Box 7390" key_location="/etc">
-      <key source="vendor" original_name="avm_firmware_public_key1">
+      <key source="vendor" usage="firmware" original_name="avm_firmware_public_key1">
         <modulus>ab54b73f000e9fc5bf3c0d229e56ae1644507877ca1eaf364708975de1e50236754fdc8577bd9e9ec4c94bd595c22195a9cfa2ac57840c507b483ccf1c5d4d1448c6d8c8bdab629df4e5bcd65a52695064819d1f5157afeb8fea43dedd9c7b091c344cfb42434f5f7bc77bbf2c0469400d10a29d04d6c1b2807fd3be68800eaf</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key2">
+      <key source="vendor" usage="unknown" original_name="avm_firmware_public_key2">
         <modulus>c923d6cde5ca1780e84b6383c6c24b03a56532149f0a210541f16b1698d5761dd90ffd77500ff5dd2c9269710dad5ebcb1f6fbf318993429fcb228c043cc0980ec09b85b8a393c96b3e52f647b898ddff37aa9f662771aa87cee8686d3e2e3970a38e25bdc13f591344a2f6a39647a6555696fca21423e90c987e990ad64ff81</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="avm_firmware_public_key3">
+      <key source="vendor" usage="accessoires" original_name="avm_firmware_public_key3">
         <modulus>f2ee9ffd8556211f5644da48a252b107124b330d4c20dcf3b9bac892924cabaa4df4f53e1c62e3f2aa12a23eb1d770df1520a998078738407e6a71b077f73ba976363836b880b0dd88741bc3b83ab061691226e823404b7fc88ed278d8130fe5336eb925c78f2f8ad7cb87d9586286f768ab3236fa8fb51ae7c4bbe1e041d849</modulus>
         <exponent>010001</exponent>
       </key>
-      <key source="vendor" original_name="plugin_global_key.pem">
+      <key source="vendor" usage="plugins" original_name="plugin_global_key.pem">
         <modulus>df51a2f8b2324725b104708f2b20684ebca7817cc0f2e4eabb4acde78fc5a5eeee8c32996ff8dbcfe6163f53dca8476dae88ce5c5e3712da5a1fd1f968e51ce66aabba78c4e10d64112cb81cf27082e1bc6ee05bd90c14378e35296510d39adcf44f3662aba3d7143174cceadc72111c848cddb25956150e861f41b7e5e97cdd</modulus>
         <exponent>010001</exponent>
       </key>
