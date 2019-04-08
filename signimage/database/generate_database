@@ -1,53 +1,147 @@
 #! /bin/bash
-
+#######################################################################################################
+#                                                                                                     #
+# generate a new firmwware-signing database from text file                                            #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# generate_database, version 0.6                                                                      #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Run the script without parameters for an usage description.                                         #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+database_file="key_database.xml"
+database_schema="key_database.xsd"
+database_to_text_transform="keys_to_generator_input.xslt"
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# usage information                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	printf "Create a new XML file containing public keys needed to verify firmware signatures.\n\n"
+	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "Usage:\n\n"
+	printf "\033[1m%s\033[0m <input_file> [ -a ]\n\n" "${0##*/}"
+)
+#######################################################################################################
+#                                                                                                     #
+# output the XML file intro                                                                           #
+#                                                                                                     #
+#######################################################################################################
 write_header()
 {
 	cat << 'EndOfData'
 <?xml version="1.0"?><database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
 EndOfData
 }
-
+#######################################################################################################
+#                                                                                                     #
+# output a signature node according to 'xmldsig#' scheme                                              #
+#                                                                                                     #
+#######################################################################################################
 write_signature_entries()
 {
 	cat << 'EndOfData'
 <Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" /><DigestValue></DigestValue></Reference></SignedInfo><SignatureValue /></Signature>
 EndOfData
 }
-
+#######################################################################################################
+#                                                                                                     #
+# write XML file closure                                                                              #
+#                                                                                                     #
+#######################################################################################################
 write_footer()
 {
 	cat << 'EndOfData'
 </database>	
 EndOfData
 }
-
+#######################################################################################################
+#                                                                                                     #
+# output header for devices collection                                                                #
+#                                                                                                     #
+#######################################################################################################
 write_entries_header()
 {
 	cat << 'EndOfData'
 <devices>
 EndOfData
 }
-
+#######################################################################################################
+#                                                                                                     #
+# output closure of devices node                                                                      #
+#                                                                                                     #
+#######################################################################################################
 write_entries_closure()
 {
 	cat << 'EndOfData'
 </devices>
 EndOfData
 }
-
+#######################################################################################################
+#                                                                                                     #
+# get key usage based on original filename                                                            #
+#                                                                                                     #
+#######################################################################################################
 get_key_usage()
 {
 	if [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key1" ]; then
 		printf "firmware"
 	elif [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key3" ]; then
 		printf "accessoires"
-	if [ "$1" = "vendor" ] && [ "$2" = "plugin_global_key.pem" ]; then
+	elif [ "$1" = "vendor" ] && [ "$2" = "plugin_global_key.pem" ]; then
 		printf "plugins"
-	if [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key4" ]; then
+	elif [ "$1" = "vendor" ] && [ "$2" = "avm_firmware_public_key4" ]; then
 		printf "inhouse"
-	if [ "$1" = "customer" ]; then
+	elif [ "$1" = "customer" ]; then
 		printf "extension"
 	else
 		printf "unknown"
 	fi
 }
+#######################################################################################################
+#                                                                                                     #
+# let's do something useful                                                                           #
+#                                                                                                     #
+#######################################################################################################
+[ -z "$1" ] && usage && exit 0
+
+input="$1"
+! [ -f "$input" ] && usage 1>&2 && exit 1
+
+tmp="${TMPDIR:-/tmp}"
+
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit 0

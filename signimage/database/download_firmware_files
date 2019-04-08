@@ -33,10 +33,11 @@ usage()
 	printf "Download firmware images from internet.\n\n"
 	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
 	printf "Usage:\n\n"
-	printf "\033[1m%s\033[0m <url> <remote_directory> <local_directory>\n\n" "${0##*/}"
+	printf "\033[1m%s\033[0m <url> <remote_directory> [ -a ] <local_directory>\n\n" "${0##*/}"
 	printf "Download all 'zip' and 'image' files from the specified server and store\n"
 	printf "them locally in the specified directory. This local directory is removed\n"
-	printf "at the first step and re-created prior to the download.\n\n"
+	printf "at the first step and re-created prior to the download, if option '-a' was\n"
+	printf "not specified.\n\n"
 	printf "The recursive search for such files starts at the specified directory on\n"
 	printf "server.\n\n"
 	printf "A found 'zip' files is researched further and a contained 'image' file\n"
@@ -51,19 +52,29 @@ usage()
 
 server="$1"
 directory="$2"
-localdir="$3"
+shift 2
+if [ "$1" = "-a" ]; then
+	append=1
+	shift
+else
+	append=0
+fi
+localdir="$1"
 
-[ -z "$1" ] && usage && exit 0
+[ -z "$server" ] && usage && exit 0
 [ -z "$localdir" ] && usage 1>&2 && exit 1
 [ "${#localdir}" -lt 2 ] && usage 1>&2 && exit 1
-[ -n "$4" ] && usage 1>&2 && exit 1
-! [ -f "${1}.pem" ] && usage 1>&2 && exit 1
+[ -n "$2" ] && usage 1>&2 && exit 1
+! [ -f "$server.pem" ] && usage 1>&2 && exit 1
 
-rm -r "$localdir" 2>/dev/null
+[ $append -eq 1 ] || rm -r "$localdir" 2>/dev/null
 mkdir -p "$localdir" 2>/dev/null
+oldcount="$(find "$localdir" -type f -name '*.image' | wc -l)"
 
-# no trap at normal exit, only if interrupted anyway
-trap "printf 'Download interrupted, intermediate results removed.\n' 1>&2; rm -r "$localdir" 2>/dev/null; exit" HUP INT
+# no trap at normal exit, only if interrupted in another manner
+[ $append -eq 0 ] \
+	&& trap "printf 'Download interrupted, intermediate results removed.\n' 1>&2; rm -r "$localdir" 2>/dev/null; exit" HUP INT \
+	|| trap "printf 'Download interrupted, intermediate results kept.\n' 1>&2; exit" HUP INT
 
 wget \
 	--https-only \
@@ -82,12 +93,14 @@ wget \
 for zipfile in $(find "$localdir" -type f -name "*.zip" 2>/dev/null); do
 	image=$(unzip -l $zipfile 2>/dev/null | /bin/grep "\.image" | sed -n -e "s|^.* \([^ ]*\)\$|\1|p")
 	[ -z "$image" ] && continue;
-	unzip -q $zipfile $image -d "$localdir" 2>/dev/null
+	unzip -o -q $zipfile $image -d "$localdir" 2>/dev/null
 done
 
 find "$localdir" -type f -not -name "*.image" -delete
 
-printf "%u new files stored locally.\n" "$(find "$localdir" -type f | wc -l)" 1>&2
+newcount="$(find "$localdir" -type f -name '*.image' | wc -l)"
+newcount=$(( newcount - oldcount ))
+printf "%u new files stored locally.\n" "$newcount" 1>&2
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
