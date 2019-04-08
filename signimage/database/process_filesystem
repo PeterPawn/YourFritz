@@ -1,5 +1,78 @@
 #! /bin/bash
+#######################################################################################################
+#                                                                                                     #
+# extract all files from a SquashFS image                                                             #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# process_filesystem, version 0.6                                                                     #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Run the script without parameters for an usage description.                                         #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	printf "Extract files from SquashFS images.\n\n"
+	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "Usage:\n\n"
+	printf "\033[1m%s\033[0m <squashfs_image> <handler_script> [ parameters ]\n\n" "${0##*/}"
+	printf "This script extracts the all files from the specified SquashFS image into\n"
+	printf "a temporary directory and calls the specified handler script with the\n"
+	printf "name of this directory as first parameter. The called script decides,\n"
+	printf "which further actions will be taken. The directory is removed immediately,\n"
+	printf "if control is returned to this script.\n\n"
+	printf "The input image gets removed, if this script itself exits, but even before,\n"
+	printf "the input file is seen as 'volatile' and it gets removed or replaced, if\n"
+	printf "necessary to extract any embedded SquashFS image as core filesystems.\n"
+	printf "Therefore the directory with the input image has to be writable by the\n"
+	printf "caller.\n\n"
+	printf "The temporary directory used for extraction is created below the path,\n"
+	printf "which is specified by the environment value 'TMPDIR', or below '/tmp', if\n"
+	printf "the value is missing.\n"
+)
+
 fs="$1"
+handler="$2"
+shift 2
+tmp="${TMPDIR:-/tmp}"
+
+( [ -z "$handler" ] || ! [ -f "$fs" ] || ! [ -x "$handler" ] ) && usage 1>&2 && exit 1
+
+cleanup()
+{
+	[ -d "img" ] || return
+	if grep -q "$(realpath "img")" /proc/mounts 2>/dev/null; then
+		dev="$(sed -n -e "s|\([^ \t]*\) $(realpath "img") .*|\1|p" /proc/mounts)"
+		[ -n "$dev" ] && umount "$dev" 2>/dev/null
+	fi
+	if grep -q "$fs.img" /sys/devices/virtual/block/loop*/loop/backing_file 2>/dev/null; then
+		losetup -d "/dev/$(grep -l "filesystem.img" /sys/devices/virtual/block/loop*/loop/backing_file 2>/dev/null | sed -n -e "1s|/sys/devices/virtual/block/\(loop[0-9]*\)/loop.*|\1|p")"
+	fi
+	rmdir "img" 2>/dev/null
+}
+
+trap "cleanup; rm -r "${tmp}/process_filesystem" "$fs" "$fs.img" 2>/dev/null" HUP EXIT INT
+
+[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
+
 type="$(file "$fs")"
 if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
 	version="$(expr "$type" : ".*version \([0-9]\.0\).*")"
@@ -8,10 +81,12 @@ if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
 		rm "$fs.img" 2>/dev/null
 		mv "$fs" "$fs.img" 2>/dev/null
 		if [ "$version" = "0.0" ]; then
+			# it's an ext2 filesystem with the dummy header, mount it somewhere to extract the core filesystem
 			loop="$(losetup --offset 256 --find --read-only --show "$fs.img" 2>/dev/null)"
 			if expr "$loop" : "/dev/loop.*" >/dev/null 2>/dev/null; then
 				mkdir img 2>/dev/null
 				mount -o ro "$loop" "./img"
+				exit
 				cp "img/filesystem_core.squashfs" "$fs"
 				umount "$loop"
 				losetup -d "$loop" 2>/dev/null
@@ -19,6 +94,7 @@ if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
 				rm "$fs.img" 2>/dev/null
 			fi
 		else
+			# it's an old SquashFS3 filesystem, use 'unsquashfs' as usual, but extract only the core filesystem
 			endianess="$(expr "$type" : ".*, \(big\|little\) endian,.*")"
 			[ "$endianess" = "big" ] && endianess="be" || endianess="le"
 			unsquashfs4-$endianess "$fs.img" "filesystem_core.squashfs" 2>/dev/null 1>&2
@@ -27,11 +103,12 @@ if [ -n "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ]; then
 			rm -r ./squashfs-root 2>/dev/null
 		fi
 		type="$(file "$fs")"
-		[ -z "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ] && exit 1
+		[ -z "$(expr "$type" : ".*\(Squashfs filesystem\).*")" ] && rm "$fs.img" "$fs" 2>/dev/null && exit 1
 	fi
 	[ -n "$(expr "$type" : ".*\(big endian\).*")" ] && endianess=be || endianess=le
 	stat="$(./unsquashfs4-$endianess -stat -k "$fs" 2>&1)"
 elif [ -n "$(expr "$type" : ".*\(: data\).*")" ]; then
+	# it's a combined kernel and SquashFS image, the 'unsquashfs' utility has to locate the superblock first
 	stat="$(./unsquashfs4-le -stat -k "$fs" 2>&1)"
 	if [ -n "$(expr "$stat" : ".*\(Found a valid little endian\).*")" ]; then
 		endianess=le
@@ -40,16 +117,21 @@ elif [ -n "$(expr "$type" : ".*\(: data\).*")" ]; then
 		if [ -n "$(expr "$stat" : ".*\(Found a valid big endian\).*")" ]; then
 			endianess=be
 		else
+			rm "$fs" 2>/dev/null
 			exit 1
 		fi
 	fi
 fi
 
-rm -r ./squashfs-root 2>/dev/null
+rm -r "${tmp}/process_filesystem" 2>/dev/null
 
-./unsquashfs4-$endianess -k "$fs" etc 2>/dev/null 1>&2
+./unsquashfs4-$endianess -d "${tmp}/process_filesystem" -k "$fs" etc 2>/dev/null 1>&2
 
-extract_version_values ./squashfs-root
+/proc/self/exe $xtrace "$handler" "${tmp}/process_filesystem" $*
 
-rm -r ./squashfs-root 2>/dev/null
-
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit 0

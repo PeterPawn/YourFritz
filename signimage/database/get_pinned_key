@@ -1,22 +1,102 @@
 #! /bin/bash
-[ -z "$1" ] && printf "\033[1mCall this script with the DNS name of a HTTPS server as parameter.\033[0m\n" && exit 1
+#######################################################################################################
+#                                                                                                     #
+# prepare a pinned public key for mass-download of firmware files from server of vendor.              #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# get_pinned_key, version 0.6                                                                         #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Run the script without parameters for an usage description.                                         #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	printf "Prepare a pinned public key for mass-download from server of vendor.\n\n"
+	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "Usage:\n\n"
+	printf "\033[1m%s\033[0m <url>\n\n" "${0##*/}"
+	printf "The certificate of the specified server will be downloaded and - if the\n"
+	printf "chain was successfully verified - displayed for a manual verification,\n"
+	printf "that the certificate was issued for the expected server and purpose.\n\n"
+	printf "If the certificate passes all checks, its public key  gets stored in a\n"
+	printf "local file '<servername>.pem' and may be used as pinned key for further\n"
+	printf "TLS connections to this server.\n"
+)
+
+[ -z "$1" ] && usage 1>&2 && exit 1
+
 server="$1"
-printf "\033[1mPlease verify the certificate chain shown for the TLS certificate from '\033[1;93m%s\033[1;37m' carefully, before its public key gets used as pinned public key for further 'wget' downloads.\033[0m\n\n" "$server"
-echo | openssl s_client -connect "$server":443 | openssl x509 -outform pem -pubkey -noout -out "$server.pem.new"
+tmp="${TMPDIR:-/tmp}"
+
+trap "rm "$tmp/ssl_connection" "$tmp/ssl_certificate" "$server.pem.new" 2>/dev/null" EXIT HUP INT
+
+export LC_CTYPE="en_US.UTF-8"
+printf "\n" | openssl s_client -tls1_2 -connect "$server":443 > "$tmp/ssl_connection" 2>&1
 [ $? -ne 0 ] && printf "\033[1;91mError accessing server at '\033[1;93m%s\033[1;91m:443'.\033[0m\n" "$server" && exit 1
-printf "\n\033[1mContinue only, if the certificate chain was successfully verified and the presented certificate is for the right domain.\033[0m\n"
+
+verification="$(grep "^Verification" "$tmp/ssl_connection")"
+if [ "$verification" = "Verification: OK" ]; then
+	sed -n -e "/BEGIN CERTIFICATE/,/END CERTIFICATE/p" "$tmp/ssl_connection" > "$tmp/ssl_certificate"
+	rm "$tmp/ssl_connection" 2>/dev/null
+	openssl x509 -outform pem -pubkey -noout -out "$server.pem.new" -in "$tmp/ssl_certificate"
+else
+	printf "\033[1mThe certificate chain could not be verified.\033[0m\n\n"
+	exit 1
+fi
+
+printf "\033[1mPlease verify the certificate chain shown for the TLS certificate from\n\n"
+printf "\033[1;93m%s\033[1;37m\n\n" "$server"
+printf "carefully, before its public key gets used as pinned public key for further 'wget' downloads.\033[0m\n\n"
+	openssl x509 -noout -text -in "$tmp/ssl_certificate"
+
+
+printf "\n\033[1mContinue only, if the certificate chain was successfully verified and the presented\n"
+printf "certificate is for the right domain.\033[0m\n\n"
+
 while [ 0 -eq 0 ]; do
 	printf "\033[1;37mContinue? (enter '\033[1;93myes\033[1;37m' or '\033[1;93mno\033[1;37m') \033[1;94m"
 	read answer
 	[ "$answer" = "yes" ] && break
 	[ "$answer" = "no" ] && break
 done
+
+rm "$tmp/ssl_connection" 2>/dev/null
+
 if [ "$answer" = "no" ]; then
 	rm -f "$server.pem.new"
 	printf "\033[1;91mDownloaded public key for '\033[1;93m%s\033[1;91m' was NOT saved.\033[0m\n" "$server"
 	exit 1
 fi
+
 mv "$server.pem.new" "$server.pem"
-printf "\033[1;37mDownloaded public key from '\033[1;93m%s\033[1;37m' was stored as '\033[1;93m%s\033[1;37m'.\033[0m\n" "$server" "$server.pem"
-printf "\033[1;37mIt may be used now to ensure the identity of the server, while downloading firmware files from this source.\033[0m\n"
+
+printf "\033[1;37mDownloaded public key from\n\n"
+printf "\033[1;93m%s\033[1;37m\n\n" "$server"
+printf "was stored as '\033[1;93m%s\033[1;37m'.\033[0m\n\n" "$server.pem"
+printf "\033[1;37mIt may be used now to ensure the identity of the server, while downloading firmware\n"
+printf "files from this source.\033[0m\n"
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
 exit 0

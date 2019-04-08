@@ -1,31 +1,82 @@
 #! /bin/bash
-srcdir="$1"
+#######################################################################################################
+#                                                                                                     #
+# extract SquashFS image files from firmware images                                                   #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# extract_filesystems, version 0.6                                                                    #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Run the script without parameters for an usage description.                                         #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	printf "Extract SquashFS images from a firmware image in TAR archive format.\n\n"
+	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "Usage:\n\n"
+	printf "\033[1m%s\033[0m <local_directory> <handler_script> [ parameter ]\n\n" "${0##*/}"
+	printf "All firmware image files in the specified directory are processed in the\n"
+	printf "order of a 'find' command. If the image contains a combined file with\n"
+	printf "kernel and filesystem (the contained file 'filesystem.image' has a zero\n"
+	printf "length in this case), this one gets extracted instead of the usual file\n"
+	printf "'filesystem.image'.\n\n"
+	printf "After the file was extracted successfully, the specified command is called\n"
+	printf "for further processing.\n\n"
+	printf "The extracted filesystem image is temporarily stored in the processed source\n"
+	printf "directory, therefore this directory has to be writable by the caller.\n"
+)
 
-( [ -z "$srcdir" ] || ! [ -d "$srcdir" ] ) &&  exit 1
+[ -z "$1" ] && usage && exit 0
+
+srcdir="$1"
+handler="$2"
+shift 2
+
+( [ -z "$srcdir" ] || ! [ -d "$srcdir" ] || [ -z "$handler" ] || ! [ -x "$handler" ] ) && usage 1>&2 && exit 1
+
+trap "rm -f "$srcdir/tar_list" "$src_dir/filesystem" 2>/dev/null" HUP EXIT INT
 
 rm "$srcdir/tar_list" 2>/dev/null
 mkfifo "$srcdir/tar_list"
 
-for f in $(find "$srcdir" -type f -name "*.image"); do
-	tar --list --verbose --file=$f --wildcards ./var/tmp/\*.image &>"$srcdir/tar_list" &
+[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
+
+for image in $(find "$srcdir" -type f -name "*.image"); do
+	tar --list --verbose --file="$image" --wildcards ./var/tmp/\*.image > "$srcdir/tar_list" 2>&1 &
 	while read line; do
 		filename="$(expr "$line" : ".* \./var/tmp/\([^ ]*\)")"
 		filesize="$(expr "$line" : "[^ \t]*[ \t]*[^ \t]*[ \t]*\([^ \t]*\)[ \t].*")"
 		if [ "$filename" = "filesystem.image" ]; then
-			if [ "$filesize" -ne 0 ]; then
-				tar --extract --file=$f --to-stdout ./var/tmp/filesystem.image >"$srcdir/filesystem"
-				printf ">>> %s\n" "$f" 1>&2
-				[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
-				/proc/self/exe $xtrace process_filesystem "$srcdir/filesystem"
-				break
-			else
-				tar --extract --file=$f --to-stdout ./var/tmp/kernel.image >"$srcdir/filesystem"
-				printf ">>> %s\n" "$f" 1>&2
-				/proc/self/exe $xtrace process_filesystem "$srcdir/filesystem"
-			fi
+			[ "$filesize" -eq 0 ] && filename="kernel" || filename="filesystem"
+			tar --extract --file="$image" --to-stdout ./var/tmp/${filename}.image > "$srcdir/filesystem"
+			/proc/self/exe $xtrace "$handler" "$srcdir/filesystem" $* "$image"
+			rm "$srcdir/filesystem" 2>/dev/null
+			break
 		fi
-	done <"$srcdir/tar_list"
+	done < "$srcdir/tar_list"
 done
-
-rm "$srcdir/tar_list" "$srcdir/filesystem" 2>/dev/null
-
+#######################################################################################################
+#                                                                                                     #
+# end of script, cleanup will be done by a trap                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit 0
