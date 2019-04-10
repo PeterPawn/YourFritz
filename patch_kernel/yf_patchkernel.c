@@ -75,7 +75,7 @@ typedef struct patchEntry
 {
 	unsigned char   *fname;         // kernel symbol name, where to start with a search
 	unsigned int    *startAddress;  // the result from kallsyms_lookup_name for the above symbol
-	unsigned int    startOffset;    // number of instructions (32 bits per instruction) to skip prior to first comparision
+	unsigned int    startOffset;    // number of instructions (32 bits per instruction) to skip prior to first comparison
 	unsigned int    maxOffset;      // maximum number of instructions to process, while searching for this patch
 	unsigned int    lookFor;        // the value to look for, the source value will be modified by AND and OR masks first (see below)
 	unsigned int    andMask;        // the mask to use for a logical AND operation, may be used to mask out unwanted bits from value
