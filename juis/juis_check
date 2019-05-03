@@ -1556,7 +1556,7 @@ Version="$(extract_xml "$xmlresp" "ns3" "Version")"
 __info "$(__get_localized INF_001)" "$Version" 1>&2
 printf "URL=%s\n" "$URL"
 [ -z "$delay" ] || printf "DelayDownload=%s\n" "$delay"
-[ $__show_new_version -eq 1 ] && printf "NewVersion=%s\n" "$Version"
+[ $__show_new_version -eq 1 ] && printf "NewVersion=\"%s\"\n" "$Version"
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
