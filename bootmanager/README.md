@@ -1,3 +1,5 @@
+![GUI_Bootmanager](GUI_Bootmanager.png)
+
 # Files in this folder
 
 `bootmanager`
