@@ -6,9 +6,9 @@
  * @see         https://www.ip-phone-forum.de/threads/fritz-os7-openvpn-auf-7590-kein-tun-      *
  *              modul.300433/page-3#post-2309487                                                *
  * @brief       patch kernel instructions while loading this module                             *
- * @version     0.2                                                                             *
+ * @version     0.3                                                                             *
  * @author      PeH                                                                             *
- * @date        17.01.2019                                                                      *
+ * @date        17.05.2019                                                                      *
  *                                                                                              *
  ************************************************************************************************
  *                                                                                              *
@@ -46,11 +46,12 @@
 #include <linux/init.h>
 #include <linux/skbuff.h>
 #include <linux/kallsyms.h>
+#include <linux/avm_kernel_config.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Peter Haemmerlein");
 MODULE_DESCRIPTION("Patches some forgotten AVM traps on MIPS kernels.");
-MODULE_VERSION("0.2");
+MODULE_VERSION("0.3");
 
 #define MIPS_NOP       0x00000000 // it's a shift instruction, which does nothing: sll zero, zero, 0
 #define MIPS_ADDIU     0x24000000 // add immediate value to RS and store the result in RT
@@ -91,12 +92,28 @@ typedef struct patchEntry
 	int             isPatched;      // not zero, if this patch was applied successfully
 } patchEntry_t;
 
-static unsigned int yf_patchkernel_patch(patchEntry_t *);
-static void yf_patchkernel_restore(patchEntry_t *);
+// using the first version number, where a patch will be applied no more, offers the possibility to use 
+// this list for unknown, but later released error correction versions, too
 
-// entries to patch for TUN device on 7490/75x0 devices, starting with FRITZ!OS version 07.0x
+typedef struct patchList
+{
+	unsigned int	majorMin;	// minimal major version, where this patch list may be applied
+	unsigned int	minorMin;	// minimal minor version, where this patch list may be applied
+	unsigned int	revisionMin; 	// minimal revision number, where this patch list may be applied to	
+	unsigned int	majorMax;	// first major version, where this patch list will be applied no more
+	unsigned int	minorMax;	// first minor version, where this patch list will be applied no more
+	unsigned int	revisionMax; 	// first revision number (if known and not equal zero), where this patch list will be applied no more
+	const char 	*patchName;	// patch name to be used for messages
+	patchEntry_t	*patches;	// list of patchEntry structures for this patch list entry
+} patchList_t;
 
-static patchEntry_t patchesForTunDevice[] = {
+static unsigned int yf_patchkernel_patch(patchList_t *);
+static unsigned int yf_patchkernel_run_patch(patchEntry_t *);
+static void yf_patchkernel_restore(patchList_t *);
+
+// entries to patch for TUN device on 7490/75x0 devices, starting with FRITZ!OS version 07.00, up to 07.08
+
+static patchEntry_t	patchesForTunDevice_pre0708[] = {
 	{
 		.fname = "ip_forward",
 		.maxOffset = 10,
@@ -131,9 +148,58 @@ static patchEntry_t patchesForTunDevice[] = {
 	}
 };
 
+// entries to patch for TUN device on 7490/75x0 devices, starting with FRITZ!OS version 07.08
+
+static patchEntry_t	patchesForTunDevice_0708[] = {
+	{
+		.fname = "ip_forward",
+		.maxOffset = 12,
+		.lookFor = MIPS_LW + (MIPS_REG_A0 << MIPS_BASE_SHFT) + offsetof(struct sk_buff, sk),
+		.andMask = MIPS_AND_MASK - MIPS_RT_MASK,
+		.patchValue = MIPS_ADDIU + (MIPS_REG_V0 << MIPS_RT_SHFT)
+	},
+	{
+		.fname = "ip6_forward",
+		.startOffset = 15,
+		.maxOffset = 10,
+		.lookFor = MIPS_LW + (MIPS_REG_A0 << MIPS_BASE_SHFT) + offsetof(struct sk_buff, sk),
+		.andMask = MIPS_AND_MASK - MIPS_RT_MASK,
+		.patchValue = MIPS_ADDIU + (MIPS_REG_V0 << MIPS_RT_SHFT)
+	},
+	{
+		.fname = NULL		// last entry needed as 'end of list' marker
+	}
+};
+
+static patchList_t	entries[] = {
+	{
+		.majorMin = 7,
+		.minorMin = 8,
+		.revisionMin = 0,
+		.majorMax = 0,
+		.minorMax = 0,
+		.revisionMax = 0,
+		.patchName = "patches for TUN device since FRITZ!OS 07.08"
+		.patches = patchesForTunDevice_0708
+	},
+	{
+		.majorMin = 6,
+		.minorMin = 98,
+		.revisionMin = 0,
+		.majorMax = 7,
+		.minorMax = 8,
+		.revisionMax = 0,
+		.patchName = "patches for TUN device from FRITZ!OS 06.98 to FRITZ!OS 07.08"
+		.patches = patchesForTunDevice_pre0708
+	},
+	{
+		.patches = NULL
+	}
+};
+
 static unsigned int	patches_applied = 0;	// number of patches applied successfully
 
-static unsigned int yf_patchkernel_patch(patchEntry_t *patches)
+static unsigned int yf_patchkernel_run_patch(patchEntry_t *patches)
 {
 	unsigned int	patches_applied = 0;
 	patchEntry_t	*patch = patches;
@@ -198,19 +264,166 @@ static unsigned int yf_patchkernel_patch(patchEntry_t *patches)
 	return patches_applied;
 }
 
-static void yf_patchkernel_restore(patchEntry_t *patch)
+static void yf_patchkernel_restore(patchList_t *list)
 {
-	while (patch->fname)
+	while (list->patches)
 	{
-		if (patch->isPatched)
+		while (patch->fname)
 		{
-			*(patch->patchAddress) = patch->originalValue;
-			patch->isPatched = 0;
+			if (patch->isPatched)
+			{
+				*(patch->patchAddress) = patch->originalValue;
+				patch->isPatched = 0;
 
-			YF_INFO("Reversed patch in '%s' at address %#010x to original value %#010x.\n", patch->fname, (unsigned int)(patch->patchAddress), patch->originalValue);
+				YF_INFO("Reversed patch in '%s' at address %#010x to original value %#010x.\n", patch->fname, (unsigned int)(patch->patchAddress), patch->originalValue);
+			}
+
+			patch++;
 		}
+		list++;
+	}
+}
 
-		patch++;
+static int yf_patchkernel_parse_firmwarestring(int *major, int *minor, int *revision, int *dirty, const char *version)
+{
+	unsigned int	value;
+	char *		ptr;
+	char *		conv;
+	char		fwString[sizeof(avm_kernel_version_info->firmwarestring)];
+	int		state;		// value to parse: 1 - major, 2 - minor, 3 - revision, 4 - dirty, 5 - outside
+	char		delim;
+
+	if (avm_kernel_version_info == NULL)
+	{
+		version = "(avm_kernel_version_info pointer is NULL)";
+		return 0;
+	}
+
+	if (strlen(avm_kernel_version_info->firmwarestring) == 0)
+	{
+		version = "(zero length string at avm_kernel_version_info->firmwarestring)";
+		return 0;
+	}
+
+	version = avm_kernel_version_info->firmwarestring;
+
+	if (strscpy(fwString, avm_kernel_version_info->firmwarestring, sizeof(fwString)) <= 0)
+	{
+		return 0;
+	}
+
+	ptr = fwString;
+	state = 1;
+
+	while (*ptr && state < 5)
+	{
+		conv = ptr;
+	
+		delim = (state == 3 ? '-' : (state == 4 ? 'M' : '.'));
+		ptr = strchrnul(ptr, delim);
+	
+		if (*ptr)
+		{
+			if (state < 4)
+			{
+				*ptr = 0;
+				if (kstrtouint(conv, 10, &value) == 0)
+				{
+					switch (state)
+					{
+						case 1:
+							*major = value;
+							break;
+	
+						case 2:
+							*minor = value;
+							break;
+	
+						case 3:
+							*revision = value;
+							break;
+						
+						default:
+							return 0;
+					}
+					state++;
+				}
+				else
+				{
+					return 0;	// invalid number
+				}
+				ptr++;
+			}
+			else
+			{
+				*dirty = 1;
+				state++;
+			}
+
+		}
+		else
+		{
+			*dirty = 0;
+			if (state < 3) return 0;	// missing major or minor
+			if (state < 4) *revision = 0;
+		}
+	}
+	if (*ptr) return 0;				// unexpected data after revision
+
+	return 1;
+}
+
+static unsigned int yf_patchkernel_patch(patchList_t *list)
+{
+	unsigned int	major;
+	unsigned int	minor;
+	unsigned int	revision;
+	unsigned int	dirty;
+	const char *	version_string;
+	patchList_t	*next;
+	unsigned int	patchCount;
+
+	if (yf_patchkernel_parse_firmwarestring(&major, &minor, &revision, &dirty, &version_string))
+	{
+		patchCount = 0;
+		next = list;
+
+		while (*next->patches)
+		{
+			next = list + 1;		// early increment to be able to use 'continue' at any place in this loop
+
+			if (list->majorMin || list->minorMin || list->revisionMin)
+			{
+				if (major < list->majorMin) continue;
+				if (major == list->majorMin)
+				{
+					if (minor < list->minorMin) continue;
+					if (minor == list->minorMin && list->revisionMin && revision < list->revisionMin) continue;
+				}
+			}
+			
+			// lower limit not specified or current version accepted
+			
+			if (list->majorMax || list->minorMax || list->revisionMax)
+			{
+				if (major > list->majorMax) continue;
+				if (major == list->majorMax)
+				{
+					if (minor > list->minorMax) continue;
+					if (minor == list->minorMax && list->revisionMax && revision > list->revisionMax) continue;
+				}
+			}
+	
+			// upper limit not specified or current version accepted
+
+			YF_INFO("Version check was successful for patch list '%s', it will get applied now.\n", list->patchName);
+
+			patchCount += yf_patchkernel_run_patch(list->patches);
+		}
+	}
+	else
+	{
+		YF_INFO("Unable to parse firmware version string from vendor: %s\n", version_string); 
 	}
 }
 
@@ -219,7 +432,7 @@ static int __init yf_patchkernel_init(void)
 	YF_INFO("Initialization started\n");
 	YF_INFO("Any preceding error messages regarding memory allocation are expected and may be ignored.\n");
 
-	patches_applied = yf_patchkernel_patch(patchesForTunDevice);
+	patches_applied = yf_patchkernel_patch(entries);
 
 	YF_INFO("%u patches applied.\n", patches_applied);
 
