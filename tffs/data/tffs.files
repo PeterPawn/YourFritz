@@ -85,6 +85,7 @@
 143 fonctrl
 144 powermode
 145 tamconf
+146 tr369.cfg User Services Platform (USP, aka TR-369) configuration
 160 aura-usb
 161 configd
 162 ewnwstatus.cfg known LAN clients
@@ -107,7 +108,8 @@
 202 websrv_ssl_cert.pem SSL certificate
 203 letsencrypt_key.pem private key for Let's Encrypt SSL/TLS certificate
 204 letsencrypt_cert.pem Let's Encrypt SSL/TLS certificate file
-205 avmnexus.cfg looks like a configuration file for Mesh functionality
+205 avmnexus.cfg mesh configuration
+206 meshd.cfg mesh controller configuration
 208 cert.cfg
 209 usb.cfg USB configuration settings (WebDAV is included too)
 210 xdslmode
@@ -123,7 +125,7 @@
 224 SmartMeterCfg
 225 aha.cfg
 226 ahausr.cfg
-227 ahastat.cfg
+227 ahalua.cfg this was formerly called: ahastat.cfg
 228 ahadect.cfg
 229 ahanet.cfg
 230 ahaglobal.cfg
