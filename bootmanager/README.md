@@ -38,3 +38,6 @@ You have to set the environment variables
 - `TMP` (a writable place in your system for a temporary file)
 
 to the correct values, before you call this script.
+
+Alternatively you may set `TARGET_SYSTEM_VERSION` to `autodetect`, as long as you specify the path to a script - usable as such a detector - in a variable named `TARGET_SYSTEM_VERSION_DETECTOR`. This script has to be interface-compatible to the provided script, which was placed in this directory via a symbolic link (`extract_version_values`) to the file, that is used in the `signimage` sub-directory to extract version values from a FRITZ!OS tree, needed for generation of a database with AVM's firmware signing keys.
+But the used interface is _very_ simple - the script has to accept the path to the FRITZ!OS root directory as first parameter and has to handle or ignore a `-m` as the second parameter. The output is expected on STDOUT and has to contain a line starting with `Version="nnn.nn.nn"`, where the version number (nnn.nn.nn) may be extracted from.
