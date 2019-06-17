@@ -22,6 +22,7 @@ check_version()
 if [ "$TARGET_SYSTEM_VERSION" = "autodetect" ]; then
 	[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "TARGET_SYSTEM_VERSION_DETECTOR value is not set.\a\n" 1>&2 && exit 1
 	TARGET_SYSTEM_VERSION="$($TARGET_SYSTEM_VERSION_DETECTOR $TARGET_DIR -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
+	printf "Autodetection of target system version: %s\n" "$TARGET_SYSTEM_VERSION" 1>&2
 fi
 
 [ -z "$TARGET_SYSTEM_VERSION" ] && printf "TARGET_SYSTEM_VERSION value is not set.\a\n" 1>&2 && exit 1
