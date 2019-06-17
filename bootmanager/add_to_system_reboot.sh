@@ -1,9 +1,11 @@
 #! /bin/bash
 [ -z "$TARGET_BRANDING" ] && printf "TARGET_BRANDING value is not set.\a\n" 1>&2 && exit 1
-[ -z "$TARGET_SYSTEM_VERSION" ] && printf "TARGET_SYSTEM_VERSION value is not set.\a\n" 1>&2 && exit 1
+
 TargetDir="${TARGET_DIR:+$TARGET_DIR/}"
+
 JsFile="usr/www/$TARGET_BRANDING/system/reboot.js"
 LuaFile="usr/www/$TARGET_BRANDING/system/reboot.lua"
+
 check_version()
 {
 	local major=$(expr "$1" : "0*\([1-9]*[0-9]\)")
@@ -16,6 +18,17 @@ check_version()
 	[ $minor -lt $wanted_minor ] && return 0
 	return 1
 }
+
+if [ "$TARGET_SYSTEM_VERSION" = "autodetect" ]; then
+	[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "TARGET_SYSTEM_VERSION_DETECTOR value is not set.\a\n" 1>&2 && exit 1
+	TARGET_SYSTEM_VERSION="$($TARGET_SYSTEM_VERSION_DETECTOR $TARGET_DIR -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
+fi
+
+[ -z "$TARGET_SYSTEM_VERSION" ] && printf "TARGET_SYSTEM_VERSION value is not set.\a\n" 1>&2 && exit 1
+major=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.0*\([1-9]*[0-9]\)\.[0-9]*") + 0 ))
+minor=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.[0-9]*\.0*\([1-9]*[0-9]\)") + 0 ))
+[ "$major" -eq 0 ] && [ "$minor" -eq 0 ] && printf "TARGET_SYSTEM_VERSION value is invalid.\a\n" 1>&2 && exit 1
+
 getJsPatchText_0708()
 {
 cat <<'EndOfPatch'
@@ -126,8 +139,6 @@ box.out(line)\
 </div>
 EndOfPatch
 }
-major=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.0*\([1-9]*[0-9]\)\.[0-9]*") + 0 ))
-minor=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.[0-9]*\.0*\([1-9]*[0-9]\)") + 0 ))
 if check_version $major $minor 7 8; then
 	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
 	getLuaPatchText_pre0708 > "$TMP/gui_bootmanager_0_6_tmp"
