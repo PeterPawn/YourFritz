@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/sh
 #######################################################################################################
 #                                                                                                     #
 # get version information from unpacked firmware files                                                #
@@ -62,7 +62,7 @@ else
 	fi
 fi
 
-files=$(find "$src" -type f | wc -l)
+files=$(find "$src" -maxdepth 3 -type f | wc -l)
 [ "$files" -lt 2 ] && printf "Unsupported filesystem format.\n" 1>&2 && exit 1
 ( ! [ -f "$src/etc/init.d/rc.conf" ] || ! [ -f "$src/etc/version" ] ) && printf "Missing version files.\n" 1>&2 && exit 1
 
