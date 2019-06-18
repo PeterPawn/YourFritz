@@ -1,5 +1,6 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # check firmware versions from AVM's JUIS                                                             #
