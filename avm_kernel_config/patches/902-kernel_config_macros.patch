@@ -1,7 +1,8 @@
 --- /dev/null	2016-09-29 20:37:18.937713454 +0200
 +++ linux-3.10/arch/mips/kernel/avm_kernel_config_macros.h	2016-10-06 16:23:30.489014326 +0200
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,67 @@
 +/* vim: set tabstop=4 syntax=asm : */
++/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef _AVM_KERNEL_CONFIG_MACROS_H
 +#define _AVM_KERNEL_CONFIG_MACROS_H
 +
