@@ -1,5 +1,6 @@
 #! /bin/true
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################
 #                                                                                     #
 # get_first_host_in_subnet - compute the first usable IPv4 address in the specified   #

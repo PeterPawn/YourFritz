@@ -1,5 +1,6 @@
 #! /bin/true
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################
 #                                                                                     #
 # str2hex - convert a string to its hexadecimal representation                        #

@@ -1,5 +1,6 @@
 #! /bin/true
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################
 #                                                                                     #
 # string_compare - compare the two strings from the single line files specified as $1 #
