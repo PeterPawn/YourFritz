@@ -1,4 +1,5 @@
 /* vim: set tabstop=4 syntax=asm : */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef _AVM_KERNEL_CONFIG_MACROS_H
 #define _AVM_KERNEL_CONFIG_MACROS_H
 

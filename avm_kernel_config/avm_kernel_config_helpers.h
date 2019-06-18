@@ -1,4 +1,5 @@
 // vim: set tabstop=4 syntax=c :
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef AVM_KERNEL_CONFIG_HELPERS_H
 #define AVM_KERNEL_CONFIG_HELPERS_H
 

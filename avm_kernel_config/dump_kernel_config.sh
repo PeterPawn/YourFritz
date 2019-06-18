@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # dump AVM's kernel config area from a running FRITZ!OS using a Linux kernel version 3.xx             #
