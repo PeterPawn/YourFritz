@@ -1,6 +1,8 @@
 --- /dev/null
 +++ linux-3.10/drivers/net/yf_patchkernel.c
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,239 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++
 +/************************************************************************************************
 + *                                                                                              *
 + * @file        yf_patchkernel.c                                                                *
