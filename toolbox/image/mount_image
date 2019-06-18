@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 [ $# -lt 2 ] && printf "Usage: %s <image> <mountpoint>\n" $0 1>&2 && exit 1
 image=$1
 mp=$2

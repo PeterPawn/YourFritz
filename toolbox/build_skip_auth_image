@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # create a bootable image to deactivate user authentication from home-network on a FRITZ!Box device   #
