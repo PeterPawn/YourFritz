@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # Copyright (C) 2016 P.Hämmerlein (peterpawn@yourfritz.de)                                            #
@@ -20,7 +21,7 @@
 # All files are stored and searched in the base directory of FRITZ!OS NAS service (/var/media/ftp).   #
 #                                                                                                     #
 # First the script looks for a file 'newfirmware.image'. If this cannot be found, the script          #
-# 'check_update' will be used to search for a newer version, which will be loaded, if any is found.   #
+# 'juis_check' will be used to search for a newer version, which will be loaded, if any is found.     #
 #                                                                                                     #
 # If a firmware image exists, some (rather simple) checks are performed to assure a valid update      #
 # image and the image file is unpacked.                                                               #
@@ -122,10 +123,11 @@ set -x
 #                                                                                                     #
 #######################################################################################################
 if ! test -f $basedir/$imagename; then
-	test -f $basedir/check_update || exec $exec_to
-	eval $($SHELL $basedir/check_update)
-	( test -z $NewVersion || test -z $DownloadURL ) && exec $exec_to
-	wget -O $basedir/$imagename $DownloadURL
+	test -f $basedir/juis_check || exec $exec_to
+	unset URL
+	eval $($SHELL $basedir/juis_check -l)
+	( test -z $URL ) && exec $exec_to
+	wget -O $basedir/$imagename $URL
 fi
 #######################################################################################################
 #                                                                                                     #

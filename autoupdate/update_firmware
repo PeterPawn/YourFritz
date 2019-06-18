@@ -1,4 +1,5 @@
 ## Check semaphore to avoid 2nd call
+# SPDX-License-Identifier: GPL-2.0-or-later
 if ! [ -e /var/run/post_install_2nd_run ]; then
 if [ -f /var/media/ftp/run_update ]; then
 touch /var/run/post_install_2nd_run

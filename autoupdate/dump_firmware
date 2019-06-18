@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 $SHELL /var/media/ftp/save_system.sh
 rpc $SHELL /var/media/ftp/save_system.sh
 led-ctrl filesystem_mount_failure
