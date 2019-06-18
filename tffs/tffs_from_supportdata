@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 FIRST_LINE="##### BEGIN SECTION TFFS_DUMP TFFS Dump"
 LAST_LINE="##### END SECTION TFFS_DUMP"
 decode_to_tar()

@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 ##################################################################################
 #
 # prepare a (partial) TFFS image from a counter dump file (from EVA FTP session)

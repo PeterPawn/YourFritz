@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 if [ -z $1 ] || [ -t 0 ]; then
 	printf "Usage: $0 <id>\n\n" 1>&2
 	printf "create TFFS file from stdin content (which may not be a terminal device)\n\n" 1>&2
