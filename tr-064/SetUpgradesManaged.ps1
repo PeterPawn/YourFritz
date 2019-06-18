@@ -1,4 +1,5 @@
-﻿Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the username to login to TR-064')][string]$Username,
+﻿# SPDX-License-Identifier: GPL-2.0-or-later
+Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the username to login to TR-064')][string]$Username,
       [Parameter(Mandatory = $True, Position = 1, HelpMessage = 'the password to login to TR-064')][string]$Password,
       [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'the new value of the UpgradesManaged property, defaults to 0')][int]$NewValue = 0,
       [Parameter(Mandatory = $False, Position = 3, HelpMessage = 'the IP address of the FRITZ!Box, defaults to 192.168.178.1')][string]$Address = "192.168.178.1")

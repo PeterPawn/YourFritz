@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 ###################################################################################
 #                                                                                 #
 # Wake-on-LAN for a known device via TR-064 function from FRITZ!OS                #
