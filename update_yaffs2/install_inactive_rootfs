@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #=========================================================================
 #
 # which file is the rootfs image to be copied to the yaffs2 partition?

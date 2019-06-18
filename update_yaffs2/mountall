@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #########################################################################################
 #
 # mount FRITZ!OS partitions, where they can be inspected/compared/whatever, needs a
