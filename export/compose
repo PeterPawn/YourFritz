@@ -1,4 +1,5 @@
 #! /bin/true
+# SPDX-License-Identifier: GPL-2.0-or-later
 fldr="$1"
 cat $fldr/header >$fldr/output
 cat $fldr/filelist |

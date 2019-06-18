@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # hexdump a file like: hexdump -e '40/1 "%02X" "\n"' only with shell commands
 # replace AVM's "testvalue" below with an own implementation, if this script 

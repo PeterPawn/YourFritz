@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # compute CRC32 check sum for a file with shell commands only
 # replace AVM's "testvalue" with another binary/wrapper, if

@@ -1,4 +1,5 @@
 #! /bin/true
+# SPDX-License-Identifier: GPL-2.0-or-later
 errmsg() { printf "%s\n" "$*" 1>&2; }
 check_form()
 {

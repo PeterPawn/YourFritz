@@ -1,4 +1,5 @@
 /* simple implementation of CRC32 checksum as short C program */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdio.h>
 #include <inttypes.h>
 int main()

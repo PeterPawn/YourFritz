@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # replace AVM's "testvalue" binary (which reads 1-, 2- or 4-byte values from a
 # given file and writes the decimal result to stdout) with a version based on
