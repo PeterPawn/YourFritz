@@ -1,5 +1,6 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # add an own or replace one of AVM's public keys with an own version, so we may use a (self-signed)   #
@@ -14,7 +15,7 @@
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2017-2018 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #

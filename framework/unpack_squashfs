@@ -1,5 +1,6 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # unpack a specified filesystem image, handle different sources for VR9, GRX5 and Puma6 based devices #
