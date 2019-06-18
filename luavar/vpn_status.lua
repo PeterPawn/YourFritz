@@ -1,4 +1,5 @@
 #! /bin/luavar
+-- SPDX-License-Identifier: GPL-2.0-or-later
 --
 -- Another simple example, how AVM's Lua variable interface can be used
 --

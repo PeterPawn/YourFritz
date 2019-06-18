@@ -1,4 +1,5 @@
 #! /bin/luavar
+-- SPDX-License-Identifier: GPL-2.0-or-later
 
 lineno = 0;
 rc = 0;
