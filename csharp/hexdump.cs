@@ -1,4 +1,5 @@
-﻿using System;
+﻿// SPDX-License-Identifier: GPL-2.0-or-later
+using System;
 
 namespace YourFritz.Helpers
 {
