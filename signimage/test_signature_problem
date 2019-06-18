@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # show the MD5 computation error from "firmwarecfg", if the signature member starts
 # 1K below a 10K boundary with the image file

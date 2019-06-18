@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 ################################################################################
 #                                                                              #
 # convert AVM's format of a public key file to a PEM file usable for "openssl" #
