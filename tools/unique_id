@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 if [ "$1" = "guid" ]; then
 	if [ -f /proc/sys/kernel/random/uuid ]; then
 		cat /proc/sys/kernel/random/uuid

@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 [ -z $1 ] && loop=-1 || loop=$(( $1 + 0 ))
 while ! [ $(ctlmgr_ctl r connection0 status/connect) = "5" ]; do
 	loop=$(( loop + 1 ))

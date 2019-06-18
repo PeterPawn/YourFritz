@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 interval=300
 scriptname=/var/alive.sh
 logname=alive

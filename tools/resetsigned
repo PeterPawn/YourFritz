@@ -1,2 +1,3 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 [ "$(ctlmgr_ctl r box status/signed_firmware)" = "0" ] && echo clear_id 87 >/proc/tffs || exit 1

@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 #
 # replace all occurrences of localized strings in the specified Lua file, optionally
 # use a different I10N database to do this

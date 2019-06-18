@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 [ -z "$1" ] && timeout=0 || timeout=$(( $1 + 0 ))
 starttime=$(date +%s)
 [ $starttime -gt 86400 ] && exit $rc
