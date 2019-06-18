@@ -1,5 +1,6 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI (reboot.lua) to provide a selection between  #

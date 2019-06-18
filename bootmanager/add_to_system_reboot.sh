@@ -1,4 +1,5 @@
-#! /bin/bash
+#! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 [ -z "$TARGET_BRANDING" ] && printf "TARGET_BRANDING value is not set.\a\n" 1>&2 && exit 1
 
 TargetDir="${TARGET_DIR:+$TARGET_DIR/}"
