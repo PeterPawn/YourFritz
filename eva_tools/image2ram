@@ -1,4 +1,5 @@
 #! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
 if [ -t 0 ] || [ -t 1 ]; then
 	printf "I'm a filter, give me a firmware image file on STDIN and I'll put out an in-memory image on STDOUT.\n" 1>&2
 	exit 2
