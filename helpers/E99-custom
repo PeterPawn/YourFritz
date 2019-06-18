@@ -1,6 +1,7 @@
 #! /bin/false
 # avoid to be called without explicit shell invocation
 # vim: set syntax=sh tabstop=2 shiftwidth=2 highlight=on
+# SPDX-License-Identifier: GPL-2.0-or-later
 #################################################################################
 #                                                                               #
 # E99-custom                                                                    #
