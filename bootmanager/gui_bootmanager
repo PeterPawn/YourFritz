@@ -808,6 +808,11 @@ get_modified_date()
 			fi
 		done
 		v="$(stat -c %Y -- "$file")"
+		d="$(get_system_date "$1")"
+		if [ -n "$d" ] && [ -n "$v" ]; then
+			[ $d -lt $v ] && delta=$(( v - d )) || delta=$(( d - v ))	# no abs() function available
+			[ $delta -lt 600 ] && exit 1 	# within ten minutes, assume no further modifications
+		fi
 	fi
 	[ -z "$v" ] && exit 1
 	get_localized_date "$v"
