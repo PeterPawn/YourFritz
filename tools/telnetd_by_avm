@@ -1,0 +1,48 @@
+#! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# check ability to run telnet daemon from AVM's telefon daemon
+#
+errors=0
+#
+# we need a symlink as /usr/sbin/telnetd first
+#
+if ! [ -x /usr/sbin/telnetd ]; then
+	printf "Missing symlink for telnet daemon.%s\n" "$1" 1>&2
+	errors=$(( errors + 1 ))
+fi
+#
+# do we have a 'telefon' binary?
+#
+if ! [ -x /usr/bin/telefon ]; then
+	printf "Missing 'telefon' daemon.%s\n" "$1" 1>&2
+	errors=$(( errors + 1 ))
+fi
+#
+# CONFIG_RELEASE=0 is needed to re-enable telnetd functions from 'telefon' daemon
+#
+if ! grep -q 'CONFIG_RELEASE=0' /etc/init.d/rc.voip && ! [ "$CONFIG_RELEASE" = "0" ]; then
+	printf "Unable to detect environment setting 'CONFIG_RELEASE=0'.%s\n" "$1" 1>&2
+	errors=$(( errors + 1 ))
+fi
+#
+# the flag in 'fx_conf' has to be '0x01' to start the daemon
+#
+if ! testvalue /var/flash/fx_conf 1 14466 1; then
+	printf "The telnet daemon flag in file 'fx_conf' is not set to start this service.%s\n" "$1" 1>&2
+	errors=$(( errors + 1 ))
+fi
+#
+# in case of error, exit here
+#
+[ $errors -gt 0 ] && exit 1
+#
+# now check the state of 'telnetd' service
+#
+if ! pidof telnetd >/dev/null 2>&1 && pidof telefon >/dev/null 2>&1; then
+	# telefon daemon is running without telnetd service, but flag is set
+	/etc/init.d/rc.voip restart
+	/sbin/eventadd 1 "Phone service(s) restarted to enforce 'telnetd' start."
+	printf "%sPhone services restarted.%s\n" "$1" "$1" 1>&2
+fi
+exit 0
