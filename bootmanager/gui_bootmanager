@@ -598,6 +598,15 @@ parse_date_value()
 )
 #######################################################################################################
 #                                                                                                     #
+# get localized date string                                                                           #
+#                                                                                                     #
+#######################################################################################################
+get_localized_date()
+{
+	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" -d @$1 || date +"%m/%d/%Y %r" -d @$1
+}
+#######################################################################################################
+#                                                                                                     #
 # get system build date from specified root, it's a file modification time in the newer versions      #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
@@ -612,7 +621,18 @@ get_system_date()
 	else
 		v=$(stat -c %Y "$path")
 	fi
-	printf '%s' "$(get_localized_date "$v")"
+	printf '%d' "$v"
+)
+#######################################################################################################
+#                                                                                                     #
+# get system build date from specified root as a string valu with localization                        #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_localized_system_date()
+(
+	get_localized_date "$(get_system_date "$1")"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -735,15 +755,6 @@ dismount_alternative_system()
 	rmdir "$tempdir/$wrapper_mount_name" 2>/dev/null
 	exit 0
 )
-#######################################################################################################
-#                                                                                                     #
-# get localized date string                                                                           #
-#                                                                                                     #
-#######################################################################################################
-get_localized_date()
-{
-	[ "$Language" = "de" ] && date +"%d.%m.%Y, %H:%M:%S Uhr" -d @$1 || date +"%m/%d/%Y %r" -d @$1
-}
 #######################################################################################################
 #                                                                                                     #
 # guess modification source                                                                           #
@@ -1079,7 +1090,7 @@ not_supported()
 collect_data()
 {
 	readonly running_version="$(get_system_version)"
-	readonly running_date="$(get_system_date)"
+	readonly running_date="$(get_localized_system_date)"
 	readonly running_fsdate="$(get_modified_date)"
 	readonly running_modified="$(get_modified_by)"
 	chg_running_branding=0
@@ -1100,7 +1111,7 @@ collect_data()
 		if ! [ -z "$mp" ]; then
 			readonly alternative_version="$(get_system_version "$mp")"
 			if ! [ -z "$alternative_version" ]; then
-				readonly alternative_date="$(get_system_date "$mp")"
+				readonly alternative_date="$(get_localized_system_date "$mp")"
 				readonly alternative_fsdate="$(get_modified_date "$mp")"
 				readonly alternative_modified="$(get_modified_by "$mp")"
 				if change_branding_support; then
@@ -1220,7 +1231,7 @@ case "$1" in
 		printf "active kernel = %s\n" "$(get_partition "$kernel_name" "$active_name")"
 		printf "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
 		printf "active system version = %s\n" "$(get_system_version)"
-		printf "active system date = %s\n" "$(get_system_date)"
+		printf "active system date = %s\n" "$(get_localized_system_date)"
 		printf "active system modification date = %s\n" "$(get_modified_date)"
 		printf "active system modification source = %s\n" "$(get_modified_by)"
 		printf "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf " (fixed)")"
@@ -1233,7 +1244,7 @@ case "$1" in
 			printf "inactive filesystem mounted on %s\n" "$mp"
 			if ! [ -z "$mp" ]; then
 				printf "inactive system version = %s\n" "$(get_system_version "$mp")"
-				printf "inactive system date = %s\n" "$(get_system_date "$mp")"
+				printf "inactive system date = %s\n" "$(get_localized_system_date "$mp")"
 				printf "inactive system modification date = %s\n" "$(get_modified_date "$mp")"
 				printf "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
 				printf "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf " (fixed)")"
