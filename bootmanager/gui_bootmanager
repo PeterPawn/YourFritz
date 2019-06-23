@@ -754,16 +754,13 @@ get_localized_date()
 get_modified_by()
 (
 	base="${1:-}"
-	i=0
+	i=1
 	for f in $version_files; do
+		[ -f "$base/$f" ] && break
 		i=$(( i + 1 ))
-		if [ -f "$base/$f" ]; then
-			set -- $modified_by
-			eval printf "%s" "\$$i"
-			exit 0
-		fi
 	done
-	exit 1
+	set -- $modified_by
+	eval printf -- "%s" "\$$i"
 )
 #######################################################################################################
 #                                                                                                     #
