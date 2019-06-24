@@ -70,26 +70,107 @@ MODULE_VERSION("0.3");
 #define MIPS_TRAP_CODE 0x00000300 // trap code 12 (encoded in bits 6 to 15)
 #define MIPS_AND_MASK  0xFFFFFFFF // all bits set for logical AND mask
 
-#define YF_INFO(args...) pr_info("[%s] ",__this_module.name);pr_cont(args)
+#define YF_INFO(args...)	pr_info("[%s] ",__this_module.name);pr_cont(args)
+#define YF_ERROR(args...)	pr_err("[%s] ",__this_module.name);pr_cont(args)
+
+#ifdef YF_PATCHKERNEL_PROCFS
+
+#include <linux/proc_fs.h>
+
+#define MODULE_PROC_BASE	"yf"
+#define MODULE_PROC_NAME	"patchkernel"
+#define MODULE_PROC_STATUS	"status"
+#define MODULE_PROC_CONTROL	"control"
+#define MODULE_PROC_COUNT	"count"
+#define MODULE_PROC_LIST	"list"
+#define MODULE_PROC_PATCHES	"patch"
+
+/* procfs directory structure used by this module
+
+/proc/yf
+      |___ patchkernel
+           |___ status               = global status for all patches, only if this is '1', other files are accessible
+           |___ control              = global 'kill switch', same syntax as of a single patch below
+           |___ count                = number of patch entries
+           |___ list                 = a list as overview of all patches
+           |___ patch
+                |___ <index>         = index number of patch, range 0 to number of patches - 1
+                     |___ status     = 0 - disabled, 1 - enabled
+                     |___ function   = name of patched function
+                     |___ address    = target address patched, if it's enabled)
+                     |___ original   = original value, if it's enabled
+                     |___ replaced   = new value, if it's enabled
+                     |___ control    = enable (1) or disable (1) a patch, it's the only writable file
+
+*/
+
+static unsigned int		globalEnabled = 1;
+
+static struct proc_dir_entry	yf_proc_root = NULL;
+static struct proc_dir_entry	yf_proc_base = NULL;
+static struct proc_dir_entry	yf_proc_status = NULL;
+static struct proc_dir_entry	yf_proc_count = NULL;
+static struct proc_dir_entry	yf_proc_summary = NULL;
+static struct proc_dir_entry	yf_proc_control = NULL;
+static struct proc_dir_entry	yf_proc_patches = NULL;
+
+/* type and index (if needed) are stored as 16-bit integers in a single 32-bit value for 'user data' */
+
+typedef enum readType
+{
+	globalStatus,
+	globalCount,
+	globalSummary,
+	patchStatus,
+	patchFunction,
+	patchAddress,
+	patchOriginal,
+	patchReplaced
+} readType_t;
+
+typedef enum writeType
+{
+	globalControl,
+	patchControl
+}
+
+#define MAKE_PROCFS_DATA(type,index)    (void *)( ( type << 16 ) + index )
+#define GET_PROCFS_DATA_TYPE(data)	(unsigned int)( data >> 16 )
+#define GET_PROCFS_DATA_INDEX(data)     (unsigned int)( data & 0xFFFF )
+
+static struct file_operations	r_fops =
+{
+	read:	procfs_read
+}
+
+static struct file_operations	w_fops =
+{
+	write:	procfs_write
+}
+
+#endif /* ifdef YF_PATCHKERNEL_PROCFS */
 
 typedef struct patchEntry
 {
-	unsigned char   *fname;         // kernel symbol name, where to start with a search
-	unsigned int    *startAddress;  // the result from kallsyms_lookup_name for the above symbol
-	unsigned int    startOffset;    // number of instructions (32 bits per instruction) to skip prior to first comparison
-	unsigned int    maxOffset;      // maximum number of instructions to process, while searching for this patch
-	unsigned int    lookFor;        // the value to look for, the source value will be modified by AND and OR masks first (see below)
-	unsigned int    andMask;        // the mask to use for a logical AND operation, may be used to mask out unwanted bits from value
-	unsigned int    orMask;         // the mask to use for a logical OR operation, may be used as a mask to set some additional bits or to ensure, they're set already
-	unsigned int    verifyOffset;   // the offset of another value to check, if the search from above was successful, if it's 0, no further check is performed
-	unsigned int    verifyValue;    // the expected value from verification, after processing AND and OR operations with masks below
-	unsigned int    verifyAndMask;  // the AND mask for verification
-	unsigned int    verifyOrMask;   // the OR mask for verification
-	unsigned int    patchOffset;    // the offset of instruction to patch, relative to the search result (not to verification offset)
-	unsigned int    patchValue;     // the new value to store at patched location
-	unsigned int    *patchAddress;  // the address, where the change was applied
-	unsigned int    originalValue;  // the original value prior to patching
-	int             isPatched;      // not zero, if this patch was applied successfully
+	unsigned char		*fname;         // kernel symbol name, where to start with a search
+	unsigned int		*startAddress;  // the result from kallsyms_lookup_name for the above symbol
+	unsigned int		startOffset;    // number of instructions (32 bits per instruction) to skip prior to first comparision
+	unsigned int		maxOffset;      // maximum number of instructions to process, while searching for this patch
+	unsigned int		lookFor;        // the value to look for, the source value will be modified by AND and OR masks first (see below)
+	unsigned int		andMask;        // the mask to use for a logical AND operation, may be used to mask out unwanted bits from value
+	unsigned int		orMask;         // the mask to use for a logical OR operation, may be used as a mask to set some additional bits or to ensure, they're set already
+	unsigned int		verifyOffset;   // the offset of another value to check, if the search from above was successful, if it's 0, no further check is performed
+	unsigned int		verifyValue;    // the expected value from verification, after processing AND and OR operations with masks below
+	unsigned int		verifyAndMask;  // the AND mask for verification
+	unsigned int		verifyOrMask;   // the OR mask for verification
+	unsigned int		patchOffset;    // the offset of instruction to patch, relative to the search result (not to verification offset)
+	unsigned int		patchValue;     // the new value to store at patched location
+	unsigned int		*patchAddress;  // the address, where the change was applied
+	unsigned int		originalValue;  // the original value prior to patching
+	int			isPatched;      // not zero, if this patch was applied successfully
+#ifdef YF_PATCHKERNEL_PROCFS
+	struct proc_dir_entry	*procfs_entry;  // address of procfs subdirectory for this patch
+#endif /* ifdef YF_PATCHKERNEL_PROCFS */
 } patchEntry_t;
 
 // using the first version number, where a patch will be applied no more, offers the possibility to use 
@@ -144,7 +225,7 @@ static patchEntry_t	patchesForTunDevice_pre0708[] = {
 		.patchValue = MIPS_NOP
 	},
 	{
-		.fname = NULL		// last entry needed as 'end of list' marker
+		.fname = NULL			// last entry needed as 'end of list' marker
 	}
 };
 
@@ -427,12 +508,76 @@ static unsigned int yf_patchkernel_patch(patchList_t *list)
 	}
 }
 
+#ifdef YF_PATCHKERNEL_PROCFS
+
+/* procfs handling */
+
+static int yf_patchkernel_init_procfs_root(void)
+{
+	if (yf_proc_root == NULL)
+	{
+		yf_proc_root = proc_mkdir(MODULE_PROC_BASE, NULL);
+	}
+
+	return (yf_proc_root == NULL ? 1 : 0);
+}
+
+static int yf_patchkernel_init_procfs_dir(void)
+{
+	if (yf_proc_base == NULL)
+	{
+		(!yf_patchkernel_init_procfs_root())
+		{
+			yf_proc_base = proc_mkdir(MODULE_PROC_NAME, &yf_proc_root);
+		}
+	}
+
+	return (yf_proc_base == NULL ? 1 : 0);
+}
+
+static int yf_patchkernel_init_procfs_patches(patchEntry *patch)
+{
+	yf_proc_patches = proc_mkdir(MODULE_PROC_PATCHES, &yf_proc_dir);
+
+	return (yf_proc_base == NULL ? 1 : 0);
+}
+
+static int yf_patchkernel_init_procfs(patchEntry *patch)
+{
+	if (yf_patchkernel_init_procfs_dir()) return 1;
+
+	yf_proc_status = proc_create_data(MODULE_PROC_STATUS, S_IRUSR + S_IRGRP + S_IROTH, yf_proc_base, &r_fops, MAKE_PROCFS_DATA(globalStatus,0));
+	if (!yf_proc_status) return 1;
+
+	yf_proc_control = proc_create_data(MODULE_PROC_CONTROL, S_IWUSR, yf_proc_base, &w_fops, MAKE_PROCFS_DATA(globalControl,0));
+	if (!yf_proc_control) return 1;
+
+	if (yf_patchkernel_init_procfs_patches(patch)) return 1;
+
+	yf_proc_count = proc_create_data(MODULE_PROC_COUNT, S_IRUSR + S_IRGRP + S_IROTH, yf_proc_base, &r_fops, MAKE_PROCFS_DATA(globalStatus,0));
+
+}
+
+#endif /* ifdef YF_PATCHKERNEL_PROCFS */
+
+/* entry points */
+
 static int __init yf_patchkernel_init(void)
 {
 	YF_INFO("Initialization started\n");
 	YF_INFO("Any preceding error messages regarding memory allocation are expected and may be ignored.\n");
 
-	patches_applied = yf_patchkernel_patch(entries);
+#ifdef YF_PATCHKERNEL_PROCFS
+
+	if (yf_patchkernel_init_procfs(patchesForTunDevice))
+	{
+		YF_ERROR("Error initializing procfs entries.\n");
+		return 1;
+	}
+
+#endif /* ifdef YF_PATCHKERNEL_PROCFS */
+
+	patches_applied = yf_patchkernel_patch(patchesForTunDevice);
 
 	YF_INFO("%u patches applied.\n", patches_applied);
 
