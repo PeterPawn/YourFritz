@@ -59,7 +59,8 @@ usage()
 write_header()
 {
 	cat << 'EndOfData'
-<?xml version="1.0"?><database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
+<?xml version="1.0"?>
+<database xmlns="urn:yourfritz-de:signimage" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:yourfritz-de:signimage key_database.xsd">
 EndOfData
 }
 #######################################################################################################
@@ -70,7 +71,20 @@ EndOfData
 write_signature_entries()
 {
 	cat << 'EndOfData'
-<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" /><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" /><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" /></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" /><DigestValue></DigestValue></Reference></SignedInfo><SignatureValue /></Signature>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <Reference URI="">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <DigestValue />
+      </Reference>
+    </SignedInfo>
+    <SignatureValue />
+  </Signature>
 EndOfData
 }
 #######################################################################################################
@@ -92,7 +106,7 @@ EndOfData
 write_entries_header()
 {
 	cat << 'EndOfData'
-<devices>
+  <devices>
 EndOfData
 }
 #######################################################################################################
@@ -103,7 +117,7 @@ EndOfData
 write_entries_closure()
 {
 	cat << 'EndOfData'
-</devices>
+  </devices>
 EndOfData
 }
 #######################################################################################################
@@ -129,6 +143,40 @@ get_key_usage()
 }
 #######################################################################################################
 #                                                                                                     #
+# write a new entry from line on STDIN                                                                #
+#                                                                                                     #
+#######################################################################################################
+write_key_entry()
+(
+	read line
+	eval $line
+	printf '%s<key source="%s" usage="%s" original_name="%s">\n' "$1" "$Source" "$Usage" "$Name"
+	printf '%s  <modulus>%s</modulus>\n' "$1" "$Modulus"
+	printf '%s  <exponent>%s</exponent>\n' "$1" "$Exponent"
+	printf "%s</key>\n" "$1"
+)
+#######################################################################################################
+#                                                                                                     #
+# write device entry closure                                                                          #
+#                                                                                                     #
+#######################################################################################################
+write_device_entry_closure()
+{
+	printf '%s</device>\n' "$1"
+}
+#######################################################################################################
+#                                                                                                     #
+# write a new device entry from line on STDIN                                                         #
+#                                                                                                     #
+#######################################################################################################
+write_device_entry()
+(
+	read line
+	eval $line
+	printf '%s<device HWRevision="%s" VersionMajor="%s" name="%s" key_location="/etc">\n' "$1" "$HWRevision" "$VersionMajor" "$Model"
+)
+#######################################################################################################
+#                                                                                                     #
 # let's do something useful                                                                           #
 #                                                                                                     #
 #######################################################################################################
@@ -138,6 +186,33 @@ input="$1"
 ! [ -f "$input" ] && usage 1>&2 && exit 1
 
 tmp="${TMPDIR:-/tmp}"
+
+write_header
+write_entries_header
+
+sort -t \" -k 2n "$input" > "$tmp/generate_database_sorted_input"
+
+last_device="000"
+
+while read line; do
+	
+	eval $line
+	
+	if ! [ "$last_device" = "$HWRevision" ]; then
+		[ "$last_device" = "000" ] || write_device_entry_closure "    "
+		printf '%s\n' "$line" | write_device_entry "    "
+		last_device="$HWRevision"
+	fi
+
+	printf '%s\n' "$line" | write_key_entry "      "
+	
+done < "$tmp/generate_database_sorted_input"
+
+[ "$last_device" = "000" ] || write_device_entry_closure "    "
+
+write_entries_closure
+write_signature_entries
+write_footer
 
 #######################################################################################################
 #                                                                                                     #
