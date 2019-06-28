@@ -295,6 +295,23 @@ get_partition()
 )
 #######################################################################################################
 #                                                                                                     #
+# get the size of a MTD or eMMC partition                                                             #
+#                                                                                                     #
+#######################################################################################################
+get_partition_size()
+(
+	if is_puma_based_device; then
+		symname="$(sed -n -e "s|\(.*\)=$1|\1|p" "$puma_partitions")"
+		size="$(sed -n -e "s|${symname}_SIZE=\(.*\)|\1|p" "$puma_partitions")"
+	else
+		part="$(expr "$1" : "[^0-9]*\(.*\)")"
+		size="$(sed -n -e "s|^mtd${part}: \([^ ]*\) .*|0x\1|p" "$proc_mtd")"
+	fi
+	[ "${#size}" -gt 2 ] && printf "%d\n" $(( $size )) && exit 0
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # check, if a list contains an item and return its index (based on 1)                                 #
 #                                                                                                     #
 # $1 - the item to look for (needle)                                                                  #
@@ -706,6 +723,25 @@ is_loopdevice_mountpoint()
 )
 #######################################################################################################
 #                                                                                                     #
+# get file name of mounted image for a loopback device                                                #
+#                                                                                                     #
+#######################################################################################################
+get_loopdevice_backingfile()
+(
+	if is_loopdevice_mountpoint "${1:-/}"; then
+		dev="$(get_ids_of_mountpoint "${1:-/}")"
+		[ -z "$dev" ] && exit 1
+		for device in "$sysfs_block_dir"/*; do
+			if [ "$(cat $device/dev 2>/dev/null)" = "$dev" ]; then
+				file="$(cat $device/$loop_driver_name/$backing_file_name 2>/dev/null)"
+				[ "${#file}" -gt 0 ] && printf "%s\n" "$file" && exit 0
+			fi
+		done
+	fi
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # mount alternative system' root filesystem somewhere                                                 #
 #                                                                                                     #
 # CGI calls have only /bin:/usr/bin in the search PATH, the old value is not important, changing the  #
@@ -775,6 +811,79 @@ get_modified_by()
 )
 #######################################################################################################
 #                                                                                                     #
+# convert binary value (from STDIN) to decimal representation                                         #
+#                                                                                                     #
+#######################################################################################################
+bin2dec()
+(
+	bin2dec_read_octal()
+	{
+		e=$1
+		i=1
+		l=0
+		v=0
+		s=-8
+		ff=0
+		while read pos left right; do
+			if [ $ff -eq 1 ]; then
+				[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
+				[ $e -eq 0 ] && ff=255 || ff=$(( 255 << s ))
+				v=$(( v + ff ))
+				i=$(( i + 1 ))
+				ff=0
+			fi
+			while [ $i -lt $pos ]; do # insert zeros for missing bytes
+				[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
+				i=$(( i + 1 ))
+			done
+			if [ $right = 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			[ $e -eq 0 ] && v=$(( v * 256 )) || s=$(( s + 8 ))
+			[ $e -eq 0 ] && right=$(( 0$right )) || right=$(( 0$right << s ))
+			v=$(( v + right ))
+			i=$(( pos + 1 ))
+		done
+		printf "%d" $v
+	}
+
+	[ $(dd if=/proc/self/exe bs=1 count=1 skip=5 2>/dev/null | base64) = AQ== ] && e=1 || e=0
+	( cat; printf "%b" "\377" ) | cmp -l -- /dev/zero - 2>/dev/null | bin2dec_read_octal $e
+	return 0
+)
+#######################################################################################################
+#                                                                                                     #
+# get mkfs_time value from SquashFS superblock                                                        #
+#                                                                                                     #
+# $1 - mounted system root directory                                                                  #
+#                                                                                                     #
+#######################################################################################################
+get_mkfs_time()
+(
+	base="${1:-}"
+	if is_loopdevice_mountpoint "${base:-/}"; then
+		src="$(get_loopdevice_backingfile "${base:-/}")"
+		[ "${#src}" -gt 0 ] && len=$(stat -c %s "$src") || len=0
+	elif [ -z "$1" ] || [ "$1" = "/" ]; then	# root of running system needs /proc/mtd
+		src="$(get_partition "$filesystem_name" "$active_name")"
+		[ "${#src}" -gt 0 ] && len=$(get_partition_size "$src") || len=0
+	else
+		src="$(find_device_of_mountpoint "$1")"
+		[ "${#src}" -gt 0 ] && len=$(get_partition_size "$src") || len=0
+	fi
+	if [ "${#src}" -gt 0 ]; then
+		v="$(dd if=$src bs=4 count=1 skip=2 2>/dev/null | bin2dec)"
+		if [ "${#v}" -gt 0 ]; then
+			if [ "$v" -gt "$len" ]; then
+				printf "%s\n" "$v" && exit 0
+			fi
+		fi
+	fi
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # get date of last modification from specified system root                                            #
 # - take the date and time from any existing modification file or                                     #
 # - take date and time from SquashFS image, if it's a file (mounted via a loop device)                #
@@ -789,24 +898,19 @@ get_modified_date()
 	v="$(stat -c %Y -- /proc/self/exe 2>/dev/null)"
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
-	unset v
 	base="${1:-}"
+	unset v
 	for f in $version_files; do
 		if [ -f "$base/$f" ]; then
 			v="$(stat -c %Y -- "$base/$f")"
 			break
 		fi
 	done
+	if [ -z "$v" ]; then
+		v="$(get_mkfs_time "${base:-/}")"	# try to find valid mkfs_time first
+	fi
 	if [ -z "$v" ] && is_loopdevice_mountpoint "${base:-/}"; then
-		dev="$(get_ids_of_mountpoint "${base:-/}")"
-		[ -z "$dev" ] && exit 1
-		for device in "$sysfs_block_dir"/*; do
-			if [ "$(cat $device/dev 2>/dev/null)" = "$dev" ]; then
-				file="$(cat $device/$loop_driver_name/$backing_file_name 2>/dev/null)"
-				[ ${#file} -eq 0 ] && exit 1
-				break
-			fi
-		done
+		file="$(get_loopdevice_backingfile "${base:-/}")"
 		v="$(stat -c %Y -- "$file")"
 		d="$(get_system_date "$1")"
 		if [ -n "$d" ] && [ -n "$v" ]; then
