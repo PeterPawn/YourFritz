@@ -1,0 +1,153 @@
+<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:yourfritz-de:YourFritz" xmlns:si="urn:yourfritz-de:YourFritz" elementFormDefault="qualified">
+  <xs:simpleType name="HWRevision">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{2,3}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Architecture">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="MIPS"/>
+      <xs:enumeration value="ARM"/>
+      <xs:enumeration value="ATOM"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="InstructionSet">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="i686"/>
+      <xs:enumeration value="ARMv6"/>
+      <xs:enumeration value="ARMv7"/>
+      <xs:enumeration value="MIPS4K"/>
+      <xs:enumeration value="MIPS24"/>
+      <xs:enumeration value="MIPS34"/>
+      <xs:enumeration value="MIPS74"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Endianess">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="little"/>
+      <xs:enumeration value="big"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="CPU">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Puma5"/>
+      <xs:enumeration value="Puma6"/>
+      <xs:enumeration value="Puma7"/>
+      <xs:enumeration value="IPQ"/>
+      <xs:enumeration value="Fusiv"/>
+      <xs:enumeration value="UR7"/>
+      <xs:enumeration value="AR9"/>
+      <xs:enumeration value="AR10"/>
+      <xs:enumeration value="VR9"/>
+      <xs:enumeration value="GRX5"/>
+      <xs:enumeration value="GRX7"/>
+      <xs:enumeration value="Dragonfly"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="USBVersion">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="none"/>
+      <xs:enumeration value="2"/>
+      <xs:enumeration value="3"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="USBPorts">
+    <xs:restriction base="xs:integer">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="3"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="InternalNAS">
+    <xs:restriction base="xs:integer">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="4096"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="RAM">
+    <xs:restriction base="xs:integer">
+      <xs:minInclusive value="64"/>
+      <xs:maxInclusive value="2048"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="SystemFlashType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="NOR"/>
+      <xs:enumeration value="SPI"/>
+      <xs:enumeration value="NAND"/>
+      <xs:enumeration value="eMMC"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FirmwareStructure">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="combined"/>
+      <xs:enumeration value="separated"/>
+      <xs:enumeration value="wrapped"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="SquashFSVersion">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="3"/>
+      <xs:enumeration value="4"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="SquashFSCompression">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="gzip"/>
+      <xs:enumeration value="lzma"/>
+      <xs:enumeration value="xz"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="DualSystemCapable">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="yes"/>
+      <xs:enumeration value="no"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="TFFSFormat">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Legacy"/>
+      <xs:enumeration value="NAND"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:element name="model">
+    <xs:complexType>
+      <xs:attribute name="HWRevision" type="si:HWRevision" use="required"/>
+      <xs:attribute name="DeviceName" type="xs:string" use="required"/>
+      <xs:attribute name="Architecture" type="si:Architecture" use="required"/>
+      <xs:attribute name="InstructionSet" type="si:InstructionSet" use="required"/>
+      <xs:attribute name="Endianess" type="si:Endianess" use="required"/>
+      <xs:attribute name="CPU" type="si:CPU" use="required"/>
+      <xs:attribute name="USBVersion" type="si:USBVersion" use="required"/>
+      <xs:attribute name="USBPorts" type="si:USBPorts" use="required"/>
+      <xs:attribute name="InternalNAS" type="si:InternalNAS" use="required"/>
+      <xs:attribute name="RAM" type="si:RAM" use="required"/>
+      <xs:attribute name="SystemFlashType" type="si:SystemFlashType" use="required"/>
+      <xs:attribute name="FirmwareStructure" type="si:FirmwareStructure" use="required"/>
+      <xs:attribute name="KernelPartitionSize" type="xs:integer" use="required"/>
+      <xs:attribute name="FilesystemPartitionSize" type="xs:integer" use="optional"/>
+      <xs:attribute name="SquashFSVersion" type="si:SquashFSVersion" use="required"/>
+      <xs:attribute name="SquashFSCompression" type="si:SquashFSCompression" use="required"/>
+      <xs:attribute name="DualSystemCapable" type="si:DualSystemCapable" use="required"/>
+      <xs:attribute name="TFFSFormat" type="si:TFFSFormat" use="required"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="devices">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="si:model" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:unique name="UniqueHWRevision">
+      <xs:selector xpath="si:model"/>
+      <xs:field xpath="@HWRevision"/>
+    </xs:unique>
+  </xs:element>
+  <xs:element name="database">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="si:devices" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
