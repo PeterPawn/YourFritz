@@ -135,6 +135,9 @@ product="$(sed -n -e "s|^export CONFIG_PRODUKT_NAME=\"\?\([^\"]*\)\"\?\$|\1|p" "
 
 HWRevision="$(( version_major + 72 ))"
 
+# install type, used to detect architecture and flash size
+install_type="$(sed -n -e "s|^export CONFIG_INSTALL_TYPE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf" | sed -n -e "\$p")"
+
 # log and output data
 if [ $quiet -eq 1 ]; then
 	exec 2>/dev/null
@@ -154,6 +157,7 @@ printf "Release=\"%s\"\n" "$release" 1>&2
 printf "BetaRelease=\"%s\"\n" "$beta_release" 1>&2
 printf "LaborName=\"%s\"\n" "$labor_id_name" 1>&2
 printf "DirtyBuild=\"%s\"\n" "$build_dirty" 1>&2
+printf "InstallType=\"%s\"\n" "$install_type" 1>&2
 for k in $src/etc/avm_firmware_public_key* $src/etc/plugin_global_key.pem; do
 	[ -f "$k" ] || continue
 	key="$(expr "$k" : ".*avm_firmware_public_key\(.*\)")"
