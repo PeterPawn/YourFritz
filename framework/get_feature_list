@@ -1,0 +1,166 @@
+#! /bin/bash
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# convert the XML database containing feature descriptions for FRITZ!Box devices into a text list     #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# get_feature_list, version 0.2                                                                       #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Calling:                                                                                            #
+#                                                                                                     #
+# get_feature_list [ <partial text of @DeviceName> ]                                                  #
+#                                                                                                     #
+# The script uses 'xsltproc' to convert the feature database from XML format to a simple text list,   #
+# containing one line for each model and name/value pairs for each present attribute for this model.  #
+#                                                                                                     #
+# If an argument is specified, it's taken as partial text from the 'DeviceName' attribute and only    #
+# lines for models containing this text in their attribute get processed.                             #
+#                                                                                                     #
+# Output is written to STDOUT and the caller is responsible for correct redirections.                 #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+xsltproc="xsltproc"
+xmllint="xmllint"
+database="${YF_FEATURE_DATABASE_FILE:-feature_database.xml}"
+schema="${YF_FEATURE_DATABASE_SCHEMA:-feature_database.xsd}"
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# get XSLT file to output items                                                                       #
+#                                                                                                     #
+#######################################################################################################
+get_xslt()
+{
+	if [ -z "$1" ]; then
+		cat << 'END_OF_FILE'
+<?xml version="1.0"?>
+<xsl:stylesheet version="1.0" xmlns:si="urn:yourfritz-de:YourFritz" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" encoding="UTF-8" />
+  <xsl:template match="/">
+    <xsl:for-each select="si:database/si:devices">
+      <xsl:apply-templates select="si:model" />
+    </xsl:for-each>
+  </xsl:template>
+  <xsl:template match="si:model"><xsl:for-each select="@*"><xsl:value-of select="concat(name(),'=&quot;',.,'&quot; ')" /></xsl:for-each><xsl:text>&#xa;</xsl:text></xsl:template>
+</xsl:stylesheet>
+END_OF_FILE
+	elif [ -z "$2" ] || [ "$1" = "DeviceName" ]; then
+		[ -z "$2" ] && set -- DeviceName "$1"
+		cat << END_OF_FILE
+<?xml version="1.0"?>
+<xsl:stylesheet version="1.0" xmlns:si="urn:yourfritz-de:YourFritz" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" encoding="UTF-8" />
+  <xsl:template match="/">
+    <xsl:for-each select="//si:model[contains(@$1,'$2')]">
+      <xsl:for-each select="@*"><xsl:value-of select="concat(name(),'=&quot;',.,'&quot; ')" /></xsl:for-each><xsl:text>&#xa;</xsl:text>
+    </xsl:for-each>
+  </xsl:template>
+</xsl:stylesheet>
+END_OF_FILE
+	else
+		cat << END_OF_FILE
+<?xml version="1.0"?>
+<xsl:stylesheet version="1.0" xmlns:si="urn:yourfritz-de:YourFritz" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" encoding="UTF-8" />
+  <xsl:template match="/">
+    <xsl:for-each select="//si:model[@$1='$2']">
+      <xsl:for-each select="@*"><xsl:value-of select="concat(name(),'=&quot;',.,'&quot; ')" /></xsl:for-each><xsl:text>&#xa;</xsl:text>
+    </xsl:for-each>
+  </xsl:template>
+</xsl:stylesheet>
+END_OF_FILE
+	fi
+}
+#######################################################################################################
+#                                                                                                     #
+# check prerequisites                                                                                 #
+#                                                                                                     #
+#######################################################################################################
+exit=0
+if command -v "$xmllint" 2>/dev/null 1>&2; then
+	xmllint="$(command -v $xmllint 2>/dev/null)"
+else
+	printf "Missing needed command '%s'.\n\a" "$xmllint" 1>&2
+	exit=1
+fi
+if command -v "$xsltproc" 2>/dev/null 1>&2; then
+	xsltproc="$(command -v $xsltproc 2>/dev/null)"
+else
+	printf "Missing needed command '%s'.\n\a" "$xsltproc" 1>&2
+	exit=1
+fi
+if ! [ -f "$database" ]; then
+	printf "Missing feature database file '%s'.\n\a" "$database" 1>&2
+	exit=1
+fi
+if ! [ -f "$schema" ]; then
+	printf "Missing feature database schema '%s'.\n\a" "$schema" 1>&2
+	exit=1
+fi
+[ $exit -eq 1 ] && exit $exit
+if ! "$xmllint" --schema "$schema" "$database" 2>/dev/null 1>&2; then
+	printf "Error validating database '%s' with schema '%s'.\n\a" "$database" "$schema" 1>&2
+	"$xmllint" --schema "$schema" "$database" >/dev/null
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -z "$3" ]; then
+	printf "Too much parameters.\n\a" 1>&2
+	exit 1
+fi
+if ! [ -z "$1" ] && ! [ -z "$2" ]; then
+	if [ -z "$("$xmllint" --xpath "//@$1" "$database" 2>/dev/null)" ]; then
+		printf "The specified attribute name '%s' was not found in the database.\n\a" "$1" 1>&2
+		exit 1
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# output converted data                                                                               #
+#                                                                                                     #
+#######################################################################################################
+"$xsltproc" <(get_xslt "$1" "$2") "$database"
+rc=$?
+#######################################################################################################
+#                                                                                                     #
+# finish and regular exit                                                                             #
+#                                                                                                     #
+#######################################################################################################
+exit $rc
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
