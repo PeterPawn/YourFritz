@@ -29,13 +29,17 @@
 #                                                                                                     #
 # Calling:                                                                                            #
 #                                                                                                     #
-# get_feature_list [ <partial text of @DeviceName> ]                                                  #
+# get_feature_list [ [ <attribute> ] <value_to_lookup> ]                                              #
 #                                                                                                     #
 # The script uses 'xsltproc' to convert the feature database from XML format to a simple text list,   #
 # containing one line for each model and name/value pairs for each present attribute for this model.  #
 #                                                                                                     #
-# If an argument is specified, it's taken as partial text from the 'DeviceName' attribute and only    #
-# lines for models containing this text in their attribute get processed.                             #
+# If only one argument is specified, it's taken as partial text from the 'DeviceName' attribute and   #
+# only lines for models containing this text in their attribute get processed.                        #
+#                                                                                                     #
+# If two arguments are present, the first one is expected to be an attribute name from database and   #
+# the second one is used as the value to look for. Comparisions are made with "is equal", only for    #
+# the 'DeviceName' attribute a partial match is used.                                                 #
 #                                                                                                     #
 # Output is written to STDOUT and the caller is responsible for correct redirections.                 #
 #                                                                                                     #
