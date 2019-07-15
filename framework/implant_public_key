@@ -101,7 +101,7 @@ mode_overload="overload"
 key_location="/etc"
 write_check="$key_location/.modified"
 overlay_storage="/var/flash"
-possible_mountpoints="mnt filesystem data var/media/ftp/YourFritz var/etc"
+possible_mountpoints="mnt filesystem data var/YourFritz/keys var/media/ftp/YourFritz/keys var/etc"
 overlayfs_name="overlayfs"
 procfs_filesystems="/proc/filesystems"
 procfs_mounts="/proc/mounts"
@@ -304,7 +304,7 @@ if [ $overload -eq 0 ]; then
 			if [ "$(sed -n -e "s|^.*[ \t]*\($overlayfs_name\)|\1|p" $procfs_filesystems)" = "$overlayfs_name" ]; then
 				mkdir -p $mountpoint$key_location 2>/dev/null
 				ln -sf $procfs_mounts $mountpoint$mtab_name
-				mount -t overlayfs -o upperdir=$mountpoint$key_location,lowerdir=$key_location overlayfs $key_location && mounted=1
+				mount -t $overlayfs_name -o upperdir=$mountpoint$key_location,lowerdir=$key_location $overlayfs_name $key_location && mounted=1
 			fi
 		fi
 		if [ $mounted -eq 0 ]; then
@@ -326,10 +326,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 key_index=$pubkey_max
-set -- $keys
-while [ $# -gt 0 ]; do
-	modulus="$1"
-	shift
+for modulus in $keys; do
 	key_index=$(get_key_index $overload $key_index)
 	if [ $key_index -lt 0 ]; then
 		printf "Unable to find a usable key file name.\n" 1>&2
