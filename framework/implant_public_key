@@ -72,9 +72,26 @@
 # best chances for a 'first hit' on first attempt.                                                    #
 #                                                                                                     #
 # The first command line parameter selects the 'operation mode' and has to be 'overlay', 'replace' or #
-# 'overload' for the approaches from above. Each following command line parameter is expected to be a #
-# 'big number' string with the modulus of the new public key - the exponent is always assumed to be   #
-# 65537 in decimal, it will be written to the file as 010001 in hexadecimal.                          #
+# 'overload' for the approaches from above. Each following command line parameter is expected to be   #
+# one of the following values:                                                                        #
+#                                                                                                     #
+# - a direct 'modulus' value (big number) as hexadecimal string                                       #
+# - a hash sign (#), followed by the name of an environment (urlader) variable containing the 256     #
+#   characters of a 'modulus' value                                                                   #  
+# - an absolute path (starting with a slash) of a key file in AVM's format, where the first line      #
+#   contains the hexadecimal string (256 or 258 characters) with modulus to use                       #
+#                                                                                                     #
+# The exponent is always assumed to be 65537 in decimal, it will be written to the file as 010001 in  #
+# hexadecimal.                                                                                        #
+#                                                                                                     #
+# It's impossible to add or modify an 'urlader' variable containing the needed 256 characters from    #
+# the running system. Any line written to the procfs interface for TFFS is limited to 256 bytes and   #
+# due to the needs of a name in front of the value, there's not enough room to set any valid value    #
+# via the TFFS driver of AVM. But it's possible to set such a value from the FTP server in AVM's      #
+# bootloader EVA - that makes it a perfect place to store such a value. If anyone is able to change   #
+# the key in this manner, he's also able to change more important settings. There's (currently) no    #
+# kind known, to tamper with a key stored in this location, if the attacker isn't able to access      #
+# EVA's FTP server - no matter, whether the running system contains any vulnerability or not.         #
 #                                                                                                     #
 # If the key location directory is already writable, the script switches immediately to the search    #
 # mode of the first and second approach and looks for the first free key file name; but if key file   #
@@ -105,6 +122,7 @@ possible_mountpoints="mnt filesystem data var/YourFritz/keys var/media/ftp/YourF
 overlayfs_name="overlayfs"
 procfs_filesystems="/proc/filesystems"
 procfs_mounts="/proc/mounts"
+procfs_urlader="/proc/sys/urlader/environment"
 mtab_name="/etc/mtab"
 #######################################################################################################
 #                                                                                                     #
@@ -118,6 +136,15 @@ mtab_name="/etc/mtab"
 progress()
 {
 	[ -z "$YF_PROGRESS" ] || cat >>"$YF_PROGRESS"
+}
+#######################################################################################################
+#                                                                                                     #
+# shorten the specified modulus for output to log files                                               #
+#                                                                                                     #
+#######################################################################################################
+shorten_modulus()
+{
+	printf "%s...%s\n" "$(expr "$1" : "\(.\{8\}\).*")" "$(expr "$1" : ".*\(.\{8\}\)\$")"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -252,22 +279,46 @@ fi
 #                                                                                                     #
 #######################################################################################################
 unset keys
+unset pos
+i=0
 for modulus in $*; do
-	if check_modulus "$modulus"; then
-		if check_installed "$modulus"; then
-			if check_duplicate "$modulus" $keys; then
-				keys="${keys}${keys:+ }$modulus"
-			else
-				printf "Key with modulus '%s' is duplicate and was skipped.\n" "$modulus" 1>&2
-			fi
+	s1="$(expr "$modulus" : "\(.\).*")"
+	i=$(( i + 1 ))
+	if [ "$s1" = "#" ]; then
+		s2="$(expr "$modulus" : ".\(.*\)")"
+		modulus="$(sed -n -e "/^$s2/s|[^ \t]*[ \t]*\(.*\)|\1|p" "$procfs_urlader")"
+		if [ -z "$modulus" ]; then
+			printf "Environment value '%s' is empty, the key (%u) was skipped.\n" "$s2" "$i" 1>&2
+			continue
+		fi
+		s1="$(expr "$modulus" : "\(.\).*")"
+		[ -z "$(expr "$s1" : "\([89a-fA-F]\).*")" ] || modulus="00$modulus"
+	elif [ "$s1" = "/" ]; then
+		f="$modulus"
+		if [ -s "$f" ]; then
+			modulus="$(sed -n -e "1p" "$f")"
 		else
-			printf "Key with modulus '%s' is installed already and was skipped.\n" "$modulus" 1>&2
+			printf "File '%s' was not found or is empty, the key (%u) was skipped.\n" "$f" "$i" 1>&2
+			continue
+		fi
+	fi
+	if ! check_modulus "$modulus"; then
+		printf "Invalid modulus content or length, the key (%u) was skipped.\n" "$i" 1>&2
+		continue
+	fi
+	if check_installed "$modulus"; then
+		if check_duplicate "$modulus" $keys; then
+			keys="${keys}${keys:+ }$modulus"
+			pos="${pos}${pos:+ }$i"
+		else
+			printf "Key with modulus '%s' is duplicate and was skipped.\n" "$(shorten_modulus "$modulus")" 1>&2
 		fi
 	else
-		printf "Invalid modulus content or length, this one was skipped.\n" 1>&2
+		printf "Key with modulus '%s' is installed already and was skipped.\n" "$(shorten_modulus "$modulus")" 1>&2
 	fi
 done
 if [ -z "$keys" ]; then
+	printf "No keys to install, exiting.\n" | progress
 	printf "No keys to install, exiting.\n" 1>&2
 	exit 1
 fi
@@ -326,6 +377,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 key_index=$pubkey_max
+set -- $pos
 for modulus in $keys; do
 	key_index=$(get_key_index $overload $key_index)
 	if [ $key_index -lt 0 ]; then
@@ -343,9 +395,10 @@ for modulus in $keys; do
 			mount -o bind $overlay_storage/$key_name $file_name
 		fi
 		printf "%s\n010001\n" "$modulus" >$file_name
-		printf "Installed public key to file '%s'.\n" $key_name | progress
+		printf "Installed public key (%u) to file '%s'.\n" "$1" $key_name | progress
 		key_index=$(( key_index - 1 ))
 	fi
+	shift
 done
 #######################################################################################################
 #                                                                                                     #
