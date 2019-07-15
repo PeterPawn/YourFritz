@@ -31,6 +31,10 @@
 #                                                                                                     #
 # This script may inject an own public key for image signature verification in three different ways.  #
 #                                                                                                     #
+# The keys to install are checked for valid content/format, whether they're installed already and     #
+# whether they're duplicate. Therefore you may call this script as often as needed, without the risk  #
+# to run out of available names or to install unnecessary duplicate public keys.                      #
+#                                                                                                     #
 # The first and most effective approach is to use an overlay file-system, if the kernel supports this #
 # option. The script creates an own tmpfs part, mounts it on a free subdirectory from a list of       #
 # candidates and creates another subdirectory for the key location. This directory will be mounted as #
@@ -86,7 +90,7 @@
 # constants                                                                                           #
 #                                                                                                     #
 #######################################################################################################
-pubkey_mask="avm_firmware_public_key%u"
+pubkey_mask="avm_firmware_public_key%s"
 pubkey_min=1
 pubkey_max=9
 pubkey_forbidden="3"
@@ -134,6 +138,33 @@ check_modulus()
 		exit 0
 	fi
 	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the specified key is installed already                                               #
+#                                                                                                     #
+#######################################################################################################
+check_installed()
+(
+	modulus="$1"
+	for key in $(printf "%s/%s" "$key_location" "$(printf "$pubkey_mask" '*')") $(printf "%s/%s" "$key_location" "$plugin_pubkey_mask"); do
+		[ -f "$key" ] && [ "$(sed -n -e 1p "$key")" = "$modulus" ] && exit 1
+	done
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the specified key is present already in the list of new keys                         #
+#                                                                                                     #
+#######################################################################################################
+check_duplicate()
+(
+	modulus="$1"
+	shift
+	for key in $*; do
+		[ "$key" = "$modulus" ] && exit 1
+	done
+	exit 0
 )
 #######################################################################################################
 #                                                                                                     #
@@ -215,6 +246,33 @@ else
 fi
 #######################################################################################################
 #                                                                                                     #
+# loop over all remaining parameters and treat them as modulus values to install, check them for      #
+# duplicates and already installed keys to prevent preparations, if no further installation is        #
+# necessary                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+unset keys
+for modulus in $*; do
+	if check_modulus "$modulus"; then
+		if check_installed "$modulus"; then
+			if check_duplicate "$modulus" $keys; then
+				keys="${keys}${keys:+ }$modulus"
+			else
+				printf "Key with modulus '%s' is duplicate and was skipped.\n" "$modulus" 1>&2
+			fi
+		else
+			printf "Key with modulus '%s' is installed already and was skipped.\n" "$modulus" 1>&2
+		fi
+	else
+		printf "Invalid modulus content or length, this one was skipped.\n" 1>&2
+	fi
+done
+if [ -z "$keys" ]; then
+	printf "No keys to install, exiting.\n" 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
 # mount an overlayfs for key location directory or prepare a tmpfs stored copy of the key location,   #
 # if it's necessary or switch operation mode accordingly                                              #
 #                                                                                                     #
@@ -264,35 +322,32 @@ else
 fi
 #######################################################################################################
 #                                                                                                     #
-# loop over all remaining parameters and treat them as modulus values to install                      #
+# install remaining keys                                                                              #
 #                                                                                                     #
 #######################################################################################################
 key_index=$pubkey_max
+set -- $keys
 while [ $# -gt 0 ]; do
 	modulus="$1"
 	shift
-	if check_modulus "$modulus"; then
-		key_index=$(get_key_index $overload $key_index)
-		if [ $key_index -lt 0 ]; then
-			printf "Unable to find a usable key file name.\n" 1>&2
-			exit 1
-		else
-			if [ $key_index -gt $pubkey_max ]; then
-				key_name="$plugin_pubkey_mask"
-			else
-				key_name="$(printf "$pubkey_mask" $key_index)"
-			fi
-			file_name=$key_location/$key_name
-			if [ $overload -eq 1 ]; then
-				touch $overlay_storage/$key_name
-				mount -o bind $overlay_storage/$key_name $file_name
-			fi
-			printf "%s\n010001\n" "$modulus" >$file_name
-			printf "Installed public key to file '%s'.\n" $key_name | progress
-			key_index=$(( key_index - 1 ))
-		fi
+	key_index=$(get_key_index $overload $key_index)
+	if [ $key_index -lt 0 ]; then
+		printf "Unable to find a usable key file name.\n" 1>&2
+		exit 1
 	else
-		printf "Invalid modulus content or length, this one was skipped.\n" 1>&2
+		if [ $key_index -gt $pubkey_max ]; then
+			key_name="$plugin_pubkey_mask"
+		else
+			key_name="$(printf "$pubkey_mask" $key_index)"
+		fi
+		file_name=$key_location/$key_name
+		if [ $overload -eq 1 ]; then
+			touch $overlay_storage/$key_name
+			mount -o bind $overlay_storage/$key_name $file_name
+		fi
+		printf "%s\n010001\n" "$modulus" >$file_name
+		printf "Installed public key to file '%s'.\n" $key_name | progress
+		key_index=$(( key_index - 1 ))
 	fi
 done
 #######################################################################################################
