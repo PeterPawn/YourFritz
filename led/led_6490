@@ -1,0 +1,608 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# support LED functions on a 6490 device, set them without led_module.ko support                      #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# led_puma6, version 0.4                                                                              #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script uses the GPIOLIB functions (of Linux kernel) and the GPIO driver (of AVM) to support    #
+# various LED operations, even without the presence of led_module.ko.                                 #
+#                                                                                                     #
+# See the usage screen (shown with --help option) for a description, which operations are supported   #
+# and what else is needed for full function.                                                          #
+#                                                                                                     #
+#######################################################################################################
+usage_text()
+{
+	__purpose_hdr
+	__nl "This script may be used to control and query the state of LED displays on a FRITZ!Box device.\n"
+	__nl "This version is customized for a '$(__bold "$devname")' model.\n" "$devname"
+	__nl "Using this script you may avoid to violate AVM's license regarding the provided kernel module"
+	__nl "'led_module.ko', that's used for LED control from AVM's programs. To prevent confusion from"
+	__nl "running two different LED controllers on the same device, you should instruct any other"
+	__nl "controller to suspend its activities, while this script is used. This may be done for AVM's"
+	__nl "controller with a call of 'led-ctrl display_suspend' and (later) reversed calling"
+	__nl "'led-ctrl display_wakeup'.\n"
+	__usage_hdr
+	__usage_opt "options"; __usage_opt_end; __usage_opt "parameters"
+	__usage_end
+	__options_hdr
+	__option_help 
+	__option_version
+	__options_end
+	__nl "The script uses two different modes of operation.\n"
+	__nl "The first one is used to query or set the state of a single LED. In this mode, the first"
+	__nl "argument is the name of a supported LED, followed by the requested action, that may need"
+	__nl "more arguments, following the action name.\n"
+	__nl "The second mode works on more than a single LED and uses this script (called recursively)"
+	__nl "to iterate over all define LED names (with exception of the 'names' action, which only"
+	__nl "shows the defined LED names without recursion)."
+	__nl "Nearly all parameters may be specified in mixed case, they're converted to lowercase before"
+	__nl "they get further processed.\n"
+	__nl "For the first mode, the following '$(__bold "action")' verbs are supported:\n"
+	__nl "$(__bold "on")/$(__bold "off")           - switches the specified LED on or off"
+	__nl "$(__bold "state")            - writes the current state ('on' or 'off') for the specified LED to STDOUT"
+	__nl "$(__bold "flash <on> <off>") - let the LED flash with '$(__bold "on")' seconds bright and '$(__bold "off")' seconds dark"
+	__nl "$(__bold "get")              - get the raw value of the associated GPIO pin for the specified LED"
+	__nl "$(__bold "set {0|1}")        - set the specified raw value for LED's GPIO pin"
+	__nl "$(__bold "init")/$(__bold "deinit")      - export/unexport the GPIO pin for this LED to/from SYSFS, useful if you"
+	__nl "                   expect to use this script for the specified LED more often (it saves"
+	__nl "                   some commands for this LED on each call, if it's exported yet)\n"
+	__nl "The '$(__bold "flash")' action is only active, as long as the script is running. Using this action, the"
+	__nl "script enters an infinite loop and has to be interrupted with SIGINT from another process."
+	__nl "The initial state of the LED (but only on or off), that was flashing, is restored by this"
+	__nl "script on exit. Take care not to call any other action (that update the display) for the"
+	__nl "same LED, while it's flashing.\n"
+	__nl "The numeric values for on/off intervals are expected to be decimal integer numbers. If the"
+	__nl "'usleep' command is available (which supports a time to sleep in microseconds), the value"
+	__nl "may contain a fractional part, too (delimited by a decimal point). The maximum resolution"
+	__nl "is limited to 1/100 seconds.\n"
+	__nl "For the second mode, the following '$(__bold "action")' verbs are supported:\n"
+	__nl "$(__bold "names")   - get the names (and positions in lists) of all supported LED pins"
+	__nl "$(__bold "states")  - get the current state ('on' or 'off') for all supported LEDs as a single line, the"
+	__nl "          order of values is the same as the order of '$(__bold "names")' and this line may be used with"
+	__nl "          the '$(__bold "restore")' action to re-establish the display from the time calling an earlier"
+	__nl "          '$(__bold "states")' action"
+	__nl "$(__bold "restore") - set the state of all supported LEDs at once (only 'on' or 'off' supported here)"
+	__nl "$(__bold "dark")    - set all LEDs at once to 'off', the supported synonym '$(__bold "wyatt_earp")' was used by AVM"
+	__nl "          in the past, too"
+	__nl "$(__bold "vars")    - get the state of all supported LEDs at once as key/value pairs, usable as shell"
+	__nl "          variable assignments; the used keys are built from 'LED_<name>', where '<name>' is"
+	__nl "          the LED name from '$(__bold "names")', translated to all uppercase and with any underscore"
+	__nl "          removed"
+}
+#######################################################################################################
+#                                                                                                     #
+# L10N strings                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+languages="en"
+L10N_ERR_OPT_en="Unknown option '%%s' specified."
+L10N_ERR_SCR_en="Missing another needed executable: %%s."
+L10N_ERR_EXC_en="Missing a required command: %%s."
+L10N_ERR_TRM_en="%%s is a terminal device. %%s"
+L10N_ERR_001_en="Unsupported HWRevision (%%s), this script is intended for devices with 'HWRevision=%%s' only."
+L10N_ERR_002_en="Unable to export GPIO pin '%%s' for LED '%%s'."
+L10N_ERR_003_en="Extraneous/unknown parameter(s) after '%%s'."
+L10N_ERR_004_en="Missing action and/or LED name parameter."
+L10N_ERR_005_en="Invalid LED name '%%s'."
+L10N_ERR_006_en="Missing new value for '%%s' function."
+L10N_ERR_007_en="Invalid binary value '%%s' for '%%s' function."
+L10N_ERR_008_en="Missing '%%s' interval value for '%%s' function."
+L10N_ERR_009_en="Invalid numeric value '%%s' for '%%s' interval."
+L10N_ERR_010_en="Invalid numeric value '%%s' for '%%s' interval, only multiples of 1/100 second are accepted."
+L10N_ERR_011_en="Invalid function '%%s'."
+L10N_ERR_012_en="Missing LED driver with procfs interface at '%%s'."
+L10N_ERR_013_en="Missing GPIO library interface at '%%s'."
+L10N_ERR_014_en="Missing action parameter after LED name '%%s'."
+L10N_ERR_015_en="Wrong count (%%s) of LED states for '%%s' action, %%s states are expected according to present LEDs."
+L10N_ERR_016_en="Invalid value '%%s' for LED '%%s', only 'on' and 'off' are accepted here."
+L10N_HLP_PUR_en="Purpose"
+L10N_HLP_USG_en="Usage"
+L10N_HLP_SUP_en="Supported "
+L10N_HLP_OPT_en="options"
+L10N_HLP_ARE_en="are"
+L10N_HLP_HLP_en="show this information (must be the first option)"
+L10N_HLP_VER_en="show version and exit (must be the first option)"
+#######################################################################################################
+#                                                                                                     #
+# usage and display helpers from YourFritz framework (included to get a single file to copy/install)  #
+#                                                                                                     #
+#######################################################################################################
+__bold__="$(printf "\033[1m")"
+__undl__="$(printf "\033[4m")"
+__red__="$(printf "\033[1m\033[31m")"
+__gren__="$(printf "\033[1m\033[32m")"
+__yllw__="$(printf "\033[1m\033[33m")"
+__blue__="$(printf "\033[1m\033[34m")"
+__rset__="$(printf "\033[0m")"
+__bold() { printf "$__bold__"; printf -- "$@"; printf "$__rset__"; }
+__undl() { printf "$__undl__"; printf -- "$@"; printf "$__rset__"; }
+__show_script_name()
+{
+	printf "%s${0#*/}\033[0m: " "$1"
+}
+__get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d'
+}
+__license()
+{
+	__get_script_lines "LIC"
+}
+__version()
+{
+	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__\1$__rset__,\2|"
+}
+__copyright()
+{
+	__get_script_lines "CPY"
+}
+__get_language()
+(
+	__get_language_code()
+	{
+		printf "%s\n" "$1" | sed -n -e "1s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
+	}
+
+	lang="$1"
+	shift
+
+	if ! [ -z "$LC_ALL" ]; then
+		check="$(__get_language_code "$LC_ALL")"
+	else
+		[ -z "$LANG" ] || check="$(__get_language_code "$LANG")"
+	fi
+	if ! [ -z "$check" ]; then
+		[ "$lang" = "$check" ] || \
+		for l in $*; do
+			[ "$l" = "$check" ] && lang="$l" && break
+		done
+	fi
+	printf "%s" "$lang"
+)
+__language__="$(eval __get_language $languages)"
+__get_localized()
+{
+	eval printf "\"\$L10N_${1}_${__language__}\""
+}
+__emsg()
+{
+	__show_script_name "$__red__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\a\n" "$@" 1>&2
+}
+__info()
+{
+	__show_script_name "$__gren__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\n" "$@" 1>&2
+}
+__check_option()
+{
+	o="$1"
+	shift
+	for v in $*; do
+		[ "$o" = "$v" ] && printf 1 && return 0
+	done
+	printf 0
+	return 1
+}
+__is_option()
+{
+	[ "$(expr \( "$1" : "\(.\).*" \) )" = "-" ] && return 0 || return 1
+}
+__is_last_option()
+{
+	[ "$1" = "--" ] && return 0 || return 1
+}
+__options_end__="eval while __is_option \"\$1\"; do __is_last_option \"\$1\" && shift && break;\
+	__emsg \"\$(__get_localized ERR_OPT)\" \"\$1\"; exit 1; done;"
+__version_option()
+{
+	if __check_option "$1" "-V" "--version" >/dev/null; then
+		__version
+		__copyright
+		__license
+		printf "\n"
+		exit 1
+	fi
+	return 1
+}
+__version_option__="eval __version_option \$@ && exit 0"
+__help_option()
+{
+	if __check_option "$1" "-h" "--help" >/dev/null; then
+		# [ -t 1 ] && command -v less >/dev/null && (__usage | less) || __usage
+		__usage
+		exit 1
+	fi
+}
+__help_option__="eval __help_option \$@"
+__usage()
+(
+	indent=0
+	__indent_on() { indent=$(( indent + 4 )); }
+	__indent_off() { indent=$(( indent - 4 )); }
+	__indent() { [ $indent -gt 0 ] && printf "%0${indent}s" " "; };
+	__nl() { printf "\n%s" "$(__indent)"; printf -- "$1"; }
+	__purpose_hdr() { __nl; __bold "$(__get_localized HLP_PUR):"; printf "\n"; }
+	__usage_name() { __bold "${0#*/}"; }
+	__usage_hdr() { printf "\n"; __nl; __bold "$(__get_localized HLP_USG):\n"; __indent_on; __nl "$(__usage_name)"; }
+	__usage_end() { __indent_off; printf "\n"; }
+	__usage_opt_int() { v="$1"; shift; [ $# ] && m="$@"; printf -- "[ %s%s ]" "$(__undl "$v")" "$m"; unset m v; };
+	__usage_opt_end() { printf -- " [ -- ]"; }
+	__usage_opt() { printf -- " %s" "$(__usage_opt_int "$@")"; }
+	__usage_arg() { printf -- " %s" "$(__undl "$1")"; }
+	__options_hdr() { __nl "$(__get_localized HLP_SUP)"; __undl "$(__get_localized HLP_OPT)"; printf " $(__get_localized HLP_ARE):\n"; }
+	__options_end() { printf "\n"; }
+	__option_show_opt() {
+		printf -- "%s, %s" "$2" "$3"
+		__l4__=${#4}
+		[ $__l4__ -gt 0 ] && printf " %s%s%s" "$__undl__" "$4" "$__rset__" && __l4__=$(( __l4__ + 1 ))
+		printf "%0$(( $1 - ${#2} - ${#3} - __l4__ - 3 ))s" " "
+		unset __l4__
+	}
+	__option_show_desc() { printf -- "- %s" "$@"; }
+	__option_debug() { __nl; __option_show_opt ${1:-15} "-d" "--debug"; __option_show_desc "$(__get_localized HLP_DBG)"; }
+	__option_help()	{ __nl; __option_show_opt ${1:-15} "-h" "--help"; __option_show_desc "$(__get_localized HLP_HLP)"; }
+	__option_version()	{ __nl; __option_show_opt ${1:-15} "-V" "--version"; __option_show_desc "$(__get_localized HLP_VER)"; }
+	__end() { printf "\n%s\n" "$__rset__"; }
+
+	__version
+	__copyright
+	__license
+	usage_text
+	__end
+)
+__check_required_command()
+(
+	IFS=:
+	set -- $1
+	for n in $@; do
+		command -v $n 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+__check_required_commands()
+{
+	for n in $@; do
+		__check_required_command $n && continue
+		__emsg "$(__get_localized ERR_EXC)" "$(printf "%s\n" "$n" | sed -e "s|:| or |g")"
+		return 1
+	done
+	return 0
+}
+__check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
+
+__required_commands="sed cat sleep"
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+sysfs="/sys/class/gpio"
+procfs="/proc/avm"
+prefix="gpio"
+exp_name="export"
+unexp_name="unexport"
+val_name="value"
+hwrev="213"
+devname="FRITZ!Box Cable 6490"
+led_names="power info_red internet dect wlan info"
+led_pins="92 93 101 91 102 104"
+led_inverted="1 1 1 1 1 1"
+#######################################################################################################
+#                                                                                                     #
+# check options                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+options=""
+parameters=""
+$__help_option__
+$__version_option__
+#######################################################################################################
+#                                                                                                     #
+# check environment                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+$__check_required_commands__
+if ! [ "$HWRevision" = "$hwrev" ]; then
+	__emsg "$(__get_localized ERR_001)" "$HWRevision" "$hwrev"
+	exit 1
+fi
+if ! [ -f "$procfs/$prefix" ]; then
+	__emsg "$(__get_localized ERR_012)" "$procfs/$prefix"
+	exit 1
+fi
+if ! [ -d "$sysfs" ]; then
+	__emsg "$(__get_localized ERR_013)" "$sysfs"
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# get n-th value from paramater list                                                                  #
+#                                                                                                     #
+#######################################################################################################
+get_value() { n=$1; shift; set -- $@; eval printf "%s\\\\n" "\$$n"; }
+#######################################################################################################
+#                                                                                                     #
+# get index of value in provided list of words                                                        #
+#                                                                                                     #
+#######################################################################################################
+get_index() { i=0; for v in $2; do i=$(( i + 1 )); [ "$v" = "$1" ] && printf "%u\n" "$i" && return 0; done; return 1; }
+#######################################################################################################
+#                                                                                                     #
+# get count of words in provided list                                                                 #
+#                                                                                                     #
+#######################################################################################################
+get_count() { set -- $1; printf "%u\n" "$#"; }
+#######################################################################################################
+#                                                                                                     #
+# convert values to lower or upper case                                                               #
+#                                                                                                     #
+#######################################################################################################
+lcase() { printf "%s\n" "$1" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"; }
+ucase() { printf "%s\n" "$1" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/"; }
+#######################################################################################################
+#                                                                                                     #
+# check values to be numeric (with and without fractional part)                                       #
+#                                                                                                     #
+#######################################################################################################
+is_numeric() { [ -z "$(printf "%s\n" "$1" | sed -e "s|[0-9]||g")" ]; }
+is_numeric_fractional() { [ -z "$(printf "%s\n" "$1" | sed -e "s|[0-9.]||g")" ] || return 1; [ "$(expr "$1" : "\(.\).*")" = "." ] && return 0; [ "$(expr "$1" : ".*\(.\)")" = "." ] && return 1; return 0; }
+#######################################################################################################
+#                                                                                                     #
+# is the specified pin available from sysfs?                                                          #
+#                                                                                                     #
+#######################################################################################################
+is_pin() { test -d $sysfs/$prefix$1; }
+#######################################################################################################
+#                                                                                                     #
+# export and unexport the specified pin, considers current state for duplicate invocations            #
+#                                                                                                     #
+#######################################################################################################
+exp_pin() { is_pin "$1" && printf "%s\n" "0" && return; printf "%s\n" "$1" >$sysfs/$exp_name; is_pin "$1" && printf "%s\n" "1" && return; __emsg "$(__get_localized ERR_002)" "$1" "$led"; exit 1; }
+unexp_pin() { [ -n "$2" ] && [ "$2" = "1" ] &&  printf "%s\n" "$1" >$sysfs/$unexp_name; }
+#######################################################################################################
+#                                                                                                     #
+# get/set the state of a GPIO pin                                                                     #
+#                                                                                                     #
+#######################################################################################################
+out() { printf "set %s %s\n" "$1" "$2" >$procfs/$prefix; }
+inp() { u=$(exp_pin "$1"); cat $sysfs/$prefix$1/$val_name; unexp_pin "$1" "$u"; }
+#######################################################################################################
+#                                                                                                     #
+# detect/set the state of a LED                                                                       #
+#                                                                                                     #
+#######################################################################################################
+is_on() { [ "$(inp $1)" -eq 1 ] && return $2 || return $(( ( $2 + 1 ) % 2 )); }
+off() { out $1 $2; }
+on() { out $1 $(( ( $2 + 1 ) % 2 )); }
+#######################################################################################################
+#                                                                                                     #
+# check for valid LED name                                                                            #
+#                                                                                                     #
+#######################################################################################################
+is_led_name() { get_index "$1" "$led_names" >/dev/null; }
+#######################################################################################################
+#                                                                                                     #
+# get a value for the specified LED from a list of values                                             #
+#                                                                                                     #
+#######################################################################################################
+get_led_value() 
+{
+	i=$(get_index "$1" "$led_names")
+	if [ -n "$i" ]; then
+		printf "%u\n" "$(eval get_value $i \$$2)"
+		return 0
+	fi
+	return 1
+}
+#######################################################################################################
+#                                                                                                     #
+# get ínverter state or pin number for the specified LED                                              #
+#                                                                                                     #
+#######################################################################################################
+get_led_inverted() { get_led_value "$1" "led_inverted"; }
+get_led_pin() { get_led_value "$1" "led_pins"; }
+#######################################################################################################
+#                                                                                                     #
+# check for additional parameters and fail (with error message), if any is present                    #
+#                                                                                                     #
+#######################################################################################################
+extra_parm() { [ "$#" -gt 1 ] && __emsg "$(__get_localized ERR_003)" "$1" && return 0; return 1; }
+#######################################################################################################
+#                                                                                                     #
+# get a fractional value as number of microseconds, max. resolution is 1/100-th second                #
+#                                                                                                     #
+#######################################################################################################
+get_usec() { n=$(expr "$1" : "\([0-9]*\)\.[0-9]*"); f=$(expr "$1" : "[0-9]*\.\([0-9]*\)"); [ ${#f} -le 2 ] || return 1; f=$(expr "${f}000000" : "\(.\{6\}\).*"); u=$(( ( n * 1000000 ) + f )); printf "%s\n" "$u"; return 0; }
+#######################################################################################################
+#                                                                                                     #
+# check LED name or multi-LED action as first parameter and handle multi-LED actions or other         #
+# requests, which may be handled without access to GPIO pins - multi-LED actions are implemented as   #
+# recursive calls of this script, with the proper LED name and action for a single LED                #
+#                                                                                                     #
+#######################################################################################################
+[ -z "$1" ] && __emsg "$(__get_localized ERR_004)" && exit 1
+led="$(lcase "$1")"
+if ! is_led_name "$led"; then
+	if [ "$led" = "names" ]; then
+		extra_parm "$@" && exit 1
+		printf "%s\n" "$led_names"
+		exit 0
+	elif [ "$led" = "states" ]; then
+		states=""
+		for led in $led_names; do
+			s="$("$0" $led state 2>/dev/null)"
+			[ -z "$s" ] && exit 1
+			states="$states${states:+ }$s"
+		done
+		printf "%s\n" "$states"
+		exit 0
+	elif [ "$led" = "vars" ]; then
+		states=""
+		for led in $led_names; do
+			s="$("$0" $led state 2>/dev/null)"
+			[ -z "$s" ] && exit 1
+			states="$states${states:+ }LED_$(ucase "$led" | sed -e "s|_||g")=$s"
+		done
+		printf "%s\n" "$states"
+		exit 0
+	elif [ "$led" = "restore" ]; then
+		shift
+		[ "$(get_count "$led_names")" -ne "$#" ] && __emsg "$(__get_localized ERR_015)" "$#" "$led" "$(get_count "$led_names")" && exit 1
+		i=0
+		for led in $led_names; do
+			i=$(( i + 1 ))
+			eval v="$(lcase "\$$i")"
+			! [ "$v" = "on" ] && ! [ "$v" = "off" ] && __emsg "$(__get_localized ERR_016)" "$v" "$led" && exit 1
+		done
+		for led in $led_names; do
+			"$0" "$led" "$1" 2>/dev/null || exit 1
+			shift
+		done
+		exit 0
+	elif [ "$led" = "dark" ] || [ "$led" = "wyatt_earp" ]; then
+		extra_parm "$@" && exit 1
+		for led in $led_names; do
+			"$0" $led off 2>/dev/null || exit 1
+		done
+		exit 0
+	else
+		__emsg "$(__get_localized ERR_005)" "$1"
+		exit 1
+	fi
+else
+	pin=$(get_led_pin "$led")
+	inverted=$(get_led_inverted "$led")
+fi
+shift
+#######################################################################################################
+#                                                                                                     #
+# check further parameters, depending on action                                                       #
+#                                                                                                     #
+#######################################################################################################
+cmd="$(lcase "$1")"
+[ -z "$cmd" ] && __emsg "$(__get_localized ERR_014)" "$led" && exit 1
+case "$cmd" in
+	("on"|"off"|"state"|"get"|"init"|"deinit")
+		extra_parm "$@" && exit 1
+		;;
+	("set")
+		[ -z "$2" ] && __emsg "$(__get_localized ERR_006)" "$cmd" && exit 1
+		! [ "$2" = "0" ] && ! [ "$2" = "1" ] && __emsg "$(__get_localized ERR_007)" "$2" "$cmd" && exit 1
+		newval="$2"
+		shift
+		;;
+	("flash")
+		[ -z "$2" ] && __emsg "$(__get_localized ERR_008)" "on" "$cmd" && exit 1	
+		[ -z "$3" ] && __emsg "$(__get_localized ERR_008)" "off" "$cmd" && exit 1
+		if usleep 0 2>/dev/null && ( ! is_numeric "$2" || ! is_numeric "$3" ); then
+			! is_numeric_fractional "$2" && __emsg "$(__get_localized ERR_009)" "$2" "on" && exit 1
+			! is_numeric_fractional "$3" && __emsg "$(__get_localized ERR_009)" "$3" "off" && exit 1
+			! get_usec "$2" >/dev/null && __emsg "$(__get_localized ERR_010)" "$2" "on" && exit 1
+			! get_usec "$3" >/dev/null && __emsg "$(__get_localized ERR_010)" "$3" "off" && exit 1
+			dur_on=$(get_usec "$2")
+			dur_off=$(get_usec "$3")
+			slp="usleep"
+		else
+			! is_numeric "$2" && __emsg "$(__get_localized ERR_009)" "$2" "on" && exit 1
+			! is_numeric "$3" && __emsg "$(__get_localized ERR_009)" "$3" "off" && exit 1
+			dur_on="$2"
+			dur_off="$3"
+			slp="sleep"
+		fi
+		shift 2
+		extra_parm "$@" && exit 1
+		;;
+	(*)
+		__emsg "$(__get_localized ERR_011)" "$cmd" && exit 1
+		;;
+esac
+shift
+#######################################################################################################
+#                                                                                                     #
+# run requested action                                                                                #
+#                                                                                                     #
+#######################################################################################################
+case "$cmd" in
+	("init")
+		exp_pin "$pin"
+		;;
+	("deinit")
+		unexp_pin "$pin" "1"
+		;;
+	("on")
+		on "$pin" "$inverted"
+		;;
+	("off")
+		off "$pin" "$inverted"
+		;;
+	("state")
+		is_on "$pin" "$inverted" && printf "on\n" || printf "off\n"
+		;;
+	("get")
+		inp "$pin"
+		;;
+	("set")
+		out "$pin" "$newval"
+		;;
+	("flash")
+		org=$(inp "$pin")
+		trap 'out $pin $org; exit 0' INT
+		unexp=$(exp_pin "$pin")
+		if [ "$unexp" -eq 1 ]; then
+			trap 'unexp_pin $pin' EXIT HUP
+		fi
+		while [ 1 -eq 1 ]; do
+			is_on "$pin" "$inverted" && n=off || n=on
+			"$n" "$pin" "$inverted"
+			eval $slp \$dur_$n
+		done
+		;;
+esac
+#######################################################################################################
+#                                                                                                     #
+# normal end of processing, no further actions needed                                                 #
+#                                                                                                     #
+#######################################################################################################
+exit 0
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
