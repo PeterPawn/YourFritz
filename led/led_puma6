@@ -81,6 +81,7 @@ usage_text()
 	__nl "is limited to 1/100 seconds.\n"
 	__nl "For the second mode, the following '$(__bold "action")' verbs are supported:\n"
 	__nl "$(__bold "names")   - get the names (and positions in lists) of all supported LED pins"
+	__nl "$(__bold "order")   - get the physical position of LEDs, usually the green and red INFO LED share one"
 	__nl "$(__bold "states")  - get the current state ('on' or 'off') for all supported LEDs as a single line, the"
 	__nl "          order of values is the same as the order of '$(__bold "names")' and this line may be used with"
 	__nl "          the '$(__bold "restore")' action to re-establish the display from the time calling an earlier"
@@ -317,8 +318,9 @@ unexp_name="unexport"
 val_name="value"
 hwrevs="199 204 213 220 231"
 devname="FRITZ!Box Cable 6430/6460/6490/6590"
-led_names="power info_red internet dect wlan info"
-led_pins="92 93 101 91 102 104"
+led_names="power fon dect wlan info info_red"
+led_pins="92 101 91 102 104 93"
+led_positions="1 2 3 4 5 5"
 led_inverted="1 1 1 1 1 1"
 #######################################################################################################
 #                                                                                                     #
@@ -464,6 +466,10 @@ if ! is_led_name "$led"; then
 	if [ "$led" = "names" ]; then
 		extra_parm "$@" && exit 1
 		printf "%s\n" "$led_names"
+		exit 0
+	elif [ "$led" = "order" ]; then
+		extra_parm "$@" && exit 1
+		printf "%s\n" "$led_positions"
 		exit 0
 	elif [ "$led" = "states" ]; then
 		states=""
