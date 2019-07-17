@@ -44,7 +44,7 @@ usage_text()
 	__nl "running two different LED controllers on the same device, you should instruct any other"
 	__nl "controller to suspend its activities, while this script is used. This may be done for AVM's"
 	__nl "controller with a call of 'led-ctrl display_suspend' and (later) reversed calling"
-	__nl "'led-ctrl display_wakeup'.\n"
+	__nl "'led-ctrl display_wakeup'."
 	__usage_hdr
 	__usage_opt "options"; __usage_opt_end; __usage_opt "parameters"
 	__usage_end
@@ -103,7 +103,7 @@ L10N_ERR_OPT_en="Unknown option '%%s' specified."
 L10N_ERR_SCR_en="Missing another needed executable: %%s."
 L10N_ERR_EXC_en="Missing a required command: %%s."
 L10N_ERR_TRM_en="%%s is a terminal device. %%s"
-L10N_ERR_001_en="Unsupported HWRevision (%%s), this script is intended for devices with 'HWRevision=%%s' only."
+L10N_ERR_001_en="Unsupported HWRevision (%%s) found."
 L10N_ERR_002_en="Unable to export GPIO pin '%%s' for LED '%%s'."
 L10N_ERR_003_en="Extraneous/unknown parameter(s) after '%%s'."
 L10N_ERR_004_en="Missing action and/or LED name parameter."
@@ -158,7 +158,7 @@ __license()
 }
 __version()
 {
-	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__\1$__rset__,\2|"
+	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__${0##*/}$__rset__,\2|"
 }
 __copyright()
 {
@@ -315,8 +315,8 @@ prefix="gpio"
 exp_name="export"
 unexp_name="unexport"
 val_name="value"
-hwrev="213"
-devname="FRITZ!Box Cable 6490"
+hwrevs="199 204 213 220 231"
+devname="FRITZ!Box Cable 6430/6460/6490/6590"
 led_names="power info_red internet dect wlan info"
 led_pins="92 93 101 91 102 104"
 led_inverted="1 1 1 1 1 1"
@@ -335,8 +335,9 @@ $__version_option__
 #                                                                                                     #
 #######################################################################################################
 $__check_required_commands__
-if ! [ "$HWRevision" = "$hwrev" ]; then
-	__emsg "$(__get_localized ERR_001)" "$HWRevision" "$hwrev"
+is_hw_supported() { for v in $hwrevs; do [ "$v" = "$1" ] && return 0; done; return 1; }
+if ! is_hw_supported "$HWRevision"; then
+	__emsg "$(__get_localized ERR_001)" "$HWRevision" 
 	exit 1
 fi
 if ! [ -f "$procfs/$prefix" ]; then
