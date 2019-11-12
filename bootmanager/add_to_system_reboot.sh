@@ -1,6 +1,8 @@
 #! /bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
 [ -z "$TARGET_BRANDING" ] && printf "TARGET_BRANDING value is not set.\a\n" 1>&2 && exit 1
+[ -z "$TMP" ] && TMP=$TMPDIR
+[ -z "$TMP" ] && printf "No TMPDIR or TMP setting found at environment, set it to a writable location.\a\n" 1>&2 && exit 1
 
 TargetDir="${TARGET_DIR:+$TARGET_DIR/}"
 
