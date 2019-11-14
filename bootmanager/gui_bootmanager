@@ -642,7 +642,7 @@ get_system_date()
 )
 #######################################################################################################
 #                                                                                                     #
-# get system build date from specified root as a string valu with localization                        #
+# get system build date from specified root as a string value with localization                       #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
 #                                                                                                     #
@@ -1216,7 +1216,7 @@ collect_data()
 	alternative_branding_fixed=0
 	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 		alternative_is_missing=0
-		spinlock get 10 && mp="$(mount_alternative_system)"
+		spinlock get 10 && mp="$(printf "%s" "$(mount_alternative_system)")"
 		if ! [ -z "$mp" ]; then
 			readonly alternative_version="$(get_system_version "$mp")"
 			if ! [ -z "$alternative_version" ]; then
@@ -1349,7 +1349,7 @@ case "$1" in
 		printf "inactive filesystem = %s\n" "$(get_partition "$filesystem_name" "$inactive_name")"
 		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 			spinlock_pid=$$
-			spinlock get 10 && mp="$(mount_alternative_system)"
+			spinlock get 10 && mp="$(printf "%s" "$(mount_alternative_system)")"
 			printf "inactive filesystem mounted on %s\n" "$mp"
 			if ! [ -z "$mp" ]; then
 				printf "inactive system version = %s\n" "$(get_system_version "$mp")"
@@ -1359,6 +1359,8 @@ case "$1" in
 				printf "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf " (fixed)")"
 				dismount_alternative_system
 				printf "inactive filesystem dismounted\n"
+			else
+				printf "inactive filesystem could not be mounted\n"
 			fi
 			spinlock release
 		else
