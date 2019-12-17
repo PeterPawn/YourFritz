@@ -20,7 +20,7 @@
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: cmp stat printf                                                                  #
+# U: cmp wc printf                                                                    #
 # W: -                                                                                #
 # F: -                                                                                #
 # I: -                                                                                #
@@ -38,8 +38,8 @@ yf_string_compare()
 				break
 			done)
 	if [ -z "$res" ]; then
-		l1=$(stat -c %s "$1")
-		l2=$(stat -c %s "$2")
+		l1=$(wc -c <"$1")
+		l2=$(wc -c <"$2")
 		[ $l1 -lt $l2 ] && res=-1 || res=1
 	fi
 	printf "%d" "$res"

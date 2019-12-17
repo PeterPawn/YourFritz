@@ -75,7 +75,7 @@ There are some verifications done by ```yf_helpers```, that are not meaningful f
 - sed
 - sort (this is emulated with a really, really slow bubble sort implementation in shell code, if it's missing)
 - uniq (will be emulated with ```read``` and a shell loop (for pre-sorted data), if it's missing)
-- stat
+- wc
 
 While assembling the library functions, additional commands needed by the included functions are checked - any missing command will be mentioned with a warning message on STDERR ... but the library will be assembled in any case, because it's not sure, that you later will invoke a function, which really needs such a missing command.
 

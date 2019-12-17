@@ -81,8 +81,8 @@ __yf_helpers_string_compare()
 				break
 			done)
 	if [ -z $res ]; then
-		l1=$(stat -c %s "$1")
-		l2=$(stat -c %s "$2")
+		l1=$(wc -c <"$1")
+		l2=$(wc -c <"$2")
 		[ $l1 -lt $l2 ] && res=-1 || res=1
 	fi
 	printf "%d" "$res"
@@ -236,7 +236,7 @@ __YF_SCRIPT_DIR="${YF_SCRIPT_DIR:-.}"
 __YF_SCRIPT_FUNCTIONS_DIR="$__YF_SCRIPT_DIR/functions"
 __YF_SCRIPT_FUNCTIONS="${YF_SCRIPT_FUNCTIONS:--}"
 __YF_SCRIPT_SUBSETS="${YF_SCRIPT_SUBSETS:-all}"
-__yf_helpers_needed_commands="printf find sed expr cmp stat"
+__yf_helpers_needed_commands="printf find sed expr cmp wc"
 for __yf_temp in ${__yf_helpers_needed_commands}; do
 	__yf_helpers_check_command "${__yf_temp}" || eval $(__yf_helpers_exit) 130
 done
