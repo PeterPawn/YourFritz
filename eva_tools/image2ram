@@ -27,8 +27,8 @@ filesystem=$6
 filesyssize=$3
 tar -x -O -f $tmpdir/image.tar $kernel >$tmpdir/kernel 2>/dev/null
 tar -x -O -f $tmpdir/image.tar $filesystem >$tmpdir/fs 2>/dev/null
-krnlsize=$(stat -c %s $tmpdir/kernel 2>/dev/null || printf "0")
-fssize=$(stat -c %s $tmpdir/fs 2>/dev/null || printf "0")
+krnlsize=$(wc -c <$tmpdir/kernel 2>/dev/null || printf "0")
+fssize=$(wc -c <$tmpdir/fs 2>/dev/null || printf "0")
 if [ $krnlsize -ne $kernelsize ]; then
 	printf "error extracting kernel.image\n" 1>&2
 	exit 1

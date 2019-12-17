@@ -210,7 +210,7 @@ if [ x$filename == x ]; then
 	echo "Missing file name."
 	exit 1
 fi
-filesize=$(stat -c %s $filename)
+filesize=$(wc -c <$filename)
 if [ $? -ne 0 ]; then
 	echo "Missing file '$filename'"
 	exit 1
