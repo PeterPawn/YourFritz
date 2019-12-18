@@ -138,9 +138,15 @@ if [ $? -eq 127 ]; then
 	echo "Missing usable 'mkfifo' command."
 	exit 1
 fi
-nc 2>/dev/null
-if [ $? -eq 127 ]; then
-	echo "Missing usable 'nc' command."
+command -v nc 2>/dev/null 1>&2
+if [ $? -ne 0 ]; then
+	echo "Missing any 'nc' command, it's needed for network communication and the OpenBSD version is required."
+	exit 1
+fi
+# there's no unique identity for the BSD version, so we check for GNU version here
+nc -V 2>/dev/null | grep -q GNU
+if [ $? -eq 0 ]; then
+	echo "Found GNU version of 'nc' command, but the OpenBSD version is required."
 	exit 1
 fi
 #
