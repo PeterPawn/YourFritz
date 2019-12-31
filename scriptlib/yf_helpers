@@ -20,7 +20,7 @@
 # supporting BusyBox - it should be possible to use these functions from MIPS, ARMv6  #
 # (Puma6), ARMv7 (Raspberry Pi) and x86 (Puma6/x86).                                  #
 #                                                                                     #
-# Copyright (C) 2014-2019 P.Hämmerlein (http://www.yourfritz.de)                      #
+# Copyright (C) 2014-2020 P.Hämmerlein (http://www.yourfritz.de)                      #
 #                                                                                     #
 # This program is free software; you can redistribute it and/or modify it under the   #
 # terms of the GNU General Public License as published by the Free Software           #
