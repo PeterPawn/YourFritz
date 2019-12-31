@@ -14,7 +14,7 @@
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2014-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2014-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -1314,7 +1314,6 @@ save_environment()
 #                                                                                                     #
 #######################################################################################################
 exec 2>&1
-set -e
 readonly tempdir="$tmpdir/$$_$(date +%s)"
 mkdir -p "$tempdir" 2>/dev/null
 trap cleanup HUP EXIT INT TERM
