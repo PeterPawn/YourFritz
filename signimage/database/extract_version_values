@@ -12,7 +12,7 @@
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2017-2019 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2017-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -32,7 +32,7 @@
 usage()
 (
 	printf "Extract version information from an unpacked filesystem tree of FRITZ!OS.\n\n"
-	printf "Copyright (C) 2017-2019 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "Copyright (C) 2017-2020 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
 	printf "Usage:\n\n"
 	printf "\033[1m%s\033[0m <local_directory> [ -q | -m ]\n\n" "${0##*/}"
 	printf "Version information will be extracted from the specified tree. If no '-q'\n"
@@ -138,6 +138,8 @@ HWRevision="$(( version_major + 72 ))"
 # install type, used to detect architecture and flash size
 install_type="$(sed -n -e "s|^export CONFIG_INSTALL_TYPE=\"\?\([^\"]*\)\"\?\$|\1|p" "$src/etc/init.d/rc.conf" | sed -n -e "\$p")"
 
+[ -f "$src/etc/boot.d/1" ] && boot_type="systemd" || boot_type="rc.S"
+
 # log and output data
 if [ $quiet -eq 1 ]; then
 	exec 2>/dev/null
@@ -158,6 +160,7 @@ printf "BetaRelease=\"%s\"\n" "$beta_release" 1>&2
 printf "LaborName=\"%s\"\n" "$labor_id_name" 1>&2
 printf "DirtyBuild=\"%s\"\n" "$build_dirty" 1>&2
 printf "InstallType=\"%s\"\n" "$install_type" 1>&2
+printf "BootType=\"%s\"\n" "$boot_type" 1>&2
 for k in $src/etc/avm_firmware_public_key* $src/etc/plugin_global_key.pem; do
 	[ -f "$k" ] || continue
 	key="$(expr "$k" : ".*avm_firmware_public_key\(.*\)")"
