@@ -3,4 +3,4 @@
 	url = https://github.com/PeterPawn/first_aid.git
 [submodule "bin"]
 	path = bin
-	url = git@git:/srv/git/yf_bin.git
+	url = https://github.com/PeterPawn/yf_bin.git
