@@ -107,7 +107,7 @@ if [ ${#f} -eq 0 ]; then
 	exit 1
 fi
 fs="$(tar -t -v -f "$src" "$f" | sed -n -e "s|^\([^ \t]* *\)\{2\}\([^ \t]*\) *.*\$|\2|p")"
-if [ $fs -eq 0 ]; then
+if [ ${#fs} -eq 0 ] || [ $fs -eq 0 ]; then
 	[ $debug -eq 1 ] && printf "The length of '%s' in the specified file '%s' is 0." "$f" "$src" 1>&2
 	exit 1
 fi
