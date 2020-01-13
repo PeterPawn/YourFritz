@@ -35,7 +35,7 @@ usage()
 	printf "Extract version information from an unpacked filesystem tree of FRITZ!OS.\n\n"
 	printf "Copyright (C) 2017-2020 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
 	printf "Usage:\n\n"
-	printf "\033[1m%s\033[0m <local_directory> [ -q | -m ]\n\n" "${0##*/}"
+	printf "\033[1m%s\033[0m <local_directory> [ -q | -m ] [ prefix ]\n\n" "${0##*/}"
 	printf "Version information will be extracted from the specified tree. If no '-q'\n"
 	printf "option was specified, some info for the contained FRITZ!OS will be put out\n"
 	printf "on STDERR, while the values needed for database generator get written to\n"
@@ -45,6 +45,8 @@ usage()
 	printf "If the '-m' option was specified, no data for key generator will be written\n"
 	printf "to STDOUT, instead the STDERR info gets redirected to STDOUT and the script\n"
 	printf "shows the version info there.\n"
+	printf "If a 'prefix' value is specified, each value key from output is prefixed with\n"
+	printf "this value to avoid collisions with other variable names while 'eval'-uating.\n"
 )
 
 [ -z "$1" ] && usage && exit 0
@@ -61,8 +63,12 @@ else
 	redirect=0
 	if [ "$1" = "-m" ]; then
 		redirect=1
+		shift
 	fi
 fi
+
+
+[ -z "$1" ] && output_prefix="" || output_prefix="$1"
 
 src="${src%/}"
 
@@ -188,30 +194,30 @@ elif [ $redirect -eq 1 ]; then
 	exec 2>&1
 fi
 
-printf "Model=\"%s\"\n" "$model" 1>&2
-printf "Product=\"%s\"\n" "$product" 1>&2
-printf "Date=\"%s\"\n" "$date" 1>&2
-printf "Version=\"%s.%s\"\n" "$version_major" "$version" 1>&2
-printf "Subversion=\"%s\"\n" "$subversion" 1>&2
-printf "Buildnumber=\"%s\"\n" "$buildnumber" 1>&2
-printf "Buildtype=\"%s\"\n" "$buildtype" 1>&2
-printf "Brandings=\"%s\"\n" "$brandings" 1>&2
-printf "Release=\"%s\"\n" "$release" 1>&2
-printf "BetaRelease=\"%s\"\n" "$beta_release" 1>&2
-printf "LaborName=\"%s\"\n" "$labor_id_name" 1>&2
-printf "DirtyBuild=\"%s\"\n" "$build_dirty" 1>&2
-printf "InstallType=\"%s\"\n" "$install_type" 1>&2
-printf "KernelVersion=\"%s\"\n" "$kernel_version" 1>&2
-printf "LibraryProject=\"%s\"\n" "$libc_project" 1>&2
-printf "LibraryVersion=\"%s\"\n" "$libc_version" 1>&2
-printf "LibraryIdent=\"%s\"\n" "$libc_ident" 1>&2
-printf "BootType=\"%s\"\n" "$boot_type" 1>&2
+printf "%sModel=\"%s\"\n" "$output_prefix" "$model" 1>&2
+printf "%sProduct=\"%s\"\n" "$output_prefix" "$product" 1>&2
+printf "%sDate=\"%s\"\n" "$output_prefix" "$date" 1>&2
+printf "%sVersion=\"%s.%s\"\n" "$output_prefix" "$version_major" "$version" 1>&2
+printf "%sSubversion=\"%s\"\n" "$output_prefix" "$subversion" 1>&2
+printf "%sBuildnumber=\"%s\"\n" "$output_prefix" "$buildnumber" 1>&2
+printf "%sBuildtype=\"%s\"\n" "$output_prefix" "$buildtype" 1>&2
+printf "%sBrandings=\"%s\"\n" "$output_prefix" "$brandings" 1>&2
+printf "%sRelease=\"%s\"\n" "$output_prefix" "$release" 1>&2
+printf "%sBetaRelease=\"%s\"\n" "$output_prefix" "$beta_release" 1>&2
+printf "%sLaborName=\"%s\"\n" "$output_prefix" "$labor_id_name" 1>&2
+printf "%sDirtyBuild=\"%s\"\n" "$output_prefix" "$build_dirty" 1>&2
+printf "%sInstallType=\"%s\"\n" "$output_prefix" "$install_type" 1>&2
+printf "%sKernelVersion=\"%s\"\n" "$output_prefix" "$kernel_version" 1>&2
+printf "%sLibraryProject=\"%s\"\n" "$output_prefix" "$libc_project" 1>&2
+printf "%sLibraryVersion=\"%s\"\n" "$output_prefix" "$libc_version" 1>&2
+printf "%sLibraryIdent=\"%s\"\n" "$output_prefix" "$libc_ident" 1>&2
+printf "%sBootType=\"%s\"\n" "$output_prefix" "$boot_type" 1>&2
 for k in $src/etc/avm_firmware_public_key* $src/etc/plugin_global_key.pem; do
 	[ -f "$k" ] || continue
 	key="$(expr "$k" : ".*avm_firmware_public_key\(.*\)")"
 	[ -z "$key" ] && key="PluginKey" || key="PublicKey$key"
 	keyvalue="$(sed -n -e "1p" "$k")"
-	printf "%s=\"%s\"\n" "$key" "$keyvalue" 1>&2
+	printf "%s%s=\"%s\"\n" "$output_prefix" "$key" "$keyvalue" 1>&2
 
 	# output data
 	[ $redirect -eq 0 ] && printf "HWRevision='%s' VersionMajor='%s' Model='%s' Name='%s' Source='%s' Modulus='%s' Exponent='%s'\n" "$HWRevision" "$version_major" "$product" "${k##*/}" "vendor" "$keyvalue" "$(sed -n -e '2p' "$k")"
