@@ -149,6 +149,8 @@ libc_file="$(readlink -f "$src"/lib/libc.so*)"
 libc_version="$(printf "%s" "${libc_file##*/}" | sed -n -e "s|^libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
 if [ -z "$libc_version" ]; then # no uClibc[-ng] used here
 	libc_project="musl"
+	libc_ident="musl-undetected"
+	libc_version="(undetectable)"
 	# - musl version detection is a bit wobbly ... version is stored as symbol __libc_version (it's a string), but AVM has stripped the lib
 	# - the version number consists of three groups of numbers/digits, delimited by a colon, optionally followed by a git commit spec,
 	#   if built from a git checkout
@@ -172,11 +174,7 @@ if [ -z "$libc_version" ]; then # no uClibc[-ng] used here
 		if ! [ "$libc_version" = "(undetectable)" ]; then
 			libc_ident="musl-$libc_version"
 			[ "$(expr "$libc_version" : "\([0-9\.]*\)")" = "$libc_version" ] || libc_version="$(expr "$libc_version" : "\(1\.[0-9]*\.[0-9]*\).*")"
-		else
-			libc_ident="musl-undetected"
 		fi
-	else
-		libc_version="(undetectable)"
 	fi
 else
 	[ "$(expr "$libc_version" : "\(.\).*")" = "1" ] && libc_project="uClibc-ng" || libc_project="uClibc"
