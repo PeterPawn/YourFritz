@@ -1,5 +1,6 @@
 #! /bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
+# vim: set tabstop=4 syntax=bash :
 #######################################################################################################
 #                                                                                                     #
 # get version information from unpacked firmware files                                                #
@@ -148,8 +149,38 @@ libc_file="$(readlink -f "$src"/lib/libc.so*)"
 libc_version="$(printf "%s" "${libc_file##*/}" | sed -n -e "s|^libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
 if [ -z "$libc_version" ]; then # no uClibc[-ng] used here
 	libc_project="musl"
+	# - musl version detection is a bit wobbly ... version is stored as symbol __libc_version (it's a string), but AVM has stripped the lib
+	# - the version number consists of three groups of numbers/digits, delimited by a colon, optionally followed by a git commit spec,
+	#   if built from a git checkout
+	# - look into 'tools/version.sh' from musl project to find possible formats
+	# - let's assume for now, the main version number (first part) is always a "1"
+	# - the version number is stored as a C string, therefore it's terminated by a NUL byte for sure and on it's own line in 'strings' output
+	version_offset="$(strings -a -t d -n 5 "$libc_file" | sed -n -e "s|^[ \t]*\([0-9]*\)[ \t]*1\.[0-9]*\.[0-9]*\(-git.*\)\?\$|\1|p")"
+	if [ "$(expr "$version_offset" : "\([0-9]*\)")" = "$version_offset" ]; then # only try to extract the string, if we got a single offset
+		__bin_extract()
+		{
+			i=1
+			len=$( (dd if="$1" bs=1 skip=$2 count=32 2>/dev/null; printf "\377") | cmp -l -- /dev/zero 2>/dev/null |
+			while read line left right; do
+				[ $i -ne $line ] && printf "%u" $(( i - 1 )) && break
+				i=$(( i + 1 ))
+			done)
+			[ -n "$len" ] && [ $len -gt 0 ] && [ $len -lt 32 ] && dd if="$1" bs=1 skip=$2 count=$len 2>/dev/null && return 0
+			return 1
+		}
+		libc_version="$(__bin_extract "$libc_file" $version_offset)" || libc_version="(undetectable)"
+		if ! [ "$libc_version" = "(undetectable)" ]; then
+			libc_ident="musl-$libc_version"
+			[ "$(expr "$libc_version" : "\([0-9\.]*\)")" = "$libc_version" ] || libc_version="$(expr "$libc_version" : "\(1\.[0-9]*\.[0-9]*\).*")"
+		else
+			libc_ident="musl-undetected"
+		fi
+	else
+		libc_version="(undetectable)"
+	fi
 else
 	[ "$(expr "$libc_version" : "\(.\).*")" = "1" ] && libc_project="uClibc-ng" || libc_project="uClibc"
+	libc_ident="$libc_project-$libc_version"
 fi
 
 # log and output data
@@ -175,6 +206,7 @@ printf "InstallType=\"%s\"\n" "$install_type" 1>&2
 printf "KernelVersion=\"%s\"\n" "$kernel_version" 1>&2
 printf "LibraryProject=\"%s\"\n" "$libc_project" 1>&2
 printf "LibraryVersion=\"%s\"\n" "$libc_version" 1>&2
+printf "LibraryIdent=\"%s\"\n" "$libc_ident" 1>&2
 printf "BootType=\"%s\"\n" "$boot_type" 1>&2
 for k in $src/etc/avm_firmware_public_key* $src/etc/plugin_global_key.pem; do
 	[ -f "$k" ] || continue
