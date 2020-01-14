@@ -149,7 +149,7 @@ install_type="$(sed -n -e "s|^export CONFIG_INSTALL_TYPE=\"\?\([^\"]*\)\"\?\$|\1
 
 [ -f "$src/etc/boot.d/1" ] && boot_type="systemd" || boot_type="rc.S"
 
-kernel_version="$(find "$src/lib/modules" -type d | sed -n -e "s|^$src/lib/modules/\(.*\)/kernel\$|\1|p")"
+kernel_version="$(find "$src/lib/modules" -type d | sed -n -e "s|^$src/lib/modules/\([^/]*\)/kernel\$|\1|p" | sed -n -e "1p")"
 
 libc_file="$(readlink -f "$src"/lib/libc.so*)"
 libc_version="$(printf "%s" "${libc_file##*/}" | sed -n -e "s|^libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
