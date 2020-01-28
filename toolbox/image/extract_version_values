@@ -72,6 +72,13 @@ fi
 
 src="${src%/}"
 
+for cmd in sed grep find strings dd cmp date readlink expr; do
+	if ! command -v $cmd >/dev/null 2>&1; then
+		printf "Missing '%s' command, needed for this script.\a\n" "$cmd" 1>&2
+		exit 1
+	fi
+done
+
 files=$(find "$src" -maxdepth 3 -type f | wc -l)
 [ "$files" -lt 2 ] && printf "Unsupported filesystem format.\n" 1>&2 && exit 1
 ( ! [ -f "$src/etc/init.d/rc.conf" ] || ! [ -f "$src/etc/version" ] ) && printf "Missing version files.\n" 1>&2 && exit 1
