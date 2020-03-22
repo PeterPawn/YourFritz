@@ -436,7 +436,7 @@ namespace YourFritz.TFFS
             entries.Add(TFFSEnvironmentID.MAC_B, new TFFSEnvironmentEntry(TFFSEnvironmentID.MAC_B, "macb"));
             entries.Add(TFFSEnvironmentID.MAC_WLAN, new TFFSEnvironmentEntry(TFFSEnvironmentID.MAC_WLAN, "macwlan"));
             entries.Add(TFFSEnvironmentID.MAC_WLAN2, new TFFSEnvironmentEntry(TFFSEnvironmentID.MAC_WLAN2, "macwlan2"));
-            entries.Add(TFFSEnvironmentID.MAC_WLAN3, new TFFSEnvironmentEntry(TFFSEnvironmentID.GPON_Serial, "macwlan3"));
+            entries.Add(TFFSEnvironmentID.MAC_WLAN3, new TFFSEnvironmentEntry(TFFSEnvironmentID.MAC_WLAN3, "macwlan3"));
             entries.Add(TFFSEnvironmentID.MAC_DSL, new TFFSEnvironmentEntry(TFFSEnvironmentID.MAC_DSL, "macdsl"));
             entries.Add(TFFSEnvironmentID.MemorySize, new TFFSEnvironmentEntry(TFFSEnvironmentID.MemorySize, "memsize"));
             entries.Add(TFFSEnvironmentID.ModeTTY0, new TFFSEnvironmentEntry(TFFSEnvironmentID.ModeTTY0, "modetty0"));
@@ -569,23 +569,25 @@ namespace YourFritz.TFFS
             // @L has added the individual WLAN SSID with two additional characters. Various "Mesh"-related changes have taken place in
             //    "tffs.h", but the name table was not changed anymore.
             // @M new entries were added (macwlan3 and HardwareFeatures for FRITZ!WLAN Repeater 3000, gpon_serial for Fiber models)
+            // @N seems to be the same as @M, only HardwareFeatures was removed
             if (Version.CompareTo("@G") != 0 &&
                 Version.CompareTo("@H") != 0 &&
                 Version.CompareTo("@I") != 0 &&
                 Version.CompareTo("@J") != 0 &&
                 Version.CompareTo("@K") != 0 &&
                 Version.CompareTo("@L") != 0 &&
-                Version.CompareTo("@M") != 0)
+                Version.CompareTo("@M") != 0 &&
+                Version.CompareTo("@N") != 0)
             {
-                throw new TFFSException("Only name table versions from @G (used in 2010) to @M (latest) are supported yet.");
+                throw new TFFSException("Only name table versions from @G (used in 2010) to @N (latest) are supported yet.");
             }
 
             entries.Add(TFFSEnvironmentID.AutoMDIX);
             entries.Add(TFFSEnvironmentID.DMC);
 
-            if (Version.CompareTo("@L") == 1)
+            if (Version.CompareTo("@M") == 0)
             {
-                // HardwareFeatures was added in @M
+                // HardwareFeatures was added in @M and seems to be removed in @N
                 entries.Add(TFFSEnvironmentID.HardwareFeatures);
             }
 
@@ -759,7 +761,7 @@ namespace YourFritz.TFFS
         // get the latest implemented name table
         public static TFFSNameTable GetLatest()
         {
-            return TFFSNameTable.GetNameTable("@M");
+            return TFFSNameTable.GetNameTable("@N");
         }
     }
 }
