@@ -42,6 +42,7 @@ function buildBootmanager(data){function gv(src,id){var r=src.filter(function(e)
 /^if(data.actions)/i \
 if(data.bootmanager){html2.add(content,buildBootmanager(data.bootmanager));}
 s/\(html2.add(content,drawHints());\)\(html2.add(content,drawFoot());\)/\1if(data.bootmanager){html2.add(content,buildBootmanager(data.bootmanager));};\2/
+s/\(activeCalls:TYPES.OBJECT,\)\(timestamp:TYPES.NUMBER\)/\1bootmanager:TYPES.OBJECT,\2/
 EndOfPatch
 }
 getLuaPatchText_0708()
