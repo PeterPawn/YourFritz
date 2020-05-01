@@ -79,7 +79,7 @@
 #######################################################################################################
 tmpdir="/tmp"
 kernel_version="3.10.73"
-eval binaries="../bin/mips/\$kernel_version"
+eval binaries="../bin/target/mips/\$kernel_version"
 image_get_file="image/get_file_from_image"
 payload_script_1="scripts/copy_payload"
 payload_script_2="scripts/rc.shellinaboxd"
@@ -310,7 +310,7 @@ if [ -z "$buildroot_year" ] || [ $buildroot_year -lt 2016 ]; then
 else
 	[ $debug -eq 1 ] && printf "Using binaries for systems with kernel version 3.10.107.\n" 1>&2
 	kernel_version="3.10.107"
-	eval binaries="../bin/mips/\$kernel_version"
+	eval binaries="../bin/target/mips/\$kernel_version"
 	payload_bin_1="$binaries/shellinaboxd"
 	toolbox_scripts="$image_get_file $payload_script_1 $payload_bin_1"
 	busybox_source="$binaries/busybox"
