@@ -6,7 +6,7 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# Copyright (C) 2016-2018 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
+# Copyright (C) 2016-2020 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
 #                                                                                                     #
 # This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
 # General Public License as published by the Free Software Foundation; either version 2 of the        #
@@ -24,6 +24,11 @@
 # 'rc.tail.sh' script (which was called by 'S99-tail') will not terminate the execution of 'rc.S',    #
 # before the additional script gets started.                                                          #
 #                                                                                                     #
+# Starting with version 07.19, the startup process was thoroughly changed. If such a version is found #
+# by the script, it replaces the 'ExecStart' line of '/lib/systemd/system/flash-update.service' with  #
+# a call to the specified script file. So it's called very early in the startup process and has to    #
+# take own precautions to ensure, all needed ressources are available already.                        #
+#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
@@ -31,8 +36,10 @@
 #######################################################################################################
 tmpdir="/tmp"
 proc="/proc"
-scr="$tmpdir/init_rc_replacement"
+svctl="/bin/svctl"
+scr="$tmpdir/add_script_replacement"
 rcS="/etc/init.d/rc.S"
+srv="/lib/systemd/system/flash-update.service"
 #######################################################################################################
 #                                                                                                     #
 # mount some filesystems                                                                              #
@@ -64,28 +71,31 @@ new_script="$1"
 shift
 #######################################################################################################
 #                                                                                                     #
-# copy the existing script and add our own                                                            #
+# copy the existing script and add our own call, replace the original script with the changed one     #
 #                                                                                                     #
 #######################################################################################################
-cp "$rcS" "$scr"
-sed -e "/^if ls.*S/i[ \$gruppe -eq 9 ] && printf \"Starting '%s %s'\\\\n\" $new_script \"$*\" >/dev/console && /bin/sh $new_script $*" -i "$scr"
-#######################################################################################################
-#                                                                                                     #
-# replace the original file                                                                           #
-#                                                                                                     #
-#######################################################################################################
-mount -o bind "$scr" "$rcS"
+if [ -x "$svctl" ]; then
+	cp "$srv" "$scr"
+	sed -e "s|^\(ExecStart=\).*|\1/bin/sh $new_script $*|" -i "$scr"
+	mount -o bind "$scr" "$srv"
+	show="$srv"
+else
+	cp "$rcS" "$scr"
+	sed -e "/^if ls.*S/i[ \$gruppe -eq 9 ] && printf \"Starting '%s %s'\\\\n\" $new_script \"$*\" >/dev/console && /bin/sh $new_script $*" -i "$scr"
+	mount -o bind "$scr" "$rcS"
+	show="$rcS"
+fi
 #######################################################################################################
 #                                                                                                     #
 # save debug output to TFFS node                                                                      #
 #                                                                                                     #
 #######################################################################################################
 if [ $debug -eq 1 ]; then
-	cat "$rcS" 1>&2
+	cat "$show" 1>&2
 	tffs=$(sed -n -e 's|^[ ]*\([0-9]*\) tffs$|\1|p' /proc/devices)
 	if [ ${#tffs} -gt 0 ]; then
 		tffs_name=$tmpdir/${0##*/}.tffs
-		mknod $tffs_name c $tffs 141
+		mknod $tffs_name c $tffs 93
 		[ -c $tffs_name ] && cat $tffs_name $tmpdir/${0##*/}.log >$tmpdir/${0##*/}.new && cat $tmpdir/${0##*/}.new >$tffs_name
 		rm $tffs_name $tmpdir/${0##*/}.new 2>/dev/null
 	fi

@@ -39,7 +39,7 @@
 # - a Shell-in-a-Box executable (from the 'yf_bin' submodule),                                        #
 # - an init-script to control this service and                                                        #
 # - a (very early executed) script to add own init-scripts to the original processing of FRITZ!OS     #
-#   (using a bind-mounted copy of the 'rc.S' file)                                                    #
+#   (using a bind-mounted copy of the 'rc.S' or 'flash_update.service' file)                          #
 #                                                                                                     #
 # The init-script will modify the '/etc/passwd' entry for user 'root' and set a new shell and a new   #
 # home directory. The values used therefor and the used 'login' program may be specified to this      #
