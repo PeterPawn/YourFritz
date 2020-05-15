@@ -71,8 +71,10 @@ fi
 [ -z "$1" ] && output_prefix="" || output_prefix="$1"
 
 src="${src%/}"
+# at least one slash is needed, if called for root filesystem
+[ -z "$src" ] && src="/"
 
-for cmd in sed grep find strings dd cmp date readlink expr; do
+for cmd in sed grep find date readlink expr; do
 	if ! command -v $cmd >/dev/null 2>&1; then
 		printf "Missing '%s' command, needed for this script.\a\n" "$cmd" 1>&2
 		exit 1
@@ -158,45 +160,39 @@ install_type="$(sed -n -e "s|^export CONFIG_INSTALL_TYPE=\"\?\([^\"]*\)\"\?\$|\1
 
 kernel_version="$(find "$src/lib/modules" -type d | sed -n -e "s|^$src/lib/modules/\([^/]*\)/kernel\$|\1|p" | sed -n -e "1p")"
 
-libc_file="$(readlink -f "$src"/lib/libc.so*)"
-libc_version="$(printf "%s" "${libc_file##*/}" | sed -n -e "s|^libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
+libc_file="$(readlink -f "$src"/lib/libc.so* | sed -n -e 1p)"
+libc_version="$(printf "%s" "$libc_file}" | sed -n -e "s|^.*/libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
 if [ -z "$libc_version" ]; then # no uClibc[-ng] used here
-	version_offset="$(strings -a -t d -n 5 "$libc_file" | sed -n -e "s|^[ \t]*\([0-9]*\)[ \t]glibc [0-9]*\.[0-9]*\$|\1|p")"
-	if [ -n "$version_offset" ] && [ "$(expr "$version_offset" : "\([0-9]*\)")" = "$version_offset" ]; then # only try to extract the string, if we got a single offset
+	check_glibc="$(grep -ao "glibc [0-9]\+\.[0-9]\+" "$libc_file")"
+	if [ -n "$check_glibc" ]; then # it's a glibc version
 		libc_project="glibc"
-		libc_version="$(strings -a -t d -n 7 "$libc_file" | sed -n -e "s|^[ \t]*[0-9]*[ \t]glibc \([0-9\.]*\)\$|\1|p")"
+		libc_version="$(printf "%s" "$check_glibc" | sed -n -e "s|.*glibc \([0-9\.]*\).*|\1|p")"
 		libc_ident="glibc-$libc_version"
 	else
-		libc_project="musl"
-		libc_ident="musl-undetected"
-		libc_version="(undetectable)"
-		# - musl version detection is a bit wobbly ... version is stored as symbol __libc_version (it's a string), but AVM has stripped the lib
-		# - the version number consists of three groups of numbers/digits, delimited by a colon, optionally followed by a git commit spec,
-		#   if built from a git checkout
-		# - look into 'tools/version.sh' from musl project to find possible formats
-		# - let's assume for now, the main version number (first part) is always a "1"
-		# - the version number is stored as a C string, therefore it's terminated by a NUL byte for sure and on it's own line in 'strings' output
-		version_offset="$(strings -a -t d -n 5 "$libc_file" | sed -n -e "s|^[ \t]*\([0-9]*\)[ \t]*1\.[0-9]*\.[0-9]*\(-git.*\)\?\$|\1|p")"
-		if [ "$(expr "$version_offset" : "\([0-9]*\)")" = "$version_offset" ]; then # only try to extract the string, if we got a single offset
-			__bin_extract()
-			{
-				i=1
-				len=$( (dd if="$1" bs=1 skip=$2 count=32 2>/dev/null; printf "\377") | cmp -l -- /dev/zero 2>/dev/null |
-				while read line left right; do
-					[ $i -ne $line ] && printf "%u" $(( i - 1 )) && break
-					i=$(( i + 1 ))
-				done)
-				[ -n "$len" ] && [ $len -gt 0 ] && [ $len -lt 32 ] && dd if="$1" bs=1 skip=$2 count=$len 2>/dev/null && return 0
-				return 1
-			}
-			libc_version="$(__bin_extract "$libc_file" $version_offset)" || libc_version="(undetectable)"
-			if ! [ "$libc_version" = "(undetectable)" ]; then
+		check_musl="$(grep -ao "musl libc (" "$libc_file")"
+		if [ -n "$check_musl" ]; then # it's a musl version
+			libc_project="musl"
+			libc_ident="musl-undetected"
+			libc_version="(undetectable)"
+			# - musl version number detection is a bit wobbly ... version is stored as symbol __libc_version (it's a string), but AVM has stripped the lib
+			# - the version number consists of three groups of numbers/digits, delimited by a colon, optionally followed by a git commit spec,
+			#   if built from a git checkout
+			# - look into 'tools/version.sh' from musl project to find possible formats
+			# - let's assume for now, the main version number (first part) is always a "1"
+			# - otherwise the IPv4 localhost address 127.0.0.1 may be found by our grep attempts, so we'll filter it out
+			# - the first value found in the rest has to be the version number - as a compiler stamp could follow, so we use the first line only
+			musl_version="$(grep -ao "[0-9]\+\.[0-9]\+\.[0-9]\+" "$libc_file" | grep -v "127\.0\.0" | sed -n -e 1p)"
+			if [ -n "$musl_version" ]; then
+				libc_version="$musl_version"
 				libc_ident="musl-$libc_version"
-				[ "$(expr "$libc_version" : "\([0-9\.]*\)")" = "$libc_version" ] || libc_version="$(expr "$libc_version" : "\(1\.[0-9]*\.[0-9]*\).*")"
 			fi
+		else
+			libc_project="unknown"
+			libc_version="unknown"
+			libc_ident="unknown"
 		fi
 	fi
-else
+else # it's a uClibc[-ng] version
 	[ "$(expr "$libc_version" : "\(.\).*")" = "1" ] && libc_project="uClibc-ng" || libc_project="uClibc"
 	libc_ident="$libc_project-$libc_version"
 fi
