@@ -160,7 +160,7 @@ install_type="$(sed -n -e "s|^export CONFIG_INSTALL_TYPE=\"\?\([^\"]*\)\"\?\$|\1
 
 kernel_version="$(find "$src/lib/modules" -type d | sed -n -e "s|^$src/lib/modules/\([^/]*\)/kernel\$|\1|p" | sed -n -e "1p")"
 
-libc_file="$(readlink -f "$src"/lib/libc.so* | sed -n -e 1p)"
+libc_file="$(readlink -f "$(find "$src"/lib -maxdepth 1 -name "libc.so*" | sed -n -e 1p)")"
 libc_version="$(printf "%s" "$libc_file}" | sed -n -e "s|^.*/libuClibc-\([0-9\.]*\)\.so.*\$|\1|p")"
 if [ -z "$libc_version" ]; then # no uClibc[-ng] used here
 	check_glibc="$(grep -ao "glibc [0-9]\+\.[0-9]\+" "$libc_file")"
