@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# gui_bootmanager, version 0.6                                                                        #
+# gui_bootmanager, version 0.6.4                                                                      #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -44,6 +44,9 @@
 # further distinction between bootloader versions, where the branding may be changed (some earlier    #
 # 7560 and 7580 devices) and newer devices, where a branding is always reset to the finalized value   #
 # from bootloader partition.                                                                          #
+#                                                                                                     #
+# Update to 0.6.4:                                                                                    #
+# Support for IPQ4019-based devices was added, the restrictions are the same as for GRX5 devices.     #
 #                                                                                                     #
 # This version is able to detect a fixed branding value, if it's set from '/etc/init.d/rc.conf' with  #
 # a modified 'export OEM' statement - in such a case, an appropriate output is generated, containing  #
@@ -132,13 +135,19 @@ readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_vers
 readonly modified_by="YourFritz Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
-# GRX5 and VR9 specific settings                                                                      #
+# GRX5, VR9 and IPQ4019 common settings                                                               #
 #                                                                                                     #
 #######################################################################################################
 readonly mtd_filesystem_name_active="${filesystem_name}"
 readonly mtd_filesystem_name_inactive="${reserved_prefix}-${filesystem_name}"
 readonly mtd_kernel_name_active="${kernel_name}"
 readonly mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
+#######################################################################################################
+#                                                                                                     #
+# IPQ4019 specific settings (IPQ4018-based devices should use SPI flash with a single OS              #
+#                                                                                                     #
+#######################################################################################################
+readonly ipq4019_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev 5 (v7l)\$|IPQ4019|p;T n;q;:n"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
@@ -206,7 +215,12 @@ change_branding_support()
 #######################################################################################################
 get_system_type()
 {
-	sed -n -e "s|^system type[ \t]*: \([^ \t]*\).*|\1|p" "$proc_cpuinfo"
+	type="$(sed -n -e "s|^system type[ \t]*: \([^ \t]*\).*|\1|p" "$proc_cpuinfo")"
+	[ -n "$type" ] && printf "%s\n" "$type" && return 0
+	type="$(sed -n -e "$ipq4019_cpuinfo_check" "$proc_cpuinfo")"
+	[ -n "$type" ] && printf "%s\n" "$type" && return 0
+	printf "%s\n" "undetected"
+	return 1
 }
 #######################################################################################################
 #                                                                                                     #
@@ -284,7 +298,7 @@ get_partition()
 		if [ "$st" = "VR9" ] || [ "$st" = "AR10" ]; then
 			[ "$1" = "$kernel_name" ] && get_mtd_partition "$1" "$2" || get_vr9_image "$1" "$2"
 			rc=$?
-		elif [ "$st" = "GRX500" ] || [ "$st" = "GRX350" ]; then
+		elif [ "$st" = "GRX500" ] || [ "$st" = "GRX350" ] || [ "$st" = "IPQ4019" ]; then
 			get_mtd_partition "$1" "$2"
 			rc=$?
 		else
@@ -424,7 +438,8 @@ get_system_branding()
 #######################################################################################################
 get_system_switch()
 (
-	sed -n -e "s/^$system_select_name\t\([01]\)/\1/p" "${1:-$urlader_environment}"
+	[ -n "$2" ] && sed -n -e "s/^$system_select_name\t[01]\(.*\)\$/\1/p" "$1" && return
+	sed -n -e "s/^$system_select_name\t\([01]\).*\$/\1/p" "${1:-$urlader_environment}"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -458,7 +473,7 @@ is_kernel_present()
 is_switched()
 (
 	if [ -d "$fdt_chosen" ]; then
-		! [ "$(cat "$fdt_chosen/$system_select_name")" = "$(get_system_switch)" ]
+		! [ "$(cat "$fdt_chosen/$system_select_name" | sed -n -e "s|^\([01]\).*|\1|p")" = "$(get_system_switch)" ]
 	else
 		if [ -f "$boot_cache_file" ]; then
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
@@ -478,7 +493,7 @@ is_switched()
 #######################################################################################################
 switch_system()
 (
-	printf '%s\t%d\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) >"$urlader_environment"
+	printf '%s\t%d%s\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) "$(get_system_switch "$urlader_environment" 1)" >"$urlader_environment"
 )
 #######################################################################################################
 #                                                                                                     #
