@@ -412,7 +412,8 @@ while [ $killed -eq 0 -a $loopcount -lt $default_wait ]; do
 	[ $default_blip -eq 1 ] && printf "." 1>&2
 	loopcount=$(( loopcount + 1 ))
 done
-[ $default_blip -eq 1 ] && printf "\r\x1B[K" 1>&2
+[ $default_blip -eq 1 ] && ! [ "$DISCOVER_DEMO" = "1" ] && printf "\r\x1B[K" 1>&2
+[ "$DISCOVER_DEMO" = "1" ] && printf "\n" 1>&2
 [ -d /proc/$listener ] && kill $listener 2>/dev/null 1>&2
 [ -d /proc/$broadcaster ] && kill $broadcaster 2>/dev/null 1>&2
 wait $listener
