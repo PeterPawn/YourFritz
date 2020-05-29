@@ -147,7 +147,7 @@ readonly mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
 # IPQ4019 specific settings (IPQ4018-based devices should use SPI flash with a single OS              #
 #                                                                                                     #
 #######################################################################################################
-readonly ipq4019_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev 5 (v7l)\$|IPQ4019|p;T n;q;:n"
+readonly ipq4019_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev 5 (v7l)\$|IPQ4019|p;tq;b;:q q"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
