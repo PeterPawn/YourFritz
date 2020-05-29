@@ -3,7 +3,6 @@
 [ -z "$TARGET_BRANDING" ] && printf "TARGET_BRANDING value is not set.\a\n" 1>&2 && exit 1
 [ -z "$TMP" ] && TMP=$TMPDIR
 [ -z "$TMP" ] && printf "No TMPDIR or TMP setting found at environment, set it to a writable location.\a\n" 1>&2 && exit 1
-[ -z "$STREAMEDITOR" ] && EDITOR="${SED=sed}" || EDITOR="$STREAMEDITOR"
 TargetDir="${TARGET_DIR:+$TARGET_DIR/}"
 
 JsFile="usr/www/$TARGET_BRANDING/system/reboot.js"
@@ -24,7 +23,7 @@ check_version()
 
 if [ "$TARGET_SYSTEM_VERSION" = "autodetect" ]; then
 	[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "TARGET_SYSTEM_VERSION_DETECTOR value is not set.\a\n" 1>&2 && exit 1
-	TARGET_SYSTEM_VERSION="$($TARGET_SYSTEM_VERSION_DETECTOR $TARGET_DIR -m | $EDITOR -n -e 's|^Version="\(.*\)"|\1|p')"
+	TARGET_SYSTEM_VERSION="$($TARGET_SYSTEM_VERSION_DETECTOR $TARGET_DIR -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
 	printf "Autodetection of target system version: %s\n" "$TARGET_SYSTEM_VERSION" 1>&2
 fi
 
@@ -149,14 +148,14 @@ EndOfPatch
 if check_version $major $minor 7 8; then
 	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
 	getLuaPatchText_pre0708 > "$TMP/gui_bootmanager_0_6_tmp"
-	$EDITOR -f "$TMP/gui_bootmanager_0_6_tmp" -i "$TargetDir$LuaFile"
+	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
 	rm "$TMP/gui_bootmanager_0_6_tmp"
 else
 	printf "      Patching file '%s' ...\n" "$JsFile" 1>&2
 	getJsPatchText_0708 > $TMP/gui_bootmanager_0_6_tmp
-	$EDITOR -f "$TMP/gui_bootmanager_0_6_tmp" -i "$TargetDir$JsFile"
+	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$JsFile" >"$TargetDir$JsFile.new" && mv "$TargetDir$JsFile.new" "$TargetDir$JsFile"
 	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
 	getLuaPatchText_0708 > $TMP/gui_bootmanager_0_6_tmp
-	$EDITOR -f "$TMP/gui_bootmanager_0_6_tmp" -i "$TargetDir$LuaFile"
+	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
 	rm "$TMP/gui_bootmanager_0_6_tmp"
 fi
