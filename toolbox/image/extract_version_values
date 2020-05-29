@@ -180,12 +180,11 @@ if [ -n "$libc_file" ]; then
 				libc_ident="musl-undetected"
 				libc_display_version="(undetectable)"
 				# - musl version number detection is a bit wobbly ... version is stored as symbol __libc_version (it's a string), but AVM has stripped the lib
-				# - the version number consists of three groups of numbers/digits, delimited by a colon, optionally followed by a git commit spec,
+				# - the version number consists of three groups of numbers/digits, delimited by a dot, optionally followed by a git commit spec,
 				#   if built from a git checkout
 				# - look into 'tools/version.sh' from musl project to find possible formats
-				# - let's assume for now, the main version number (first part) is always a "1"
-				# - otherwise the IPv4 localhost address 127.0.0.1 may be found by our grep attempts, so we'll filter it out
-				# - the first value found in the rest has to be the version number - as a compiler stamp could follow, so we use the first line only
+				# - the IPv4 localhost address 127.0.0.1 may be found by our grep attempts, so we'll filter it out (this should not be the version)
+				# - the first value found in the rest has to be the version number - as a compiler stamp with the same format could follow, so we use the first line only
 				musl_version="$(grep -ao "[0-9]\+\.[0-9]\+\.[0-9]\+" "$libc_file" | grep -v "127\.0\.0" | sed -n -e 1p)"
 				if [ -n "$musl_version" ]; then
 					libc_display_version="$musl_version"
