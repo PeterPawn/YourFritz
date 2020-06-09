@@ -108,7 +108,7 @@ readonly kernel_name="kernel"
 readonly filesystem_name="filesystem"
 readonly reserved_prefix="reserved"
 readonly alt_root_mount_name="alt_root"
-readonly defaults_dir="etc/default.$CONFIG_PRODUKT"
+readonly defaults_dir="etc/default.\$PRODUKT"
 readonly sysfs_block_dir="/sys/block"
 readonly loop_driver_name="loop"
 readonly backing_file_name="backing_file"
@@ -125,12 +125,14 @@ readonly radio_button_checked=" checked=\\\"checked\\\""
 readonly yourfritz_version_file="etc/.yourfritz_version"
 readonly freetz_version_file="etc/.freetz-version"
 readonly modfs_version_file="etc/.modfs_version"
-readonly avm_version_file1="etc/version"
-readonly avm_version_file1_prefix="FIRMWARE_"
-readonly avm_version_file2="etc/init.d/rc.conf"
-readonly avm_version_file2_prefix="CONFIG_"
+readonly avm_version_file_old="etc/version"
+readonly avm_version_file_old_prefix="FIRMWARE_"
+readonly avm_version_file="etc/init.d/rc.conf"
+readonly avm_version_file_prefix="CONFIG_"
 readonly avm_version_main_components="VERSION SUBVERSION"
+readonly avm_version_major_name="CONFIG_VERSION_MAJOR"
 readonly avm_version_date="DATE"
+readonly avm_product_name="CONFIG_PRODUKT"
 readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file"
 readonly modified_by="YourFritz Freetz modfs -"
 #######################################################################################################
@@ -144,7 +146,7 @@ readonly mtd_kernel_name_active="${kernel_name}"
 readonly mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
 #######################################################################################################
 #                                                                                                     #
-# IPQ4019 specific settings (IPQ4018-based devices should use SPI flash with a single OS              #
+# IPQ4019 specific settings (IPQ4018-based devices should use SPI flash with a single OS)             #
 #                                                                                                     #
 #######################################################################################################
 readonly ipq4019_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev 5 (v7l)\$|IPQ4019|p;tq;b;:q q"
@@ -522,6 +524,28 @@ change_branding()
 )
 #######################################################################################################
 #                                                                                                     #
+# get product name value from AVM's rc.conf file                                                      #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_product_name()
+(
+	sed -n -e "s|^[ \t]*export $avm_product_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
+)
+#######################################################################################################
+#                                                                                                     #
+# get major version from AVM's rc.conf file                                                           #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_version_major()
+(
+	sed -n -e "s|^[ \t]*export $avm_version_major_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
+)
+#######################################################################################################
+#                                                                                                     #
 # get the contained brandings from the directory with system defaults                                 #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
@@ -530,8 +554,13 @@ change_branding()
 get_brandings()
 (
 	fixed="$(get_fixed_branding "$1")" && printf "%s" "$fixed" && exit 0
-	path=${1:-/}${1:+/}$defaults_dir
-	find $path -type d -maxdepth 1 | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
+	if [ -z "$1" ] || [ "$1" = "/" ]; then
+		eval PRODUKT="\$$avm_product_name"
+	else
+		PRODUKT="$(get_product_name "$1")"
+	fi
+	eval path="${1:-/}${1:+/}$defaults_dir"
+	find "$path" -type d -maxdepth 1 2>/dev/null | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
 )
 #######################################################################################################
 #                                                                                                     #
@@ -544,7 +573,7 @@ get_brandings()
 get_version_main_values()
 (
 	for v in $avm_version_main_components; do
-		sed -n -e "s|^[ \t]*export $2$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1"
+		sed -n -e "s|^[ \t]*export $2$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1" | sed -n -e \$p
 	done
 )
 #######################################################################################################
@@ -556,8 +585,8 @@ get_version_main_values()
 #######################################################################################################
 get_new_version_main_values()
 (
-	path="${1:-/}${1:+/}$avm_version_file2"
-	prefix="$avm_version_file2_prefix"
+	path="${1:-/}${1:+/}$avm_version_file"
+	prefix="$avm_version_file_prefix"
 	get_version_main_values "$path" "$prefix"
 )
 #######################################################################################################
@@ -569,8 +598,8 @@ get_new_version_main_values()
 #######################################################################################################
 get_old_version_main_values()
 (
-	path="${1:-/}${1:+/}$avm_version_file1"
-	prefix="$avm_version_file1_prefix"
+	path="${1:-/}${1:+/}$avm_version_file_old"
+	prefix="$avm_version_file_old_prefix"
 	get_version_main_values "$path" "$prefix"
 )
 #######################################################################################################
@@ -582,9 +611,9 @@ get_old_version_main_values()
 #######################################################################################################
 has_old_version_info()
 (
-	path="${1:-/}${1:+/}$avm_version_file1"
+	path="${1:-/}${1:+/}$avm_version_file_old"
 	set -- $avm_version_main_components
-	[ -z "$(sed -n -e "s|^[ \t]*export $avm_version_file1_prefix$1=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")" ] \
+	[ -z "$(sed -n -e "s|^[ \t]*export $avm_version_file_old_prefix$1=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")" ] \
 		&& exit 1 || exit 0
 )
 #######################################################################################################
@@ -612,7 +641,7 @@ get_version_values()
 get_system_version()
 (
 	eval $(get_version_values "$1")
-	has_old_version_info "$1" && printf '%s%s' "$VERSION" "$SUBVERSION" || printf '%s.%s%s' "$CONFIG_VERSION_MAJOR" "$VERSION" "$SUBVERSION"
+	has_old_version_info "$1" && printf '%s%s' "$VERSION" "$SUBVERSION" || printf '%s.%s%s' "$(get_version_major "$1")" "$VERSION" "$SUBVERSION"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -646,9 +675,9 @@ get_localized_date()
 #######################################################################################################
 get_system_date()
 (
-	path="${1:-/}${1:+/}$avm_version_file1"
+	path="${1:-/}${1:+/}$avm_version_file_old"
 	if has_old_version_info "$1"; then
-		d="$(sed -n -e "s|^[ \t]*export $avm_version_file1_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
+		d="$(sed -n -e "s|^[ \t]*export $avm_version_file_old_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
 		v=$(parse_date_value "$d")
 	else
 		v=$(stat -c %Y "$path")
