@@ -130,3 +130,5 @@
 229 ahanet.cfg
 230 ahaglobal.cfg
 231 ahapushmail.cfg
+240 asec
+241 import_asec.tmp

@@ -6,6 +6,7 @@
 260 HWSubRevision
 257 ProductID
 258 SerialNumber
+460 SoftwareFeatures
 425 annex
 385 autoload
 512 bb0
