@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 #######################################################################################################
 #                                                                                                     #
-# extension for the 'restart' page of AVM's FRITZ!OS GUI (reboot.lua) to provide a selection between  #
-# the two installed systems on devices with 'dual boot' support                                       #
+# extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
+# installed systems on devices with 'dual boot' support                                               #
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# gui_bootmanager, version 0.6.4                                                                      #
+# gui_bootmanager, version 0.6.5                                                                      #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -45,8 +45,8 @@
 # 7560 and 7580 devices) and newer devices, where a branding is always reset to the finalized value   #
 # from bootloader partition.                                                                          #
 #                                                                                                     #
-# Update to 0.6.4:                                                                                    #
-# Support for IPQ4019-based devices was added, the restrictions are the same as for GRX5 devices.     #
+# With update to 0.6.4, support for IPQ4019-based devices was added, the restrictions are the same as #
+# for GRX5 devices.                                                                                   #
 #                                                                                                     #
 # This version is able to detect a fixed branding value, if it's set from '/etc/init.d/rc.conf' with  #
 # a modified 'export OEM' statement - in such a case, an appropriate output is generated, containing  #
@@ -73,7 +73,8 @@
 #                'nocache' parameter will refresh the cached data of this function again              #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
-# clear_cache  - remove cached HTML output from an earlier 'html_display' call without 'nocache'      #
+# clear_cache  - remove cached HTML output and/or saved data from an earlier 'html_display' or        #
+#                'get_values' call without 'nocache' argument                                         #
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
