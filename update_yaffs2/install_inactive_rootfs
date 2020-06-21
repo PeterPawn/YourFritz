@@ -40,6 +40,7 @@ mount -t yaffs2 $MTDBLOCK$mtd $MOUNTFS || exit 1 # do or die
 # now we can copy the image file to the partition
 #
 #=========================================================================
+rm -f $MOUNTFS/$ROOTFS 2>/dev/null
 cp -a $image $MOUNTFS/$ROOTFS
 rc=$?
 sync
