@@ -1,14 +1,7 @@
 #! /bin/true
 __yf_custom_environment()
 {
-	command -v sed >/dev/null 2>&1 || return 1
-	command -v mknod >/dev/null 2>&1 || return 1
-	command -v expr >/dev/null 2>&1 || return 1
-	command -v wc >/dev/null 2>&1 || return 1
-	command -v grep >/dev/null 2>&1 || return 1
-	command -v cat >/dev/null 2>&1 || return 1
-	command -v rm >/dev/null 2>&1 || return 1
-	command -v true >/dev/null 2>&1 || return 1
+	for ___yf_ce_cmd in sed mknod expr wc grep cat rm true; do command -v $___yf_ce_cmd >/dev/null 2>&1 || return 1; done
 
 	___yf_ce_temp=/tmp
 	___yf_ce_proc=/proc
@@ -19,10 +12,8 @@ __yf_custom_environment()
 	___yf_ce_source="$___yf_ce_temp/custom_env.tffs"
 	___yf_ce_tffs_minor="${YF_CUSTOM_ENVIRONMENT_TFFS_MINOR:-80}"
 
-	[ -d "$___yf_ce_proc" ] || return 1
-	[ -d "$___yf_ce_temp" ] || return 1
-	[ -f "$___yf_ce_target" ] || return 1
-	[ -f "$___yf_ce_proc$___yf_ce_devices" ] || return 1
+	for ___yf_ce_dir in "$___yf_ce_proc" "$___yf_ce_temp"; do [ -d "$___yf_ce_dir" ] || return 1; done
+	for ___yf_ce_file in "$___yf_ce_target" "$___yf_ce_proc$___yf_ce_devices"; do [ -f "$___yf_ce_file" ] || return 1; done
 
 	[ -n "$(expr "$___yf_ce_tffs_minor" : ".*\([^0-9]\).*")" ] && return 1
 	[ "$___yf_ce_tffs_minor" -gt 255 ] && return 1
@@ -33,7 +24,8 @@ __yf_custom_environment()
 	mknod "$___yf_ce_source" c $___yf_ce_tffs_major $___yf_ce_tffs_minor 2>/dev/null || return 1
 	[ "$( ( wc -c "$___yf_ce_source" 2>/dev/null || printf "0") | sed -n -e "s|^\([0-9]*\).*\$|\1|p")" -lt 2 ] && ( rm "$___yf_ce_source" 2>/dev/null || true ) && return 1
 		
-	cat "$___yf_ce_source" | while read ___yf_ce_name ___yf_ce_value; do
+	cat "$___yf_ce_source" |\
+	while read ___yf_ce_name ___yf_ce_value; do
 		___yf_ce_current="$(sed -n -e "s|^$___yf_ce_name[ \t]*\(.*\)\$|\1|p" "$___yf_ce_target")"
 		if [ "${#___yf_ce_current}" -ne "${#___yf_ce_value}" ] || ! [ "$___yf_ce_current" = "$___yf_ce_value" ]; then
 			printf "%s %s\n" "$___yf_ce_name" "$___yf_ce_value" > "$___yf_ce_target" 2>/dev/null
