@@ -36,11 +36,7 @@ __yf_custom_environment()
 	cat "$___yf_ce_source" | while read ___yf_ce_name ___yf_ce_value; do
 		___yf_ce_current="$(sed -n -e "s|^$___yf_ce_name[ \t]*\(.*\)\$|\1|p" "$___yf_ce_target")"
 		if [ "${#___yf_ce_current}" -ne "${#___yf_ce_value}" ] || ! [ "$___yf_ce_current" = "$___yf_ce_value" ]; then
-			if [ -n "$YF_CUSTOM_ENVIRONMENT_DRY_RUN" ]; then
-				printf "printf \"%s %s\\\n\" %s\n" "$___yf_ce_name" "$___yf_ce_value" "> $___yf_ce_target 2>/dev/null"
-			else
-				printf "%s %s\n" "$___yf_ce_name" "$___yf_ce_value" > "$___yf_ce_target" 2>/dev/null
-			fi
+			printf "%s %s\n" "$___yf_ce_name" "$___yf_ce_value" > "$___yf_ce_target" 2>/dev/null
 		fi
 	done
 
