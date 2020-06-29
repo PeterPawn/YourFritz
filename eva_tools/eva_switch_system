@@ -10,7 +10,7 @@ fi
 #
 # some constants to be changed, if needed
 #
-ip=$(eva_discover INTERFACE=$1 TO=$2 FROM=$3)
+ip=$(${0%/*}/eva_discover INTERFACE=$1 TO=$2 FROM=$3)
 [ $? -ne 0 ] && exit 1
 eval $ip
 box_ip=$EVA_IP
