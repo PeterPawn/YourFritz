@@ -1,0 +1,1113 @@
+#! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# vim: set tabstop=4 syntax=bash :
+#######################################################################################################
+#                                                                                                     #
+# create a modfified FRITZ!OS image from an original one                                              #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# rebuild_image, version 0.8                                                                          #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2018-2020 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script takes an original firmware image from AVM (for devices with SquashFS4 image format)     #
+# and extracts the contained filesystem image in a first step.                                        #
+#                                                                                                     #
+# The second step is unpacking this image - using an existing binary, if needed with support for the  #
+# special SquashFS 4 format, that's used by AVM for platforms with big endian format.                 #
+#                                                                                                     #
+# At the third stage, the unpacked data may be changed a bit - by a program/script specified while    #
+# calling this script. This script gets called with the path of unpacked directory structure as first #
+# argument and may do any imaginable changes to this structure. For devices with an additional YAFFS2 #
+# partition (usually mounted as '/wrapper' in the running OS), a second parameter is provided to the  #
+# called script, which is the path to content of this partition. The called script is obliged to      #
+# watch the overall size of the directories - if the created image (a single SquashFS image or the    #
+# 'ext2' image containing the 'wrapper' content and the SquashFS image for the root filesystem) gets  #
+# larger than the expected size of a filesystem partition (definitions are below in the constants     #
+# area), the script terminates with an error.                                                         # 
+#                                                                                                     #
+# If this call finishes with an exit code of 0, the whole directory structure will be packed again,   #
+# with the same settings that were used for the original image.                                       #
+#                                                                                                     #
+# If the original firmware was for a DOCSIS device (6490 and 6590 are taken into account), this new   #
+# filesystem image is written to STDOUT (the caller is responsible for proper redirection, the script #
+# refuses to run, if STDOUT is connected to a terminal device) and only the filesystem for the ATOM   #
+# core is considered for any changes. Such a filesystem image may be written directly via EVA FTP     #
+# server to an eMMC partition on those devices.                                                       #
+#                                                                                                     #
+# For models with a YAFFS2 partition as host for the SquashFS image with the real root filesystem,    #
+# the SquashFS image will be created and the content of the second directory will be written to an    #
+# 'ext2' image (which contains the real root filesystem as 'filesystem_core.squashfs', too). After    #
+# adding the needed dummy header, masking the image as SquashFS file, the resulting file is taken as  #
+# the new filesystem image and the processing of the kernel image, described below, continues.        #
+#                                                                                                     #
+# For devices without a host partition for the SquashFS image, a new filesystem image is created from #
+# the content of the directory and this image is taken as the new filesystem for further processing.  #
+#                                                                                                     #
+# For all devices beside the DOCSIS models, the kernel image from the provided original firmware      #
+# image is taken and combined with the new filesystem image - the result is written to STDOUT. Any    #
+# output file produced in this manner, may be used to install a modified firmware on a FRITZ!Box      #
+# device - either with loading the file into RAM and start the system from there or - where EVA's FTP #
+# server supports writing to the 'combined kernel and filesystem partition' (mostly it's called       #
+# 'mtd1' in this context) - it's suitable to be written to a flash partition from bootloader.         #
+#                                                                                                     #
+# The decision, whether a model uses the installation via RAM loading and OS execution or via direct  #
+# output to a flash partition, is made by a check of 'filesystem.image' file size from the original   #
+# firmware file.                                                                                      #
+#                                                                                                     #
+# The used methods should work for most models - GRX5 devices with NAND flash, VR9 devices with NAND  #
+# or NOR flash, the only Vx180 device in the wild (7390) and even with older models, which still use  #
+# a SquashFS 3 format for their filesystem image.                                                     #
+#                                                                                                     #
+# But the only tests made by myself covered a 7390, 7412, 7490, 7580 and 6490 device.                 #
+#                                                                                                     #
+# It's superfluous to remember you, that every use of this script is on your own risk ... please read #
+# the text of the license agreement, which covers all aspects of using this script and any further    #
+# file from the affected sub-directories of my GitHub repository.                                     #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Prerequisites:                                                                                      #
+#                                                                                                     #
+# - a POSIX-compatible shell (bash, ash from BusyBox, dash)                                           #
+# - a local Git installation to clone the whole repository (incl. any sub-modules)                    #
+# - following additional binaries:                                                                    #
+#   mktemp (opt.), file (opt.), dd, cmp, sed, mkdir, touch, date, rm, stat, readlink, sudo, chown, id #
+#                                                                                                     #
+#######################################################################################################
+usage_text()
+{
+	__purpose_hdr
+	__nl "This script may be used to query AVM's update information service (JUIS) for new versions.\n"
+	__nl "Due to the ability to configure many (or most) parameters of such a query manually, it is"
+	__nl "possible to look for fresh firmware for nearly all AVM devices.\n"
+	__nl "Nevertheless it's still possible to call the script only with the IP address of an existing"
+	__nl "(and locally reachable) FRITZ!OS-based router - then it simply will try to get all needed"
+	__nl "parameters for the query from this device.\n"
+	__nl "So it's still as easy as possible to look regularly, if a new firmware for your \"beloved"
+	__nl "router\" was published meanwhile - even from outside of this device and if you want to avoid"
+	__nl "any automatic discovery and installation of newer firmware versions, e.g. due to (reasonable)"
+	__nl "security concerns."
+	__usage_hdr
+	__usage_opt "options"; __usage_opt_end; __usage_opt "optional parameters"
+	__usage_end
+	__options_hdr
+	__option_debug 30
+	__option_help 30
+	__option_version 30
+	__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "do not respawn with 'bash', even if it's possible"
+	__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "save SOAP response to $(__undl "filename") for further processing"
+	__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "skip configuration file processing"
+	__nl; __option_show_opt 30 "-c" "--current"; __option_show_desc "try to get current version URL ('Patch' - see below - gets decremented)"
+	__nl; __option_show_opt 30 "-l" "--local"; __option_show_desc "use data from local device, do not try to read via network"
+	__nl; __option_show_opt 30 "-p" "--print-version"; __option_show_desc "show version number of found firmware on STDOUT"
+	__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "send real Serial value read from device"
+	__options_end
+	__nl "The script attempts to read a configuration file with its own name (or better expressed:"
+	__nl "with the name, that was used to call it, because this may be a symbolic link, too) and an"
+	__nl "extension of 'cfg' from the same location, where the script itself was found. This file will"
+	__nl "be 'included' with a '.' (dot) command and may contain any shell statement - please be aware,"
+	__nl "that this may lead to a severe security threat, if anyone else may modify this file without your"
+	__nl "knowledge.\n"
+	__nl "To use another file instead, add a value named 'JUIS_CHECK_CFG', containing the name of a"
+	__nl "configuration file, to the environment of this script. To skip all configuration file"
+	__nl "processing, use the option '--ignore-cfgfile' (or '-i') from above.\n"
+	__nl "This configuration file may be used to set one or more of the needed settings (see below)"
+	__nl "from positional parameters on the command line and has to use the \"shift\" statement to"
+	__nl "remove any processed entries from the parameters collection.\n"
+}
+#######################################################################################################
+#                                                                                                     #
+# L10N strings                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+languages="en"
+L10N_DBG_001_en="Reading and interpreting configuration file '%%s' with content:\\\\n"
+L10N_DBG_002_en="Configuration file processing finished.\\\\n"
+L10N_DBG_003_en="Variables set:\\\\n"
+L10N_DBG_004_en="Sent request:\\\\n"
+L10N_DBG_005_en="Received response:\\\\n"
+L10N_DBG_006_en="Reading values from '%%s:%%s/%%s': "
+L10N_DBG_007_en="Read response from device:\\\\n"
+L10N_DBG_008_en="Reading response from '%%s:%%s': "
+L10N_DBG_009_en="Setting '%%s' to '%%s' from command line parameter\\\\n"
+L10N_DBG_010_en="Splitting compound version number '%%s' to:\\\\n"
+L10N_DBG_011_en="Compound version number used for request: '%%s'\\\\n"
+L10N_DBG_012_en="Respawning script with Bash as shell, calling: %%s\\\\n"
+L10N_DBG_013_en="SOAP response will be saved to: %%s\\\\n"
+L10N_DBG_014_en="SOAP request nonce set to '%%s' from command line parameter\\\\n"
+L10N_DBG_015_en="Skipping configuration file processing ...\\\\n"
+L10N_DBG_016_en="SOAP response saved to: %%s\\\\n"
+L10N_DBG_017_en="Reading values from local file '%%s'.\\\\n"
+L10N_DBG_018_en="Just decremented the version number to get an answer with URL for current version.\\\\n"
+L10N_ERR_OPT_en="Unknown option '%%s' specified."
+L10N_ERR_SCR_en="Missing another needed executable: %%s."
+L10N_ERR_EXC_en="Missing a required command: %%s."
+L10N_ERR_TRM_en="%%s is a terminal device. %%s"
+L10N_ERR_001_en="Missing configuration file and first parameter (the IP address of a reachable FRITZ!Box) at the same time."
+L10N_ERR_002_en="Missing FRITZ!Box IP address or DNS name."
+L10N_ERR_003_en="Error reading '%%s' from FRITZ!Box device with address '%%s:%%s'."
+L10N_ERR_004_en="'%%s' item may only be empty or set to a fixed boolean value."
+L10N_ERR_005_en="Unknown setting '%%s' found at command line."
+L10N_ERR_006_en="The '%%s' item has to be set to '0' for 'inhouse versions' or '1' for others."
+L10N_ERR_007_en="Unexpected data received from network."
+L10N_ERR_008_en="Unexpected error code %s returned from %s."
+L10N_ERR_009_en="No newer version found, check was made with source version '%%s'."
+L10N_ERR_010_en="No data file '%%s' found - make sure it's a FRITZ!OS device, if you use '--local' option."
+L10N_ERR_011_en="(unused)"
+L10N_ERR_012_en="Error saving SOAP response to '%%s'."
+L10N_ERR_013_en="Missing file name after option '%%s'."
+L10N_ERR_014_en="Missing 'HW' value after processing all settings, it's part of AVM' server name and MUST be present."
+L10N_INF_001_en="Found newer version: %%s"
+L10N_HLP_PUR_en="Purpose"
+L10N_HLP_USG_en="Usage"
+L10N_HLP_SUP_en="Supported "
+L10N_HLP_OPT_en="options"
+L10N_HLP_ARE_en="are"
+L10N_HLP_DBG_en="display debug info on STDERR; must prefix all other options"
+L10N_HLP_HLP_en="show this information (must be the first option)"
+L10N_HLP_VER_en="show version and exit (must be the first option)"
+#######################################################################################################
+#                                                                                                     #
+# usage and display helpers from YourFritz framework (included to get a single file to copy/install)  #
+#                                                                                                     #
+#######################################################################################################
+__bold__="$(printf "\033[1m")"
+__undl__="$(printf "\033[4m")"
+__red__="$(printf "\033[1m\033[31m")"
+__gren__="$(printf "\033[1m\033[32m")"
+__yllw__="$(printf "\033[1m\033[33m")"
+__blue__="$(printf "\033[1m\033[34m")"
+__rset__="$(printf "\033[0m")"
+__bold() { printf "$__bold__"; printf -- "$@"; printf "$__rset__"; }
+__undl() { printf "$__undl__"; printf -- "$@"; printf "$__rset__"; }
+__show_script_name()
+{
+	printf "%s${0#*/}\033[0m: " "$1"
+}
+__get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d'
+}
+__license()
+{
+	__get_script_lines "LIC"
+}
+__version()
+{
+	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__\1$__rset__,\2|"
+}
+__copyright()
+{
+	__get_script_lines "CPY"
+}
+__get_language()
+(
+	__get_language_code()
+	{
+		printf "%s\n" "$1" | sed -n -e "1s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
+	}
+
+	lang="$1"
+	shift
+
+	if ! [ -z "$LC_ALL" ]; then
+		check="$(__get_language_code "$LC_ALL")"
+	else
+		[ -z "$LANG" ] || check="$(__get_language_code "$LANG")"
+	fi
+	if ! [ -z "$check" ]; then
+		[ "$lang" = "$check" ] || \
+		for l in $*; do
+			[ "$l" = "$check" ] && lang="$l" && break
+		done
+	fi
+	printf "%s" "$lang"
+)
+__language__="$(eval __get_language $languages)"
+__get_localized()
+{
+	eval printf "\"\$L10N_${1}_${__language__}\""
+}
+__emsg()
+{
+	__show_script_name "$__red__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\a\n" "$@" 1>&2
+}
+__info()
+{
+	__show_script_name "$__gren__" 1>&2
+	mask="$1"
+	shift
+	printf "${__bold__}${mask}${__rset__}\n" "$@" 1>&2
+}
+__check_option()
+{
+	o="$1"
+	shift
+	for v in $*; do
+		[ "$o" = "$v" ] && printf 1 && return 0
+	done
+	printf 0
+	return 1
+}
+__is_option()
+{
+	[ "$(expr \( "$1" : "\(.\).*" \) )" = "-" ] && return 0 || return 1
+}
+__is_last_option()
+{
+	[ "$1" = "--" ] && return 0 || return 1
+}
+__options_end__="eval while __is_option \"\$1\"; do __is_last_option \"\$1\" && shift && break;\
+	__emsg \"\$(__get_localized ERR_OPT)\" \"\$1\"; exit 1; done;"
+__version_option()
+{
+	if __check_option "$1" "-V" "--version" >/dev/null; then
+		__version
+		__copyright
+		__license
+		printf "\n"
+		exit 1
+	fi
+	return 1
+}
+__version_option__="eval __version_option \$@ && exit 0"
+__help_option()
+{
+	if __check_option "$1" "-h" "--help" >/dev/null; then
+		[ -t 1 ] && command -v less >/dev/null && (__usage | less) || __usage
+		exit 1
+	fi
+}
+__help_option__="eval __help_option \$@"
+__debug_option()
+{
+	__check_option "$1" "-d" "--debug" && return 0
+	return 1
+}
+__debug_option__="eval __debug_set__=\$(__debug_option \$1) && __debug_text__=\"\$1\" && shift"
+__debug_on__="eval __debug_set__=1; __debug_text__=\"-d\";"
+__is_debug() { [ $__debug_set__ -eq 1 ] && return 0 || return 1; }
+__debug()
+{
+	[ $__debug_set__ -eq 1 ] || return;
+	mask="$1"
+	shift
+	printf "%sdebug%s: " "$__yllw__" "$__rset__" 1>&2
+	printf -- "$mask" "$@" 1>&2
+}
+__usage()
+(
+	indent=0
+	__indent_on() { indent=$(( indent + 4 )); }
+	__indent_off() { indent=$(( indent - 4 )); }
+	__indent() { [ $indent -gt 0 ] && printf "%0${indent}s" " "; };
+	__nl() { printf "\n%s" "$(__indent)"; printf -- "$1"; }
+	__purpose_hdr() { __nl; __bold "$(__get_localized HLP_PUR):"; printf "\n"; }
+	__usage_name() { __bold "${0#*/}"; }
+	__usage_hdr() { printf "\n"; __nl; __bold "$(__get_localized HLP_USG):\n"; __indent_on; __nl "$(__usage_name)"; }
+	__usage_end() { __indent_off; printf "\n"; }
+	__usage_opt_int() { v="$1"; shift; [ $# ] && m="$@"; printf -- "[ %s%s ]" "$(__undl "$v")" "$m"; unset m v; };
+	__usage_opt_end() { printf -- " [ -- ]"; }
+	__usage_opt() { printf -- " %s" "$(__usage_opt_int "$@")"; }
+	__usage_arg() { printf -- " %s" "$(__undl "$1")"; }
+	__options_hdr() { __nl "$(__get_localized HLP_SUP)"; __undl "$(__get_localized HLP_OPT)"; printf " $(__get_localized HLP_ARE):\n"; }
+	__options_end() { printf "\n"; }
+	__option_show_opt() {
+		printf -- "%s, %s" "$2" "$3"
+		__l4__=${#4}
+		[ $__l4__ -gt 0 ] && printf " %s%s%s" "$__undl__" "$4" "$__rset__" && __l4__=$(( __l4__ + 1 ))
+		printf "%0$(( $1 - ${#2} - ${#3} - __l4__ - 3 ))s" " "
+		unset __l4__
+	}
+	__option_show_desc() { printf -- "- %s" "$@"; }
+	__option_debug() { __nl; __option_show_opt ${1:-15} "-d" "--debug"; __option_show_desc "$(__get_localized HLP_DBG)"; }
+	__option_help()	{ __nl; __option_show_opt ${1:-15} "-h" "--help"; __option_show_desc "$(__get_localized HLP_HLP)"; }
+	__option_version()	{ __nl; __option_show_opt ${1:-15} "-V" "--version"; __option_show_desc "$(__get_localized HLP_VER)"; }
+	__end() { printf "\n%s\n" "$__rset__"; }
+
+	__version
+	__copyright
+	__license
+	usage_text
+	__end
+)
+__check_required_command()
+(
+	IFS=:
+	set -- $1
+	for n in $@; do
+		command -v $n 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+__check_required_commands()
+{
+	for n in $@; do
+		__check_required_command $n && continue
+		__emsg "$(__get_localized ERR_EXC)" "$(printf "%s\n" "$n" | sed -e "s|:| or |g")"
+		return 1
+	done
+	return 0
+}
+__check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
+
+__required_commands="sed mkfifo:mknod cat rm mkdir touch wc cmp date"
+[ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+bin_files="${YF_BINARIES_LOCATION:-../bin}"
+squashfs_location="${YF_SQUASHFS_LOCATION:-squashfs}"
+script_files="${YF_SCRIPTS_LOCATION:-image}"
+image_get_file="$script_files/get_file_from_image"
+extract_values_file="$script_files/extract_version_values"
+toolbox_scripts="$image_get_file $extract_values_file"
+squashfs_tools="$bin_files/$squashfs_location"
+rootfs_image="filesystem_core.squashfs"
+kernel_image="kernel"
+avm_sqfs_image="fs.avm"
+avm_combined_image="fs.combined"
+nmi_vector_image="nmi_vector"
+ext2_header_image="header"
+avm_ext2_image_wrapper="ext2.avm"
+avm_ext2_mount="ext2.mnt"
+avm_sqfs_image_wrapper="sqfs.avm"
+new_sqfs_image="fs.changed"
+new_ext2_image_wrapper="ext2.changed"
+new_sqfs_image_wrapper="sqfs.changed"
+sqfs_unpacked="fs"
+wrapper_unpacked="wrapper"
+image_variables_file="settings"
+prefix="__YF_RI_"
+#######################################################################################################
+#                                                                                                     #
+# host system depending variables                                                                     #
+#                                                                                                     #
+#######################################################################################################
+sqfs_unpacker="$(readlink -f $(printf "%s/%s/%s/unsquashfs4-le" "$(pwd)" "$squashfs_tools" "$(uname -m)"))"
+# the version 4 unpack utility may also extract files from version 3 images, only different packers are needed
+sqfs_unpack_be="$(readlink -f $(printf "%s/%s/%s/unsquashfs4-be" "$(pwd)" "$squashfs_tools" "$(uname -m)"))"
+sqfs_unpack_le="$(readlink -f $(printf "%s/%s/%s/unsquashfs4-le" "$(pwd)" "$squashfs_tools" "$(uname -m)"))"
+sqfs_4_pack_le="$(readlink -f $(printf "%s/%s/%s/mksquashfs4-le" "$(pwd)" "$squashfs_tools" "$(uname -m)"))"
+sqfs_3_pack_le="$(readlink -f $(printf "%s/%s/%s/mksquashfs3-multi" "$(pwd)" "$squashfs_tools" "$(uname -m)")) -le"
+sqfs_4_pack_be="$(readlink -f $(printf "%s/%s/%s/mksquashfs4-be" "$(pwd)" "$squashfs_tools" "$(uname -m)"))"
+sqfs_3_pack_be="$(readlink -f $(printf "%s/%s/%s/mksquashfs3-multi" "$(pwd)" "$squashfs_tools" "$(uname -m)")) -be"
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+options=""
+parameters=""
+$__help_option__
+$__version_option__
+$__debug_option__
+#__no_cfgfile=0
+#__no_respawn=0
+#__use_real_serial=0
+#__get_current=0
+#__use_local=0
+#__show_new_version=0
+#__save_output=""
+#while [ $# -gt 0 ]; do
+#	parameters="$*"
+#	__is_option "$1" || break
+#	__is_last_option "$1" && shift && options="${options:+${options} }$1" && break
+#	if __check_option "$1" "-i" "--ignore-cfgfile" >/dev/null; then
+#		__no_cfgfile=1
+#		options="${options:+${options} }--ignore-cfgfile"
+#		shift
+#		parameters="$*"
+#		continue
+#	elif __check_option "$1" "-n" "--no-respawn" >/dev/null; then
+#		__no_respawn=1
+#		shift
+#		continue
+#	elif __check_option "$1" "-r" "--use-real-serial" >/dev/null; then
+#		__use_real_serial=1
+#		options="${options:+${options} }--use-real-serial"
+#		shift
+#		parameters="$*"
+#		continue
+#	elif __check_option "$1" "-c" "--current" >/dev/null; then
+#		__get_current=1
+#		options="${options:+${options} }--current"
+#		shift
+#		parameters="$*"
+#		continue
+#	elif __check_option "$1" "-l" "--local" >/dev/null; then
+#		__use_local=1
+#		options="${options:+${options} }--local"
+#		shift
+#		parameters="$*"
+#		continue
+#	elif __check_option "$1" "-p" "--print-version" >/dev/null; then
+#		__show_new_version=1
+#		options="${options:+${options} }--print-version"
+#		shift
+#		parameters="$*"
+#		continue
+#	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
+#		if [ ${#2} -eq 0 ] || __is_option "$2"; then
+#			__emsg "$(__get_localized ERR_013)" "$1" && exit 1
+#		else
+#			__save_output="$2"
+#			options="${options:+${options} }--save-response $2"
+#			shift 2
+#			parameters="$*"
+#			continue
+#		fi
+#	else
+#		$__options_end__
+#	fi
+#done
+#__is_debug && options="--debug${options:+ $options}"
+#######################################################################################################
+#                                                                                                     #
+# check environment                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+$__check_required_commands__
+#######################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+########################################################################################################
+#                                                                                                     #
+# subfunctions                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# usage screen display                                                                                #
+#                                                                                                     #
+#######################################################################################################
+usage()
+{
+	printf "Firmware image creator for FRITZ!OS-based devices.\n\n"
+	printf "Copyright (C) 2019-2020 P. Haemmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.\n\n"
+	printf "Usage:\n\n"
+	printf "\033[1m%s\033[0m [ options ] <source>\n\n" "${0##*/}"
+}
+#######################################################################################################
+#                                                                                                     #
+# make temporary directory or file, emulate 'mktemp' if it's missing                                  #
+#                                                                                                     #
+#######################################################################################################
+mktmp()
+(
+	command -v mktemp 2>/dev/null 1>&2 && name="$(mktemp $* 2>/dev/null)" && printf "%s" "$name" && exit 0
+	# mktemp is missing or has failed, emulation needed
+	tmp="${TMPDIR}"
+	[ "$1" = "-d" ] && dir=1 || dir=0
+	[ "$1" = "-p" ] && tmp="$2"
+	[ -z "$tmp" ] && tmp="/tmp"
+	name="$tmp/$(date +%s)_$$"
+	if [ $dir -eq 1 ]; then
+		while [ -d "$name" ]; do
+			name="${name}_$(sleep 1; date +%s)"
+		done
+		mkdir -p "$name" 2>/dev/null
+	else
+		while [ -e "$name" ]; do
+			name="${name}_$$"
+		done
+		touch "$name" 2>/dev/null
+	fi
+	printf "$name"
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# convert data from STDIN to hexadecimal presentation                                                 #
+#                                                                                                     #
+#######################################################################################################
+yf_bin2hex()
+(
+	__yf_bin2hex_read_octal()
+	{
+		i=1
+		ff=0
+		while read pos left right; do
+			while [ $i -lt $pos ]; do # zeros are equal for 'cmp'
+				if [ $ff -eq 1 ]; then
+					printf "ff"
+					ff=0
+				else
+					printf "00"
+				fi
+				i=$(( i + 1 ))
+			done
+			if [ $right -eq 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			printf "%02x" 0$right
+			i=$(( pos + 1 ))
+		done
+	}
+	( cat; printf "%b" "\0377" ) | command cmp -l -- /dev/zero - 2>/dev/null | __yf_bin2hex_read_octal
+)
+#######################################################################################################
+#                                                                                                     #
+# get user id and display an info message, if it's not EUID 0                                         #
+#                                                                                                     #
+#######################################################################################################
+checkuid()
+{
+	uid=99999
+	command -v id 2>/dev/null 1>&2 && uid=$(id | sed -n -e "s|^uid=\([0-9]\).*|\1|p")
+	[ $uid -eq 99999 ] && uid=$(sed -n -e "s|^Uid:[ \t]*\([0-9]*\)[ \t]*.*|\1|p" /proc/self/status)
+	if [ "$uid" -ne 0 ]; then
+		if ! sudo -n -v 2>/dev/null; then
+			printf "Some commands have to be run as superuser.\nPlease provide root's password, if asked for.\n" 1>&2
+			sudo -v
+		fi
+		printf "sudo "
+	fi
+}
+#######################################################################################################
+#                                                                                                     #
+# set user and group ID for a subdirectory and all contained files                                    #
+#                                                                                                     #
+#######################################################################################################
+set_user_and_group()
+{
+	uid=99999
+	gid=99999
+	command -v id 2>/dev/null 1>&2 && uid=$(id | sed -n -e "s|^uid=\([0-9]*\).*|\1|p") && gid=$(id | sed -n -e "s|.*gid=\([0-9]*\).*|\1|p")
+	[ $uid -eq 99999 ] && uid=$(sed -n -e "s|^Uid:[ \t]*\([0-9]*\)[ \t]*.*|\1|p" /proc/self/status) && gid=$(sed -n -e "s|^Gid:[ \t]*\([0-9]*\)[ \t]*.*|\1|p" /proc/self/status)
+	su="$(checkuid)"
+	if ! $su chown -R $uid:$gid "$1"; then
+		printf "Error setting user and group ID for unpacked files.\n" 1>&2
+		return 1
+	fi
+	return 0
+}
+#######################################################################################################
+#                                                                                                     #
+# detect SquashFS image (version, compressor, endianess, offset for combined kernel/SquashFS files)   #
+#                                                                                                     #
+#######################################################################################################
+getfiletype()
+(
+	command -v file 2>/dev/null 1>&2 && file "$1" 2>/dev/null && exit 0
+	# 'file' command is missing, detect SquashFS header signature and version the hard way
+	signature="$(dd if="$1" bs=4 count=1 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,4s|^[ \t]*. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')"
+	version="$(dd if="$1" bs=2 skip=$(( ( 5 * 4 + 4 * 2 ) / 2 )) count=1 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,2s|^[ \t]*. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')"
+	if [ "$signature" = "163 161 163 150" ] || [ "$signature" = "150 163 161 163" ]; then
+		[ "$signature" = "163 161 163 150" ] && endian="big" || endian="little"
+		[ "$version" = "4" ] || [ "$version" = "3" ]  && version="version 4." || version="unsupported version"
+		printf "Squashfs filesystem, %s endian, %s" "$endian" "$version"
+	else
+		printf "File is not a SquashFS image.\n"
+	fi
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# detect SquashFS options from -stat output for an existing SquashFS image                            #
+#                                                                                                     #
+#######################################################################################################
+getpackeroptions()
+(
+	input="$1"
+	[ -z "$2" ] && version=$(( $(printf "%s\n" "$input" | sed -n -e "s|^Found a valid .* endian SQUASHFS \([0-9]*\):.*|\1|p") + 0 )) || version=$2
+	compression="$(printf "%s\n" "$input" | sed -n -e "s|^Compression \(.*\)\$|\1|p")"
+	blocksize="$(printf "%s\n" "$input" | sed -n -e "s|^Block size \([0-9]*\)\$|\1|p")"
+	[ "$(printf "%s\n" "$input" | sed -n -e "s|^Filesystem is \(.*\) exportable via NFS\$|\1|p")" = "not" ] && exportable=0 || exportable=1
+)
+#######################################################################################################
+#                                                                                                     #
+# display debug output - will be called on alternative screen, if supported by terminal and pause     #
+#                        mode is active                                                               # 
+#                                                                                                     #
+#######################################################################################################
+do_debug_info()
+{
+	__is_debug || return 0
+	printf "\033[1m%s\033[0m%s\n\n" "${0##*/}" ", version 0.8"
+	printf "Copyright (C) 2018-2020 P.Hämmerlein (peterpawn@yourfritz.de)\n\n"
+	printf "This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.\n\n"
+	printf "This program is free software; you can redistribute it and/or modify it under the terms of the GNU\n"
+	printf "General Public License as published by the Free Software Foundation; either version 2 of the\n"
+	printf "License, or (at your option) any later version.\n\n"
+	printf "This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without\n"
+	printf "even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU\n"
+	printf "General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.\n\n"
+	printf -- "--------------------------------------------------------------------------------------------------\n\n"
+	case "$box_type" in
+		("Puma6")
+			printf "Input image is for a Puma6 based model, only the ATOM filesystem gets processed.\n"
+			;;
+		("nor")
+			printf "Device uses NOR flash to store kernel and filesystem.\n"
+			[ $nmi_vector -gt 0 ] && printf "NMI vector found at offset 0x%08X, size=%u\n" "$nmi_vector" "$nmi_vector_size"
+			;;
+		("nand")
+			printf "Device uses NAND flash to store kernel and filesystem.\n"
+			;;
+		("nand_wrapper_sqfs")
+			printf "Device uses NAND flash for kernel and a wrapper partition for filesystem image.\nThe wrapper partition uses YAFFS2 format on the device and SquashFS format for installation.\n"
+			;;
+		("nand_wrapper_ext2")
+			printf "Device uses NAND flash for kernel and a wrapper partition for filesystem image.\nThe wrapper partition uses YAFFS2 format on the device and ext2 format for installation.\n"
+			;;
+	esac
+	[ $padded -eq 1 ] && printf "Padding extracted kernel from %u bytes to the next %s byte boundary.\n" "$kernel_size" "$padding"
+	printf "SquashFS version used: %s\n" "$_sqfs_version"
+	printf "SquashFS compression used: %s\n" "$_sqfs_compression"
+	printf "SquashFS endianess used: %s\n" "$_sqfs_endian"
+	printf "\n>>>>> \033[37m\033[1mOutput of 'extract_version_values'\033[0m <<<<<\n"
+	"$SHELL" "$extract_values_file" "$name/$sqfs_unpacked" -m
+	printf ">>>>> ================================== <<<<<\n\n"
+}
+#######################################################################################################
+#                                                                                                     #
+# wait until the user answered with "continue"                                                        #
+#                                                                                                     #
+#######################################################################################################
+wait_for_decision()
+{
+	printf "\033[?1049h\033[H\033[2J"
+	result=1
+	display=1
+	do_debug_info
+	while [ 1 -eq 1 ]; do
+		if [ $display -eq 1 ]; then
+			printf "The unpacked filesystem structure may be found at:\n\n"
+			printf "\033[34m\033[1m"
+			printf "%s" "$1"
+			printf "\n\n\033[0m"
+			[ $no_output -eq 0 ] && printf "You may change anything below this point, until you're satisfied by the result.\n\n"
+			if [ $with_wrapper -eq 1 ]; then
+				printf "\nThe content of the extra YAFFS2 partition may be found at:\n\n"
+				printf "\033[33m\033[1m"
+				printf "%s" "$2"
+				printf "\n\033[0m"
+			fi
+			if [ $no_output -eq 0 ]; then
+				printf "Please use another terminal session to make any changes and if you think, your changes are complete, answer the question below.\n\n"
+			else
+				printf "Please use another terminal session to inspect or backup data from the location above.\n\n"
+			fi
+			display=0
+		fi
+		if [ $no_output -eq 0 ]; then
+			printf "Do you want to continue with packing the new image or re-display the used directory names or terminate without packing a new image?\n\n"
+			printf "Enter '\033[32m\033[1mcontinue\033[0m' (full word needed) or "
+			printf "'\033[32m\033[1mr\033[0m' (re-display) or "
+		else
+			printf "If you've done with it and want to continue, the whole working directory\n\n"
+			printf "\033[34m\033[1m%s\033[0m" "$(readlink -f $1/..)"
+			printf "\n\ngets deleted - any possibly open file(s) within, will lead to an orphaned directory, which has to be removed manually.\n\n"
+			printf "Do you want to continue/exit? Enter "
+		fi
+		printf "'\033[32m\033[1mx\033[0m' / '\033[32m\033[1mq\033[0m' (eXit/Quit): "
+		printf "\033[37m\033[1m"
+		read answer
+		printf "\033[0m\n"
+		if [ $no_output -eq 0 ] && [ "$answer" = "continue" ]; then
+			result=0
+			break
+		elif [ "$answer" = "x" ] || [ "$answer" = "q" ]; then
+			result=1
+			break
+		elif [ $no_output -eq 0 ] && [ "$answer" = "r" ]; then
+			display=1
+		fi
+	done
+	printf "\033[?1049l" 
+	[ $debug -eq 1 ] && printf "Your answer was: \033[37m\033[1m%s\033[0m\n" "$answer"
+	return $result
+}
+#######################################################################################################
+#                                                                                                     #
+# remove temporary files                                                                              #
+#                                                                                                     #
+#######################################################################################################
+housekeeping()
+{
+	if [ -n "$2" ]; then # interrupted with active loop device
+		if grep -q "^$2" /proc/mounts; then
+			umount "$2" 2>/dev/null
+		fi
+		losetup -d "$2" 2>/dev/null
+	fi
+	rm -rf "$1" 2>/dev/null
+}
+#######################################################################################################
+#                                                                                                     #
+# check usage question                                                                                #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage 1>&2
+	exit 0
+fi
+#######################################################################################################
+#                                                                                                     #
+# check debug option                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
+	debug=1
+	dbgopt="-d"
+	progress=""
+	shift
+else
+	debug=0
+	dbgopt=""
+	progress=" -no-progress"
+fi
+#######################################################################################################
+#                                                                                                     #
+# check no-output option                                                                              #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-n" ] || [ "$1" = "--no-output" ] || [ "${0##*/}" = "inspect_image" ]; then
+	no_output=1
+	[ "${0##*/}" = "inspect_image" ] && prefix="__YF_II_" || shift
+else
+	no_output=0
+fi
+#######################################################################################################
+#                                                                                                     #
+# check, if STDOUT isn't a terminal device                                                            #
+#                                                                                                     #
+#######################################################################################################
+[ $no_output -eq 0 ] && [ -t 1 ] && printf "Please redirect STDOUT, any output image will be written to this handle.\n" 1>&2 && exit 1
+#######################################################################################################
+#                                                                                                     #
+# check parameters                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ -z "$1" ]; then
+	printf "Missing source firmware image filename.\n" 1>&2
+	exit 1
+fi
+src="$1"
+shift
+if [ -z "$1" ] || [ "$1" = "-p" ] || [ "$1" = "--pause" ]; then
+	pause=1
+else
+	pause=0
+	if ! [ -x "$(readlink -f -- "$1" 2>/dev/null)" ]; then
+		modscript="$(readlink -f -- "$1")"
+		[ -z "$modscript" ] && modscript="$1"
+		printf "File '%s' seems not to be an executable and can't be called to modify extracted filesystem structures.\n" "$modscript" 1>&2
+		exit 1
+	fi
+	modscript="$(readlink -f "$1" 2>/dev/null)"
+fi
+#######################################################################################################
+#                                                                                                     #
+# create our own directory for temporary files, which gets erased in case of any exit                 #
+#                                                                                                     #
+#######################################################################################################
+tmpdir="$(mktmp -d)"
+trap 'housekeeping "$tmpdir" $loopdev' EXIT
+#######################################################################################################
+#                                                                                                     #
+# check presence of needed toolbox scripts                                                            #
+#                                                                                                     #
+#######################################################################################################
+for f in $toolbox_scripts; do
+	! [ -r $f ] && printf "Missing toolbox script '%s', starting from current directory.\n" "$f" 1>&2 && exit 1
+done
+#######################################################################################################
+#                                                                                                     #
+# locate binaries for platform, this script is running on                                             #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -x "$sqfs_unpacker" ]; then
+	printf "Missing binary files for this platform (%s) from 'yf_bin' repository (looking in '%s').\nPlease ensure, the files are present.\n" "$mach" "$bin_repo" 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# check temporary directory                                                                           #
+#                                                                                                     #
+#######################################################################################################
+if ! [ -d "$tmpdir" ]; then
+	printf "The directory '%s' does not exist.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+name="$tmpdir/$$_${0##*/}"
+rm -r "$name" 2>/dev/null
+mkdir "$name" 2>/dev/null
+if ! [ -d "$name" ]; then
+	printf "The directory '%s' is not writable.\n" "$tmpdir" 1>&2
+	exit 1
+fi
+#######################################################################################################
+#                                                                                                     #
+# extract filesystem image and detect architecture, plus all parameters for later packing and output  #
+#                                                                                                     #
+#######################################################################################################
+nmi_vector=0
+padded=0
+if "$SHELL" "$image_get_file" "$src" x86/filesystem.image >"$name/$avm_sqfs_image" 2>/dev/null; then
+	box_type="Puma6"
+	sqfs_version=4
+	sqfs_endian="le"
+	padding=256
+	sqfs_packer="${sqfs_4_pack_le}"
+	scan="$("$sqfs_unpacker" -k -s "$name/$avm_sqfs_image" 2>&1)"
+else
+	if "$SHELL" "$image_get_file" "$src" filesystem.image >"$name/$avm_sqfs_image" 2>/dev/null; then
+		box_type="nand"
+		padding=256
+	else
+		if "$SHELL" "$image_get_file" "$src" ./var/tmp/kernel.image >"$name/$avm_sqfs_image" 2>/dev/null; then
+			box_type="nor"
+			padding=4096
+		else
+			printf "Unable to extract any usable filesystem image from specified file '%s'.\nPlease check your input file.\n" "$src" 1>&2
+			exit 1
+		fi
+	fi
+
+	signature="$(dd if="$name/$avm_sqfs_image" bs=4 count=1 2>/dev/null | cmp -l -- - /dev/zero 2>/dev/null | sed -n -e "1,4s|^[ \t]*. *\([0-7]*\).*\$|\1|p" | sed -e ':x;$!N;s|\n| |;tx')"
+	if [ "$signature" = "163 161 163 150" ]; then
+		sqfs_endian="be"
+		sqfs_offset=0
+	elif [ "$signature" = "150 163 161 163" ]; then
+		sqfs_endian="le"
+		sqfs_offset=0
+	else
+		scan="$("$sqfs_unpacker" -k -s "$name/$avm_sqfs_image" 2>&1)"
+		if printf "%s" "$scan" | grep -q "^Found a valid superblock at offset"; then
+			sqfs_offset="$(printf "%s\n" "$scan" | sed -n -e "s|^Found a valid superblock at offset \(0x[0-9A-F]*\)00 while.*|\1|p")"
+			mv "$name/$avm_sqfs_image" "$name/$avm_combined_image" 2>/dev/null
+			dd if="$name/$avm_combined_image" of="$name/$kernel_image" bs=256 count=$(( sqfs_offset )) 2>/dev/null
+			dd if="$name/$avm_combined_image" of="$name/$avm_sqfs_image" bs=256 skip=$(( sqfs_offset )) conv=sync 2>/dev/null
+			if printf "%s" "$scan" | grep -q "NMI vector found at"; then
+				nmi_vector=$(( $(printf "%s\n" "$scan" | sed -n -e "s|^NMI vector found at 0x\([0-9A-F]*\),.*|0x\1|p") ))
+				nmi_vector_size=$(printf "%s\n" "$scan" | sed -n -e "s|^NMI vector found at 0x[0-9A-F]*, size=\([0-9]*\).*|\1|p")
+				dd if="$name/$avm_combined_image" of="$name/$nmi_vector_image" bs=1 skip=$nmi_vector count=$nmi_vector_size 2>/dev/null
+			else
+				nmi_vector=0
+			fi
+			if printf "%s" "$scan" | grep -q "^Found a valid big endian"; then
+				sqfs_endian="be" # only big endian architecture supported here
+			elif printf "%s" "$scan" | grep -q "^Found a valid little endian"; then
+				sqfs_endian="le" # older 7270 models were MIPSEL (with LE coding), using SquashFS 3, and newer models like 4040 and it's derivatives (with ARM cores) use LE coding with SquashFS 4, too
+			else
+				printf "Unable to detect endianess of SquashFS image(s).\n" 1>&2
+				exit 1
+			fi
+		else
+			printf "None of the considered files (kernel.image or filesystem.image) from source file '%s' contain an usable SquashFS image.\n" 1>&2
+			exit 1
+		fi
+	fi
+
+	if ! [ -f "$name/$kernel_image" ]; then
+		if ! "$SHELL" "$image_get_file" "$src" ./var/tmp/kernel.image >"$name/$kernel_image" 2>/dev/null; then
+			printf "Error extracting kernel image from firmware image file '%s'.\n" "$src" 1>&2
+			exit 1
+		fi
+	fi
+
+	[ "$sqfs_endian" = "be" ] && version_offset=29 || version_offset=28
+	version="$(dd if="$name/$avm_sqfs_image" bs=1 skip=$version_offset count=1 2>/dev/null | yf_bin2hex)"
+	if [ "$version" = "00" ]; then
+		sqfs_version=0
+	elif [ "$version" = "03" ]; then
+		sqfs_version=3
+	elif [ "$version" = "04" ]; then
+		sqfs_version=4
+	else
+		printf "Unknown SquashFS version number (0x%s) found at offset 0x1C in the image file.\n" "$(dd if="$name/$avm_sqfs_image" bs=4 count=1 skip=7 2>/dev/null | yf_bin2hex)" 1>&2
+		exit 1
+	fi
+
+	if [ "$box_type" = "nand" ] && [ $sqfs_version -eq 0 ]; then # fs.avm is an ext2 image and the device uses SquashFS 4 format
+		box_type="nand_wrapper_ext2"
+		dd if="$name/$avm_sqfs_image" of="$name/$ext2_header_image" bs=256 count=1 2>/dev/null
+		dd if="$name/$avm_sqfs_image" of="$name/$avm_ext2_image_wrapper" bs=256 skip=1 conv=sync 2>/dev/null
+		rm "$name/$avm_sqfs_image" 2>/dev/null
+		mkdir -p "$name/$wrapper_unpacked" "$name/$avm_ext2_mount" 2>/dev/null
+		su_do="$(checkuid)"
+		loopdev="$($su_do losetup -f 2>/dev/null)"
+		if [ -z "$loopdev" ] && [ -n "$su_do" ]; then
+			printf "Unable to run commands as superuser, execution aborted.\n" 1>&2
+			exit 1
+		fi
+		if $su_do losetup -r "$loopdev" "$name/$avm_ext2_image_wrapper" 2>/dev/null; then
+			if $su_do mount -t ext2 -r "$loopdev" "$name/$avm_ext2_mount" 2>/dev/null; then
+				$su_do cp -a "$name/$avm_ext2_mount/"* "$name/$wrapper_unpacked/" 2>/dev/null
+				$su_do umount "$name/$avm_ext2_mount" 2>/dev/null	
+			else
+				printf "Error mounting 'ext2' image.\n" 1>&2
+				exit 1	
+			fi
+			$su_do losetup -d "$loopdev" 2>/dev/null
+		else
+			printf "Error setting up a loop device for 'ext2' image.\n" 1>&2
+			exit 1
+		fi
+		set_user_and_group "$name/$wrapper_unpacked"
+		$su_do mv "$name/$wrapper_unpacked/$rootfs_image" "$name/$avm_sqfs_image" 2>/dev/null
+		set_user_and_group "$name/$avm_sqfs_image"
+		sqfs_packer="${sqfs_4_pack_be}"
+		sqfs_unpacker="${sqfs_unpack_be}"
+	elif [ "$box_type" = "nand" ] && [ $sqfs_version -eq 3 ]; then # fs.avm may be a wrapper image (before 06.5x)
+		box_type="nand_wrapper_sqfs"
+		mv "$name/$avm_sqfs_image" "$name/$avm_sqfs_image_wrapper" 2>/dev/null
+		scan_wrapper="$("$sqfs_unpacker" -k -s "$name/$avm_sqfs_image_wrapper" 2>&1)"
+		su_do="$(checkuid)"
+		unpack_wrapper="$($su_do "$sqfs_unpacker" -dest "$name/$wrapper_unpacked" "$name/$avm_sqfs_image_wrapper" 2>/dev/null)"
+		if [ -z "$unpack_wrapper" ]; then
+			printf "Unable to run commands as superuser, execution aborted.\n" 1>&2
+			exit 1
+		fi
+		set_user_and_group "$name/$wrapper_unpacked"
+		$su_do mv "$name/$wrapper_unpacked/$rootfs_image" "$name/$avm_sqfs_image" 2>/dev/null
+		set_user_and_group "$name/$avm_sqfs_image"
+		sqfs_packer="${sqfs_3_pack_be}"
+		sqfs_unpacker="${sqfs_unpack_be}"
+	else
+		eval sqfs_packer="\${$(printf "%s%s%s%s" "sqfs_" "${sqfs_version}" "_pack_" "${sqfs_endian}")}"
+		eval sqfs_unpacker="\${$(printf "sqfs_unpack_%s" "${sqfs_endian}")}"
+	fi
+
+	scan="$("$sqfs_unpacker" -k -s "$name/$avm_sqfs_image" 2>&1)"
+
+	size=$(stat -c %s "$name/$kernel_image")
+	if [ $(( size % $padding )) -ne 0 ]; then
+		padded=1
+		kernel_size=$size	
+		dd if=/dev/zero bs=1 count=$(( padding - ( size % padding ) )) 2>/dev/null >>"$name/$kernel_image"
+	else
+		padded=0
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# unpack the filesystem image                                                                         #
+#                                                                                                     #
+#######################################################################################################
+su_do="$(checkuid)"
+unpack="$($su_do "$sqfs_unpacker" -force -exit-on-error -scan$progress -dest "$name/$sqfs_unpacked" "$name/$avm_sqfs_image" 2>/dev/null)"
+set_user_and_group "$name/$sqfs_unpacked"
+#######################################################################################################
+#                                                                                                     #
+# detect some properties for the destination image                                                    #
+#                                                                                                     #
+#######################################################################################################
+eval $(printf "%s\n" "$scan" | sed -n -e "s|^Found a valid .* endian SQUASHFS \([0-9]*\):\([0-9]*\) superblock.*|_sqfs_version=\1 _sqfs_subversion=\2|p")
+eval $(printf "%s\n" "$scan" | sed -n -e "s|^Found a valid \(.*\) endian SQUASHFS .*:.* superblock.*|_sqfs_endian=\1|p")
+eval $(printf "%s\n" "$scan" | sed -n -e "s|^Compression \(.*\)|_sqfs_compression=\1|p")
+#######################################################################################################
+#                                                                                                     #
+# prepare image properties as key/value pairs in a text file                                          #
+#                                                                                                     #
+#######################################################################################################
+with_wrapper=0
+case "$box_type" in
+	("Puma6")
+		printf "%sBoxType=%s\n" "$prefix" "$box_type" >>"$name/$image_variables_file"
+		;;
+	("nor")
+		printf "%sBoxType=%s\n" "$prefix" "$box_type" >>"$name/$image_variables_file"
+		printf "%sNMIVector=%u\n" "$prefix" "$nmi_vector" >>"$name/$image_variables_file"
+		printf "%sNMIVectorSize=%u\n" "$prefix" "$nmi_vector_size" >>"$name/$image_variables_file"
+		printf "%sNMIVectorImage=\"%s\"\n" "$prefix" "$nmi_vector_image" >>"$name/$image_variables_file"
+		;;
+	("nand")
+		printf "%sBoxType=%s\n" "$prefix" "$box_type" >>"$name/$image_variables_file"
+		;;
+	("nand_wrapper_sqfs")
+		printf "%sBoxType=nand\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWithWrapper=1\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWrapperFormat=sqfs\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWrapperLocation=\"%s\"\n" "$prefix" "$name/$wrapper_unpacked" >>"$name/$image_variables_file"
+		printf "%sWrapperRootFSFileName=\"%s\"\n" "$prefix" "$rootfs_image" >>"$name/$image_variables_file"
+		with_wrapper=1
+		;;
+	("nand_wrapper_ext2")
+		printf "%sBoxType=nand\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWithWrapper=1\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWrapperFormat=ext2\n" "$prefix" >>"$name/$image_variables_file"
+		printf "%sWrapperLocation=\"%s\"\n" "$prefix" "$name/$wrapper_unpacked" >>"$name/$image_variables_file"
+		printf "%sWrapperRootFSFileName=\"%s\"\n" "$prefix" "$rootfs_image" >>"$name/$image_variables_file"
+		with_wrapper=1
+		;;
+esac
+printf "%sSquashFSVersion=%u\n" "$prefix" "$_sqfs_version" >>"$name/$image_variables_file"
+printf "%sSquashFSCompression=%s\n" "$prefix" "$_sqfs_compression" >>"$name/$image_variables_file"
+printf "%sSquashFSEndianess=%s\n" "$prefix" "$_sqfs_endian" >>"$name/$image_variables_file"
+printf "%sSquashFSPacker=\"%s\"\n" "$prefix" "$sqfs_packer" >>"$name/$image_variables_file"
+printf "%sRootFSLocation=\"%s\"\n" "$prefix" "$name/$sqfs_unpacked" >>"$name/$image_variables_file"
+#######################################################################################################
+#                                                                                                     #
+# let the user modify the unpacked data a bit                                                         #
+#                                                                                                     #
+#######################################################################################################
+pause=0
+pack=0
+#if [ $pause -eq 1 ]; then
+#	wait_for_decision "$name/$sqfs_unpacked" "$name/$wrapper_unpacked" 1>&2
+#	pack=$?
+#else
+#	printf "%sModificationScript=\"%s\"\n" "$prefix" "$modscript" >>"$name/$image_variables_file"
+#	do_debug_info 1>&2
+#	YF_REBUILD_SETTINGS="$name/$image_variables_file" "$SHELL" "$modscript" "$name/$sqfs_unpacked" 1>&2
+#	pack=$?
+#fi
+do_debug_info
+#######################################################################################################
+#                                                                                                     #
+# pack the filesystem image, but detect needed parameters first                                       #
+#                                                                                                     #
+#######################################################################################################
+cat "$name/$image_variables_file" 1>&2
+printf "%s\n" "$scan" 1>&2
+printf "%s\n" "$scan_wrapper" 1>&2
+printf "Pack=$pack\n"
+#if [ $debug -eq 1 ]; then
+#	$pack_binary $progress "$name/$sqfs_unpacked" "$name/$new_sqfs_image" 1>&2
+#else
+#	$pack_binary $progress "$name/$sqfs_unpacked" "$name/$new_sqfs_image" 1>&2
+#fi
+#######################################################################################################
+#                                                                                                     #
+# write data to STDOUT                                                                                #
+#                                                                                                     #
+#######################################################################################################
+exit 0
+#######################################################################################################
+#                                                                                                     #
+# end of script, temporary directory will be removed by 'trap' command on exit                        #
+#                                                                                                     #
+#######################################################################################################
