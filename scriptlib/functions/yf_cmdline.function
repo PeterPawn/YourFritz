@@ -1,0 +1,34 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################
+#                                                                                     #
+# cmdline - extract the value of a specified key from kernel command line             #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - key to look for, may be a regexp                                             #
+#                                                                                     #
+# stdout:                                                                             #
+#   the value, if it exists - only the first match is processed, if the parameter     #
+#   leads to multiple results                                                         #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout value is valid                                                         #
+#   1 - the specified key was not found at /proc/cmdline                              #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: grep printf                                                                      #
+# W: -                                                                                #
+# I: -                                                                                #
+# F: -                                                                                #
+# K: runtime                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_cmdline()
+(
+	___kvset="$(grep -ao "[ ]\?$1=[^ ]*" /proc/cmdline | sed -n -e 1p)"
+	[ "${#___kvset}" -eq 0 ] && return 1
+	___value="$(expr "$___kvset" : "[ ]*$1=\(.*\)")"
+	printf "%s\n" "$___value"
+)
