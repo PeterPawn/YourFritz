@@ -1,0 +1,186 @@
+#! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# some constants to be changed, if needed
+#
+box_ip=${3:-192.168.178.1}
+box_port=21
+box_user=adam2
+box_pass=adam2
+[ ${#TMP} -eq 0 ] && TMP=/tmp
+tmpdir=$TMP/tmp_$(date +%s)_$$
+writefifo=$tmpdir/write
+readfifo=$tmpdir/read
+storefifo=$tmpdir/store
+outstream=7
+instream=8
+upstream=9
+logstream=3
+logfile=$0.log
+#
+# helper functions
+#
+read_ftp_response()
+{
+	local line="   -" rc=0 instream="$1" log="$2"
+	while read -u $instream -r line; do
+		[ ! -z "$log" ] && echo "$line" >&$log
+		[ "${line:3:1}" != "-" ] && break
+	done
+	rc=$?
+	echo "$line"
+	return $rc
+}
+write_ftp_command()
+{
+	local outstream="$2" cmd="$1" log="$3"
+	[ ! -z "$log" ] && echo "$cmd" >&$log
+	echo "$cmd" >&$outstream
+}
+login_to_box()
+{
+	local instream="$1" outstream="$2" log="$3" lines=0
+	write_ftp_command "USER $box_user" $outstream $log
+	while [ $lines -lt 10 ]; do
+		line="$(read_ftp_response $instream $log)"
+		ec=${line:0:3}
+		if [ x$ec == x331 ]; then
+			write_ftp_command "PASS $box_pass" $outstream $log
+		else
+			if [ x$ec == x230 ]; then
+				return 0
+			elif [ x$ec == x530 ]; then
+				return 1
+			fi
+		fi
+		lines=$(( lines++ ))
+	done
+}
+#
+# check, if "mkfifo" and "nc" are present and usable
+#
+mkfifo 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'mkfifo' command."
+	exit 1
+fi
+nc 2>/dev/null
+if [ $? -eq 127 ]; then
+	echo "Missing usable 'nc' command."
+	exit 1
+fi
+#
+# build redirections for FTP with "nc"
+#
+mkdir -p $tmpdir
+mkfifo $writefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating write fifo $writefifo."
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $readfifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating read fifo $readfifo."
+	rm $writefifo
+	rm -r $tmpdir
+	exit 1
+fi
+mkfifo $storefifo
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc creating upload fifo $storefifo."
+	rm $writefifo
+	rm $readfifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $outstream<>$writefifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting write fifo to output stream."
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $instream<>$readfifo"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting read fifo to input stream."
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+eval "exec $logstream<>$logfile"
+rc=$?
+if [ $rc -ne 0 ]; then
+	echo "Error $rc connecting log stream to log file."
+	eval "exec $instream>&-"
+	eval "exec $outstream>&-"
+	rm $writefifo
+	rm $readfifo
+	rm $storefifo
+	rm -r $tmpdir
+	exit 1
+fi
+#
+# now open a connection to the box
+#
+nc $box_ip $box_port <&$outstream >&$instream 2>/dev/null &
+control_connection=$!
+data_connection=""
+line="$(read_ftp_response $instream $logstream)"
+ec=${line:0:3}
+if [ x$ec == x220 ]; then
+	login_to_box $instream $outstream $logstream
+	if [ $? -eq 0 ]; then
+		write_ftp_command "SYST" $outstream $logstream
+		line="$(read_ftp_response $instream $logstream)"
+		ec=${line:0:3}
+		if [ x$ec == x215 ]; then
+			syst=$(echo "$line" | sed -n -e "s/.*\(AVM EVA\).*/\1/p")
+			if [ ${#syst} -ne 0 ]; then
+				echo "Found AVM bootloader: ${line:4}"
+				write_ftp_command "REBOOT" $outstream $logstream
+				line="$(read_ftp_response $instream $logstream)"
+				ec=${line:0:3}
+				if [ x$ec == x221 ]; then
+					line="$(read_ftp_response $instream $logstream)"
+					echo "Device reboot initiated."
+				fi
+			else
+				echo "Unexpected system found: ${line:4}"
+			fi
+		fi
+	else
+		echo "Login failed."
+	fi
+else
+	echo "Error connecting to FRITZ!Box boot loader."
+fi
+if [ ${#data_connection} -ne 0 ]; then
+	if [ -d /proc/$data_connection ]; then
+		kill $data_connection 2>/dev/null &
+		wait $data_connection 2>/dev/null
+	fi
+fi
+if [ ${#control_connection} -ne 0 ]; then
+	if [ -d /proc/$control_connection ]; then
+		kill $control_connection 2>/dev/null &
+		wait $control_connection 2>/dev/null
+	fi
+fi
+eval "exec $logstream>&-"
+eval "exec $instream>&-"
+eval "exec $outstream>&-"
+rm $writefifo
+rm $readfifo
+rm -r $tmpdir
+exit 1
