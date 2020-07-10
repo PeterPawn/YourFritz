@@ -125,6 +125,7 @@ readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
 readonly yourfritz_version_file="etc/.yourfritz_version"
 readonly freetz_version_file="etc/.freetz-version"
+readonly freetz_ng_version_file="etc/.freetz-ng-version"
 readonly modfs_version_file="etc/.modfs_version"
 readonly avm_version_file_old="etc/version"
 readonly avm_version_file_old_prefix="FIRMWARE_"
@@ -134,8 +135,8 @@ readonly avm_version_main_components="VERSION SUBVERSION"
 readonly avm_version_major_name="CONFIG_VERSION_MAJOR"
 readonly avm_version_date="DATE"
 readonly avm_product_name="CONFIG_PRODUKT"
-readonly version_files="$yourfritz_version_file $freetz_version_file $modfs_version_file"
-readonly modified_by="YourFritz Freetz modfs -"
+readonly version_files="$yourfritz_version_file $freetz-ng-version $freetz_version_file $modfs_version_file"
+readonly modified_by="YourFritz Freetz-NG Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
 # GRX5, VR9 and IPQ4019 common settings                                                               #
