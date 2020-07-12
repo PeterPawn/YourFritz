@@ -6,22 +6,20 @@ __yf_custom_environment()
 
 	for ___yf_ce_cmd in mount sed mknod expr wc grep cat rm mkdir true; do $___yf_ce_busybox --list | $___yf_ce_grep grep -q "^$___yf_ce_cmd\$" || return 1; done
 
-	___yf_ce_var=/var
+	___yf_ce_dev=/dev
 	___yf_ce_proc=/proc
 	___yf_ce_devices=/devices
 	___yf_ce_mounts=/mounts
 	___yf_ce_urlader=/sys/urlader
 	___yf_ce_environment=/environment
 	___yf_ce_target="${YF_CUSTOM_ENVIRONMENT_TARGET:-$___yf_ce_proc$___yf_ce_urlader$___yf_ce_environment}"
-	___yf_ce_source="$___yf_ce_var/custom_env.tffs"
+	___yf_ce_source="$___yf_ce_dev/custom_env.tffs"
 	___yf_ce_tffs_minor="${YF_CUSTOM_ENVIRONMENT_TFFS_MINOR:-80}"
 
-	for ___yf_ce_dir in "$___yf_ce_proc" "$___yf_ce_var"; do [ -d "$___yf_ce_dir" ] || $___yf_ce_busybox mkdir -p "$___yf_ce_dir"; done
+	for ___yf_ce_dir in "$___yf_ce_proc"; do [ -d "$___yf_ce_dir" ] || $___yf_ce_busybox mkdir -p "$___yf_ce_dir"; done
 
 	[ -f "$___yf_ce_proc$___yf_ce_mounts" ] || $___yf_ce_busybox mount -t proc procfs "$___yf_ce_proc"
 	[ -f "$___yf_ce_proc$___yf_ce_mounts" ] || return 1
-
-	$___yf_ce_busybox grep -q "^tmpfs $___yf_ce_var tmpfs.*\$" "$___yf_ce_proc$___yf_ce_mounts" || $___yf_ce_busybox mount -t tmpfs tmpfs "$___yf_ce_var"
 
 	for ___yf_ce_file in "$___yf_ce_target" "$___yf_ce_proc$___yf_ce_devices"; do [ -f "$___yf_ce_file" ] || return 1; done
 
