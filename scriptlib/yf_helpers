@@ -137,18 +137,19 @@ __yf_helpers_uniqsort_inline()
 		printf "%s\n" "$line"
 		last="$line"
 	done
-	__yf_helpers_message I "$(printf "inline sort duration=%d seconds for %d records\n" $(( $(date +%s) - start )) $i)" 1>&2
+	__yf_helpers_message I "$(printf "inline sort duration=%d seconds for %d records\n" $(( $(date +%s) - start )) $i)"
 )
 __yf_helpers_uniq()
 (
-	if command -v sort 2>/dev/null 1>&2; then
-		test="$(printf "%s" $(printf "C\nA\nB\nA" | sort -u 2>/dev/null))"
-		[ "$test" = "ABC" ] && sort -u && return
-		command -v uniq 2>/dev/null 1>&2 && sort | uniq && return
-		sort | __yf_helpers_uniq_inline && return
+	cmd_sort=sort
+	cmd_uniq=uniq
+	if command -v $cmd_sort 2>/dev/null 1>&2; then
+		test="$(printf "%s" $(printf "C\nA\nB\nA" | $cmd_sort -u 2>/dev/null))"
+		#[ "$test" = "ABC" ] && $cmd_sort -u && return
+		command -v $cmd_uniq 2>/dev/null 1>&2 && $cmd_sort | $cmd_uniq && return
+		$cmd_sort | __yf_helpers_uniq_inline && return
 	else
-		e="$(printf %b \\033)"
-		__yf_helpers_message W "$(printf "no '%c[1msort%c[0m' command found, using very slow inline sort version" "$e" "$e")"
+		__yf_helpers_message W "$(printf "no '%s' command found, using very slow inline sort version" "$(__yf_helpers_bold "$cmd_sort")")"
 		__yf_helpers_uniqsort_inline "${TMPDIR:-/tmp}"
 	fi
 	return
@@ -179,12 +180,11 @@ __yf_helpers_find_functions()
 (
 	if ! [ "${__YF_SCRIPT_FUNCTIONS}" = "-" ]; then
 		[ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_message I "$(printf "include functions from YF_SCRIPT_FUNCTIONS only")"
-		e="$(printf %b \\033)"
 		err=0
 		for f in ${__YF_SCRIPT_FUNCTIONS}; do
 			fn="$(printf "%s/%s.function" "${__YF_SCRIPT_FUNCTIONS_DIR}" "$f")"
 			[ -f "$fn" ] && printf "%s\n" "$fn" || {
-				__yf_helpers_message F "$(printf "Requested function '%c[1m%s%c[0m' was not found in library." "$e" "$f" "$e")"
+				__yf_helpers_message F "$(printf "Requested function '%s' was not found in library." "$(__yf_helpers_bold "$f")")"
 				err=1
 			}
 		done
@@ -204,26 +204,33 @@ __yf_helpers_find_functions()
 	done
 	return 0
 )
+__yf_helpers_csi()
+(
+	[ "$YF_HELPERS_NO_COLOR" = "1" ] && return
+	( [ -t 2 ] || [ "$YF_HELPERS_FORCE_COLOR" = "1" ] ) && printf "\033[%sm" "$1"
+)
+__yf_helpers_bold()
+(
+	printf "%s%s%s" "$(__yf_helpers_csi 1)" "$*" "$(__yf_helpers_csi 0)"
+)
 __yf_helpers_message()
 (
-	e="$(printf %b \\033)"
+	exec 1>&2
 	s=$1
 	shift
 	( [ "$s" = "F" ] || [ "$s" = "E" ] ) && c=1
 	[ "$s" = "W" ] && c=3
 	[ "$s" = "I" ] && c=2
-	s=$(printf "[%c[1;3%dm%c%c[0m]" "$e" "$c" "$s" "$e")
-	printf "%c[1mYourFritz Shell Script Library:%c[0m %s %s\n" "$e" "$e" "$s" "$*" 1>&2
+	printf "%s [%s%s] %s\n" "$(__yf_helpers_bold "YourFritz Shell Script Library:")" "$(__yf_helpers_csi "3$c")" "$(__yf_helpers_bold "$s")" "$*"
 )
 __yf_helpers_check_command()
 (
-	e="$(printf %b \\033)"
 	cmd=$1
 	fail=${2:-1}
 	command -v $cmd 2>/dev/null 1>&2 && return 0
 	[ $fail -eq 1 ] &&
-		__yf_helpers_message F "$(printf "Missing '%c[1m%s%c[0m' utility, it's absolutely necessary for the library." "$e" "$cmd" "$e")" ||
-		__yf_helpers_message W "$(printf "Missing '%c[1m%s%c[0m' utility, it's needed by one or more imported functions." "$e" "$cmd" "$e")" 
+		__yf_helpers_message F "$(printf "Missing '%s' utility, it's absolutely necessary for the library." "$(__yf_helpers_bold "$cmd")")" ||
+		__yf_helpers_message W "$(printf "Missing '%s' utility, it's needed by one or more imported functions." "$(__yf_helpers_bold "$cmd")")"
 	return 1
 )
 #######################################################################################
@@ -240,8 +247,7 @@ __yf_helpers_needed_commands="printf find sed expr cmp wc"
 for __yf_temp in ${__yf_helpers_needed_commands}; do
 	__yf_helpers_check_command "${__yf_temp}" || eval $(__yf_helpers_exit) 130
 done
-__yf_e="$(printf %b \\033)"
-[ -d "${__YF_SCRIPT_FUNCTIONS_DIR}" ] || __yf_helpers_message F "$(printf "Missing helpers function directory '%c[1m%s%c[0m' - please set YF_SCRIPT_DIR to the appropriate path (the library base directory)." "${__yf_e}" "${__YF_SCRIPT_FUNCTIONS_DIR}" "${__yf_e}")"
+[ -d "${__YF_SCRIPT_FUNCTIONS_DIR}" ] || __yf_helpers_message F "$(printf "Missing helpers function directory '%s' - please set YF_SCRIPT_DIR to the appropriate path (the library base directory)." "$(__yf_helpers_bold "${__YF_SCRIPT_FUNCTIONS_DIR}")")"
 #######################################################################################
 #                                                                                     #
 # check automatic function assembly                                                   #
@@ -298,7 +304,6 @@ done
 for __yf_temp in ${__yf_vars}; do
 	unset -v __YF_SCRIPT_${__yf_temp}
 done
-unset -v __yf_e
 unset -v __yf_commands
 unset -v __yf_commands_count
 unset -v __yf_functions
@@ -306,6 +311,8 @@ unset -v __yf_functions_count
 unset -v __yf_vars
 unset -v __yf_helpers_needed_commands
 [ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_message I "$(printf "dependency processing duration=%d sec.\n" $(( $(date +%s) - __yf_helpers_start )))" 1>&2
+unset -f __yf_helpers_bold
+unset -f __yf_helpers_csi
 unset -f __yf_helpers_message
 unset -v __yf_helpers_start
 unset -v __yf_temp
