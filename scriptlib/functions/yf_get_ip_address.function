@@ -15,6 +15,9 @@
 #   0 - stdout is valid and contains at least one entry                               #
 #   1 - the interface name is invalid or the interface has no IPv4 address assigned   #
 #                                                                                     #
+# WARNING:                                                                            #
+# This script needs a 'ip' binary, which isn't part of POSIX standards.               #
+#                                                                                     #
 #######################################################################################
 #                                                                                     #
 # U: ip sed printf                                                                    #

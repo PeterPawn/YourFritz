@@ -22,6 +22,9 @@
 # this encoding) will simply be done by adding another 0x00 byte to each character    #
 # and this approach is only valid for characters from the 7-bit ASCII set.            #
 #                                                                                     #
+# WARNING:                                                                            #
+# This script needs a 'md5sum' binary, which isn't part of POSIX standards.           #
+#                                                                                     #
 #######################################################################################
 #                                                                                     #
 # U: printf md5sum sed                                                                #
