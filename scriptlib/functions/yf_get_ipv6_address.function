@@ -1,0 +1,74 @@
+#! /bin/true
+# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################
+#                                                                                     #
+# get_ipv6_address - get the complete address from specified IPv6 address according   #
+#                    to RFC 5952                                                      #
+#                                                                                     #
+# parameters:                                                                         #
+#   $1 - formatted IPv6 address                                                       #
+#                                                                                     #
+# stdout:                                                                             #
+#   the address as 32 hexadecimal digits, followed by a slash and the prefix length   #
+#                                                                                     #
+# return code:                                                                        #
+#   0 - stdout is valid                                                               #
+#   1 - the was an error processing the address                                       #
+#                                                                                     #
+#######################################################################################
+#                                                                                     #
+# U: sed printf expr                                                                  #
+# W: -                                                                                #
+# F: -                                                                                #
+# I: -                                                                                #
+# K: network                                                                          #
+#                                                                                     #
+#######################################################################################
+yf_get_ipv6_address()
+(
+	addr="$1"
+	plen=128
+	[ -n "$(printf "%s\n" "$addr" | sed -e "s|[0-9a-fA-F/:]||g")" ] && return 1
+	if [ -n "$(expr \( "$addr" : ".*/\([1-9]\?[0-9]\+\)" \) )" ]; then
+		plen="$(expr \( "$addr" : ".*/\(.*\)" \) )"
+		addr="$(expr \( "$addr" : "\(.*\)/.*" \) )"
+	fi
+	[ $plen -le 128 ] || return 1
+	[ -n "$(expr \( "$addr" : ".*\(:::\).*" \) )" ] && return 1
+	addr=$(printf "%s\n" "$addr" | sed -e "y/ABCDEF/abcdef/")
+	[ -z "$(expr \( "$addr" : ".*\(:\).*" \) )" ] && return 1
+	a="$addr"
+	unset addr
+	while [ ${#a} -gt 0 ]; do
+		t=$(expr \( "$a" : "\([^:]*\):\?.*" \) )
+		[ ${#t} -gt 4 ] && return 1
+		a=$(expr \( "$a" : "$t:\(.*\)" \) )
+		if [ -z "$t" ]; then
+			[ -n "$addr" ] && p="x" || unset p
+		else
+			p=$(printf "%04x" "$(( 0x$t ))")
+		fi
+		addr="$addr${addr:+ }0x$p"
+	done
+	set -- $addr
+	unset addr
+	c=$#
+	while [ $# -gt 0 ]; do
+		t=$1
+		shift
+		[ "$t" = "0x" ] && t="0x0"
+		if [ "$t" = "0xx" ]; then
+			i=$(( 8 - c ))
+			while [ $i -gt 0 ]; do
+				i=$(( i - 1 ))
+				addr="${addr}0000"
+			done
+			t="0x0"
+		fi
+		addr="$addr$(printf "%04x" "$(( $t ))")"
+	done
+	[ ${#addr} -ne 32 ] && return 1
+	printf "%s/%u\n" "$addr" "$plen"
+	return 0
+)
