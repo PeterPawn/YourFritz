@@ -1,0 +1,1985 @@
+#! /bin/true
+#######################################################################################################
+#                                                                                                     #
+# ATTENTION:                                                                                          #
+# This script will not run as "command", include it with a dot (.) command into your script.          #
+#                                                                                                     #
+#######################################################################################################
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: LicenseRef-limited-license-see-text-below
+#######################################################################################################
+#                                                                                                     #
+# YourFritz UI framework functions - 'implement once, use often' functions for shell scripts with a   #
+# - more or less - full-featured user interface from command line                                     #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# YourFritz UI Framework generator (yf_ui), version 0.8.4                                             #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2020 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# The YourFritz UI framework (YF_UI) functions are licensed according to the following terms:         #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
+# this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of UI functions, these changes HAVE TO BE marked with the #
+# name of author AND the date of change AND a short explanation, what was changed (if it's not        #
+# obvious).                                                                                           #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#######################################################################################################
+#___YF_PREDEFINED_VARS="$(set | grep "[Yy][Ff]_")" # save all info, which exists already
+#######################################################################################################
+#                                                                                                     #
+# Support feature names:                                                                              #
+#                                                                                                     #
+# color         - include support for colorized output on terminal devices                            #
+# help          - include functions to display help/usage screen/version info                         #
+# l10n          - include functions for localization of message texts                                 #
+# raw-input     - include functions for reading from terminal (w,w/o echo, with function keys, etc.)  #
+# drawing       - include functions for line drawings (boxes, frames, screen management)              #
+# markdown      - include functions to render (some) markdown tags to ANSI sequences                  #
+# debug         - include debug ouput functions                                                       #
+# options       - include functions for handling of command line options and parameters               #
+# posix-options - process only POSIX compatible options (no long option support, but needs 'options'  #
+#                 feature, too)                                                                       #
+#                                                                                                     #
+#######################################################################################################
+__YF_UI_FEATURES="${YF_UI_FEATURES}"
+#######################################################################################################
+#                                                                                                     #
+# check, whether a feature was enabled                                                                #
+#                                                                                                     #
+#######################################################################################################
+__yf_ui_feature()
+{
+	___yf_rc=1
+	for ___yf_feature in $__YF_UI_FEATURES; do
+		[ "$___yf_feature" = "$1" ] && ___yf_rc=0 && break
+	done
+	unset ___yf_feature
+	eval "unset ___yf_rc && return $___yf_rc"
+}
+#######################################################################################################
+#                                                                                                     #
+# check, whether a user-defined function exists                                                       #
+#                                                                                                     #
+# Note: A fixed redirection is used here, this may be called before __yf_?flush was defined.          #
+#                                                                                                     #
+#######################################################################################################
+__yf_has_function()
+(
+	local_check() { :; }
+	func="$(type -- 'local_check' 2>/dev/null | sed -n -e '1p' | sed -e 's|^local_check||')"
+	[ "$(type -- "$1" 2>/dev/null | sed -n -e '1p' | sed -e "s|^$1||")" = "$func" ] && exit 0 || exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# mask some characters with backslashes to escape their meaning in a string                           #
+#                                                                                                     #
+#######################################################################################################
+__yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
+__yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
+#######################################################################################################
+#                                                                                                     #
+# local debug helpers - save/restore shell trace state                                                #
+#                                                                                                     #
+#######################################################################################################
+[ "$(expr \( "$-" : '.*\(x\).*' \) )" = 'x' ] && __yf_restore_trace_setting__='set -o xtrace' || unset __yf_restore_trace_setting__
+set +o xtrace # disable trace for rest of inclusion, will be restored to former setting at end of file
+__yf_get_trace_state() { [ "$(expr \( "$_" : '.*\(x\).*' \) )" = 'x' ] && printf -- '-' || printf -- '+'; }
+__yf_save_trace__='eval ___yf_restore_trace__="set $(__yf_get_trace_state)o xtrace"'
+#######################################################################################################
+#                                                                                                     #
+# defaults for YourFritz UI definitions                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_languages__="${YF_UI_LANGUAGES:-en}"
+__yf_exit_code=0
+__yf_error_flag=0
+__yf_exit_on_error_flag_set=0
+#######################################################################################################
+#                                                                                                     #
+# remove all older options related definitions to avoid injections from outside and                   #
+# remove any existing function with a name used in callbacks - all of them have to be defined, AFTER  #
+# framework files were processed                                                                      #
+#                                                                                                     #
+#######################################################################################################
+for ___yf_var in $(set | sed -n -e 's|^\(__yf_option[^=]*\)=.*|\1|p'); do unset $___yf_var; done
+for ___yf_var in \
+	exit_callback \
+	usage_text \
+	declare_options
+do unset $___yf_var; done
+unset ___yf_var
+#######################################################################################################
+#                                                                                                     #
+# functions for output redirection - change here to use different targets while debugging             #
+#                                                                                                     #
+#######################################################################################################
+__yf_null='/dev/null'
+__yf_oflush() { "$@" >$__yf_null; }
+__yf_eflush() { "$@" 2>$__yf_null; }
+__yf_aflush() { "$@" 2>$__yf_null 1>&2; }
+__yf_nl_out() { printf -- '\n'; }
+__yf_nl_err() { __yf_nl_out 1>&2; }
+#######################################################################################################
+#                                                                                                     #
+# terminal detection                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+__yf_reject_terminal()
+{
+	[ -t $1 ] || return 1
+	if [ $1 -eq 0 ]; then
+		fd='STDIN'
+	elif [ $1 -eq 1 ]; then
+		fd='STDOUT'
+	else
+		fd="FILE ($1)"
+	fi
+	shift
+	__yf_internal_emsg 'ERR_is_terminal' "$fd" "$@"
+}
+__yf_is_terminal()
+{
+	[ "$__yf_force_terminal__" = '1' ] && return 0
+	if [ -n "$1" ]; then
+		[ -t "$1" ] && return 0 || return 1
+	else
+		( [ -t 1 ] || [ -t 2 ] ) && return 0 || return 1
+	fi
+}
+__yf_get_terminal_size()
+{
+	printf -- '__yf_terminal_lines=25\n__yf_terminal_columns=80\n'
+	__yf_eflush stty size | sed -n -e 's|^\([0-9]*\) \([0-9]*\).*|__yf_terminal_lines=\1\n__yf_terminal_columns=\2\n__yf_terminal_size_is_valid=1\n|p'
+}
+eval $(__yf_get_terminal_size)
+#######################################################################################################
+#                                                                                                     #
+# convert the specified value from various string representations for boolean values to a return code #
+#                                                                                                     #
+#######################################################################################################
+__yf_get_boolean()
+{
+	case "$1" in
+		('1'|'y'|'Y'|'yes'|'YES'|'true'|'TRUE')
+			printf -- '1'
+			return 0
+			;;
+		('0'|'n'|'N'|'no'|'NO'|'false'|'FALSE')
+			printf -- '0'
+			return 0
+			;;
+		(*)
+			return 1
+			;;
+	esac
+}
+#######################################################################################################
+#                                                                                                     #
+# some data validation routines                                                                       #
+#                                                                                                     #
+#######################################################################################################
+__yf_value_is_unsigned_decimal() { [ "$(expr \( "$1" : '\([0-9]\+\)' \) )" = "$1" ] && return 0 || return 1; }
+__yf_value_is_signed_decimal() { [ "$(expr \( "$1" : '\(-\?[0-9]\+\)' \) )" = "$1" ] && return 0 || return 1; }
+__yf_value_is_boolean() { __yf_aflush __yf_get_boolean "$1"; }
+#######################################################################################################
+#                                                                                                     #
+# color codes and screen attributes from ANSI terminal standards                                      #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'color'; then
+	__yf_has_color_support=1
+
+	__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+
+	__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+	__yf_ansi_underline__="$(__yf_ansi_sgr 4)"
+	__yf_ansi_black__="$(__yf_ansi_sgr 30)"
+	__yf_ansi_red__="$(__yf_ansi_sgr 31)"
+	__yf_ansi_green__="$(__yf_ansi_sgr 32)"
+	__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+	__yf_ansi_blue__="$(__yf_ansi_sgr 34)"
+	__yf_ansi_magenta__="$(__yf_ansi_sgr 35)"
+	__yf_ansi_cyan__="$(__yf_ansi_sgr 36)"
+	__yf_ansi_white__="$(__yf_ansi_sgr 37)"
+	__yf_ansi_gray__="$(__yf_ansi_sgr 90)"
+	__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+	__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+	__yf_ansi_bright_yellow__="$(__yf_ansi_sgr 93)"
+	__yf_ansi_bright_blue__="$(__yf_ansi_sgr 94)"
+	__yf_ansi_bright_magenta__="$(__yf_ansi_sgr 95)"
+	__yf_ansi_bright_cyan__="$(__yf_ansi_sgr 96)"
+	__yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
+	__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+else
+	__yf_has_screen_color_support=0
+
+	__yf_ansi_sgr() { return; }
+
+	unset __yf_ansi_bold__
+	unset __yf_ansi_underline__
+	unset __yf_ansi_black__
+	unset __yf_ansi_red__
+	unset __yf_ansi_green__
+	unset __yf_ansi_yellow__
+	unset __yf_ansi_blue__
+	unset __yf_ansi_magenta__
+	unset __yf_ansi_cyan__
+	unset __yf_ansi_white__
+	unset __yf_ansi_gray__
+	unset __yf_ansi_bright_red__
+	unset __yf_ansi_bright_green__
+	unset __yf_ansi_bright_yellow__
+	unset __yf_ansi_bright_blue__
+	unset __yf_ansi_bright_magenta__
+	unset __yf_ansi_bright_cyan__
+	unset __yf_ansi_bright_white__
+	unset __yf_ansi_reset__
+fi
+######################################################################################################
+#                                                                                                     #
+# text attribute functions                                                                            #
+#                                                                                                     #
+# - print specified text with special attributes                                                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_bold() { printf -- "$__yf_ansi_bold__"; printf -- "$@"; printf -- "$__yf_ansi_reset__"; }
+__yf_undl() { printf -- "$__yf_ansi_underline__"; printf -- "$@"; printf -- "$__yf_ansi_reset__"; }
+#######################################################################################################
+#                                                                                                     #
+# functions to display usage info and version                                                         #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'help'; then
+	__yf_has_help_support=1
+
+	__yf_show_with_less()
+	{
+		! [ "$__yf_error_flag" = '1' ] && __yf_aflush command -v less && less || cat -
+	}
+
+	__yf_get_script_lines()
+	{
+		sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+		sed -e '1d;$d' | \
+		sed -e 's|# \(.*\) *#$|\1|' | \
+		sed -e 's|^#*#$|--|p' | \
+		sed -e '$d' | \
+		sed -e 's| *$||'
+	}
+	__yf_show_script_name()
+	{
+		[ -n "$1" ] && printf -- '%s' "$1"
+		printf -- '%s' "${0#*/}"
+		[ -n "$1" ] && printf -- "$__yf_ansi_reset__"
+		printf -- ': '
+	}
+	__yf_show_license()
+	{
+		__yf_get_script_lines 'LIC'
+	}
+	__yf_show_version()
+	{
+		__yf_is_terminal 1 && \
+			__yf_get_script_lines 'VER' | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__yf_ansi_bold__\1$__yf_ansi_reset__,\2|" || \
+			__yf_get_script_lines 'VER'
+	}
+	__yf_show_copyright()
+	{
+		__yf_get_script_lines 'CPY'
+	}
+	__yf_usage()
+	(
+		[ "$1" = 'force_color' ] && __yf_force_terminal__=1
+		__yf_is_terminal 1 && __is_terminal__=1 || __is_terminal__=0
+		__bold() { [ $__is_terminal__ -eq 1 ] && __yf_bold "$@" || printf -- "$@"; }
+		__undl() { [ $__is_terminal__ -eq 1 ] && __yf_undl "$@" || printf -- "$@"; }
+		indent=0
+		__indent_on() { indent=$(( indent + 4 )); }
+		__indent_off() { indent=$(( indent - 4 )); }
+		__indent() { [ $indent -gt 0 ] && printf -- "%0${indent}s" " "; };
+		__nl() { __yf_nl_out; printf -- '%s' "$(__indent)"; printf -- "$1"; }
+		__purpose_hdr() { __nl; __bold "$(__yf_internal_get_localized 'HLP_purpose'):"; __yf_nl_out; }
+		__usage_name() { __bold "${0#*/}"; }
+		__usage_hdr() { __yf_nl_out; __nl; __bold "$(__yf_internal_get_localized 'HLP_usage'):\n"; __indent_on; __nl "$(__usage_name)"; }
+		__usage_end() { __indent_off; __yf_nl_out; }
+		__usage_opt_int() { v="$1"; shift; [ $# ] && m="$@"; printf -- '[ %s%s ]' "$(__undl "$v")" "$m"; unset m v; };
+		__usage_opt_end() { printf -- ' [ -- ]'; }
+		__usage_opt() { printf -- ' %s' "$(__usage_opt_int "$@")"; }
+		__usage_arg() { printf -- ' %s' "$(__undl "$1")"; }
+		__options_hdr() { eval __nl "\"$(__yf_internal_get_localized 'HLP_supported_options')\n\""; }
+		__options_end() { __yf_nl_out; }
+		__option_show_opt() {
+			printf -- '%s, %s' "$2" "$3"
+			__l4__=${#4}
+			if [ $__l4__ -gt 0 ]; then
+				printf -- ' '
+				__yf_is_terminal 1 && printf -- '%s' "$__yf_ansi_underline__"
+				printf -- '%s' "$4"
+				__yf_is_terminal 1 && printf -- '%s' "$__yf_ansi_reset__"
+				__l4__=$(( __l4__ + 1 ))
+			fi
+			__ind__=$(( $1 - ${#2} - ${#3} - __l4__ - 2 ))
+			[ "$__ind__" -gt 0 ] && printf -- "%0$(( $1 - ${#2} - ${#3} - __l4__ - 2 ))s" " "
+			unset __ind__
+			unset __l4__
+		}
+		__option_show_cont() {
+			__yf_nl_out
+			printf -- "%0$(( $1 + 2 ))s" " "
+			shift
+			printf -- "$@"
+		}
+		__option_show_desc() { printf -- '- %s' "$@"; }
+		# TODO: Automatic extraction of description text from option declaration -> 'one-liner' in 'usage_text' for the whole option table section
+		__option_debug() { __nl; __option_show_opt ${1:-15} '-d' '--debug'; __option_show_desc "$(__yf_internal_get_localized 'HLP_option_debug')"; }
+		__option_help()	{ __nl; __option_show_opt ${1:-15} '-h' '--help'; __option_show_desc "$(__yf_internal_get_localized 'HLP_option_help')"; }
+		__option_version() { __nl; __option_show_opt ${1:-15} '-V' '--version'; __option_show_desc "$(__yf_internal_get_localized 'HLP_option_version')"; }
+		__parameter_mand() { printf -- ' '; __undl "$*"; }
+		__parameter_opt() { printf -- ' [ '; __undl "$*"; printf -- ' ]'; }
+		__parameter_opt_with_repetition() { __yf_is_terminal 1 && __parameter_opt "$*\033[0m..." || __parameter_opt "$*"; }
+		__end() { __yf_is_terminal 1 && printf -- '%s\n' "$__yf_ansi_reset__" || __yf_nl_out; }
+
+		! __yf_has_function 'usage_text' && __yf_nl_err && __yf_internal_emsg 'ERR_missing_usage_text' && __yf_nl_err && exit 1
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		usage_text
+		__nl
+		__end
+	)
+fi
+#######################################################################################################
+#                                                                                                     #
+# functions for localization of messages                                                              #
+#                                                                                                     #
+# TODO: Use linux message catalog files to define messages to be used.                                #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'l10n'; then
+	__yf_has_l10n_support=1
+
+	__yf_get_language()
+	(
+		__yf_get_language_code()
+		{
+			printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+		}
+
+		___yf_lang="$1"
+		shift
+
+		if ! [ -z "$LC_ALL" ]; then
+			___yf_check="$(__yf_get_language_code "$LC_ALL")"
+		else
+			[ -z "$LANG" ] || ___yf_check="$(__yf_get_language_code "$LANG")"
+		fi
+		if ! [ -z "$___yf_check" ]; then
+			[ "$___yf_lang" = "$___yf_check" ] || \
+			for ___yf_lng in $*; do
+				[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
+			done
+		fi
+		printf -- '%s' "$___yf_lang"
+		unset ___yf_lng
+		unset ___yf_lang
+		unset ___yf_check
+	)
+	__yf_language__="$(eval __yf_get_language $__yf_languages__)"
+	__yf_internal_get_localized()
+	(
+		eval ___yf_msg="\${__YF_L10N_INT_$1_${__yf_language__}}"
+		[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+		eval ___yf_msg="\${__YF_L10N_INT_$1_${___yf_lang}}"
+		eval printf -- '%s' "\"$___yf_msg\""
+		unset ___yf_msg
+		unset ___yf_lang
+	)
+	__yf_get_localized()
+	(
+		eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
+		[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+		eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
+		[ -z "$___yf_msg" ] && printf -- "\"Message definition '%s' is missing for '%s'.\"" "$1" "$__yf_language__" && return
+		eval printf -- '%s' "\"$___yf_msg\""
+		unset ___yf_msg
+		unset ___yf_lang
+	)
+else
+	__yf_internal_get_localized()
+	(
+		eval printf -- '%s' "\"\$__YF_L10N_INT_${1}_en\""
+	)
+	__yf_get_localized()
+	(
+		msg="\${__YF_L10N_${1}_en}"
+		eval [ -z "$___yf_msg" ] && printf -- "\"Message definition '%s' is missing.\"" "$1" && return
+		eval printf -- '%s' "\"\$___yf_msg\""
+		unset ___yf_msg
+	)
+	__yf_language__='en'
+fi
+#######################################################################################################
+#                                                                                                     #
+# message definition macros                                                                           #
+#                                                                                                     #
+#######################################################################################################
+__yf_declare_internal_message()
+{
+	___yf_msg_lang="$1"
+	___yf_msg_code="$2"
+	shift 2
+	printf -- '__YF_L10N_INT_%s_%s=\"%s\"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$*")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_int_msg()
+{
+	__yf_declare_internal_message "$@"
+}
+
+__yf_declare_message()
+{
+	___yf_msg_lang="$1"
+	if [ "${#___yf_msg_lang}" -ne 2 ]; then
+		___yf_msg_lang='en'
+		___yf_msg_code="$1"
+		shift
+	else
+		___yf_msg_code="$2"
+		shift 2
+	fi
+	printf -- '__YF_L10N_%s_%s=\"%s\"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$*")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_msg()
+{
+	__yf_declare_message "$@"
+}
+#######################################################################################################
+#                                                                                                     #
+# debug helpers                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'debug'; then
+	__yf_has_debug_support=1
+
+	__yf_set_debug() { __yf_debug_is_set=1; printf -- '__yf_debug_is_set=1\n'; }
+	__yf_reset_debug() { __yf_debug_is_set=0; printf -- '__yf_debug_is_set=0\n'; }
+	__yf_is_debug() { [ "$__yf_debug_is_set" = '1' ] && return 0 || return 1; }
+	__yf_debug()
+	{
+		__yf_is_debug || return;
+		___yf_mask="$1"
+		shift
+		__yf_is_terminal 2 && printf -- '%s' "$__yf_ansi_bright_yellow__$__yf_ansi_bold__" 1>&2
+		printf -- 'debug' 1>&2
+		__yf_is_terminal 2 && printf -- '%s' "$__yf_ansi_reset__" 1>&2
+		printf -- ": $___yf_mask" "$@" 1>&2
+		unset ___yf_mask
+	}
+
+	if __yf_ui_feature 'options'; then
+		__yf_debug_options()
+		{
+			max_value()
+			{
+				if [ "$1" -gt "${2:-0}" ]; then
+					printf -- '%u' "$1"
+				else
+					printf -- '%u' "$2"
+				fi
+			}
+
+			get_column_values()
+			{
+				unset value
+				unset missing
+				case "$2" in
+					('varname')
+						[ "$1" -eq 0 ] && value='variable name' || value=$(__yf_get_option_item 'varname' "$1")
+						;;
+					('short')
+						[ "$1" -eq 0 ] && value='short option' || value=$(__yf_get_option_item 'short' "$1")
+						;;
+					('long')
+						[ "$1" -eq 0 ] && value='long option' || value=$(__yf_get_option_item 'long' "$1")
+						missing='-- unused --'
+						;;
+					('callback')
+						[ "$1" -eq 0 ] && value='callback function' || value=$(__yf_get_option_item 'callback' "$1")
+						missing='-- unused --'
+						;;
+					('errorcallback')
+						[ "$1" -eq 0 ] && value='error callback' || value=$(__yf_get_option_item 'error_cb' "$1")
+						[ "$value" = "__yf_internal_option_error_callback" ] && unset value
+						missing='-- internal --'
+						;;
+					('maxoccur')
+						[ "$1" -eq 0 ] && value='max. occurrences' || value=$(__yf_get_option_item 'maxoccur' "$1")
+						;;
+					('argument')
+						if [ "$1" -eq 0 ]; then
+							value='option argument'
+						else
+							if [ -n "$(__yf_get_option_item 'optional_arg' "$1")" ]; then
+								value='optional'
+							elif [ -n "$(__yf_get_option_item 'mandatory_arg' "$1")" ]; then
+ 								value='mandatory'
+							else
+								value='-- unused --'
+							fi
+						fi
+						;;
+					('validation')
+						if [ "$1" -eq 0 ]; then
+							value='argument type'
+						else
+							if [ -n "$(__yf_get_option_item 'optional_arg' "$1")" ] || [ -n "$(__yf_get_option_item 'mandatory_arg' "$1")" ]; then
+								value=$(__yf_get_option_item 'arg_type' "$1")
+							else
+								value='-- n/a --'
+							fi
+						fi
+						;;
+					('description')
+						[ "$1" -eq 0 ] && value='description' || value=$(__yf_get_option_item 'desc' "$1")
+						;;
+					('value')
+						[ "$1" -eq 0 ] && value='current value' || eval value="\$__yf_option_$(__yf_get_option_item 'varname' "$1")"
+						missing='-- unset --'
+						;;
+				esac
+				printf -- "value='%s'\n" "$value"
+				[ -z "$missing" ] && printf -- 'unset missing\n' || printf -- "missing='%s'\n" "$missing"
+				unset missing
+				unset value
+			}
+
+			center_value()
+			{
+				___yf_size="$1"
+				___yf_value="$2"
+				___yf_left=$(( ( ___yf_size - ${#___yf_value} ) / 2 ))
+				___yf_right=$(( ___yf_size - ${#___yf_value} - ___yf_left ))
+				[ "$___yf_left" -lt "$___yf_right" ] && ___yf_left=$(( ___yf_left + 1 )) && ___yf_right=$(( ___yf_right - 1 ))
+				___yf_count=0
+				while [ "$___yf_count" -le "$___yf_left" ]; do
+					printf -- " "
+					___yf_count=$(( ___yf_count + 1 ))
+				done
+				printf -- '%s' "$___yf_value"
+				___yf_count=0
+				while [ "$___yf_count" -le "$___yf_right" ]; do printf -- " "; ___yf_count=$(( ___yf_count + 1 )); done
+				unset ___yf_count
+				unset ___yf_left
+				unset ___yf_right
+				unset ___yf_value
+				unset ___yf_size
+			}
+
+			left_value()
+			{
+				if [ "$1" -lt "${#2}" ]; then
+					printf -- '%s... ' "$(expr \( "$2" : "\(.\{$(( $1 - 3 ))\}\).*" \) )"
+				else
+					___yf_fill="$(( $1 - ${#2} ))"
+					printf -- '%s' "$2"
+					___yf_count=0
+					while [ "$___yf_count" -le "$___yf_fill" ]; do printf -- ' '; ___yf_count=$(( ___yf_count + 1 )); done
+				fi
+				unset ___yf_fill
+				unset ___yf_count
+			}
+
+			frame_line()
+			{
+				___yf_colcount=0
+				__yf_debug '+'
+				for ___yf_col in $___yf_columns; do
+					___yf_colcount=$(( ___yf_colcount + 1 ))
+					eval ___yf_colwidth=\$___yf_colwidth_$___yf_colcount
+					[ "$___yf_col" = 'description' ] || ___yf_colwidth=$(( ___yf_colwidth + 1 ))
+					___yf_out=0
+					while [ "$___yf_out" -le "$___yf_colwidth" ]; do printf -- '-'; ___yf_out=$(( ___yf_out + 1 )); done
+					printf -- '+'
+				done
+				printf -- '\n'
+				unset ___yf_colcount
+				unset ___yf_col
+				unset ___yf_colwidth
+				unset ___yf_out
+			}
+
+			___yf_save_debug=$(__yf_is_debug && printf -- ':' || printf -- '__yf_reset_debug')
+			eval $(__yf_set_debug)
+			__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+			[ -n "$__yf_ansi_reset__" ] && __yf_debug '%s%sDefined options:%s\n' "$__yf_ansi_underline__" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" || __yf_debug 'Declared options\n======================\n'
+			___yf_columns='varname value callback short long maxoccur argument validation errorcallback description'
+			___yf_linesize=0
+			for ___yf_var in $___yf_columns; do
+				___yf_column=$(( ___yf_column + 1 ))
+				___yf_index=0
+				while [ "$___yf_index" -le "$__yf_options_count" ]; do
+					eval $(get_column_values "$___yf_index" "$___yf_var")
+					[ -z "$value" ] && [ -n "$missing" ] && value="$missing"
+					[ "$___yf_var" = 'description' ] && value=" $value"
+					eval ___yf_colwidth_$___yf_column=\$\(max_value ${#value} "$(printf -- '%s' "\$___yf_colwidth_${___yf_column}")"\)
+					___yf_index=$(( ___yf_index + 1 ))
+				done
+				eval "___yf_linesize=\$(( ___yf_linesize + ___yf_colwidth_$___yf_column + 3 ))"
+			done
+			if __yf_is_terminal 2 && [ "$__yf_terminal_size_is_valid" = '1' ]; then
+				___yf_linesize=$(( ___yf_linesize + 7 ))
+				if [ "$___yf_linesize" -gt "$__yf_terminal_columns" ]; then
+					___yf_colwidth=$(( ___yf_colwidth_10 - ( ___yf_linesize - __yf_terminal_columns ) ))
+					[ "$___yf_colwidth" -ge 12 ] && ___yf_colwidth_10=$___yf_colwidth
+				fi
+			fi
+			___yf_index=0
+			frame_line
+			while [ "$___yf_index" -le "$__yf_options_count" ]; do
+				___yf_column=0
+				__yf_debug '|'
+				for ___yf_var in $___yf_columns; do
+					___yf_column=$(( ___yf_column + 1 ))
+					eval ___yf_colwidth=\$___yf_colwidth_$___yf_column
+					eval $(get_column_values "$___yf_index" "$___yf_var")
+					[ -z "$value" ] && [ -n "$missing" ] && value="$missing"
+					[ "$___yf_var" = 'description' ] && printf -- '%s' "$(left_value "$___yf_colwidth" " $value")" 1>&2 || printf -- '%s' "$(center_value "$___yf_colwidth" "$value")" 1>&2
+					printf -- '|' 1>&2
+				done
+				printf -- '\n' 1>&2
+				[ "$___yf_index" -eq 0 ] && frame_line
+				___yf_index=$(( ___yf_index + 1 ))
+			done
+			frame_line
+			__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+			unset value
+			unset missing
+			unset ___yf_index
+			unset ___yf_colwidth
+			for ___yf_var in $(set | grep -o '^___yf_colwidth_[0-9]*'); do unset $___yf_var; done
+			unset ___yf_var
+			unset ___yf_columns
+			unset ___yf_column
+			unset ___yf_linesize
+			eval $($___yf_save_debug)
+			unset ___yf_save_debug
+		}
+
+		__yf_debug_parameters()
+		{
+			___yf_save_debug=$(__yf_is_debug && printf -- ':' || printf -- '__yf_reset_debug')
+			eval $(__yf_set_debug)
+			__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+			[ -n "$__yf_ansi_reset__" ] && __yf_debug '%s%sParameters:%s\n' "$__yf_ansi_underline__" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" || __yf_debug 'Parameters\n======================\n'
+			__yf_debug '__yf_parameters_count=%u\n' "$__yf_parameters_count"
+			___yf_index=0
+			while [ "$___yf_index" -lt "$__yf_parameters_count" ]; do
+				___yf_index=$(( ___yf_index + 1 ))
+				__yf_debug "__yf_parameter_%u='%s'\n" "$___yf_index" "$(eval printf -- '%s' "\$__yf_parameter_$___yf_index")"
+			done
+			__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+			unset ___yf_index
+			eval $($___yf_save_debug)
+			unset ___yf_save_debug
+		}
+	fi
+
+	__yf_debug_cmdline_arguments()
+	{
+		___yf_save_debug=$(__yf_is_debug && printf -- ':' || printf -- '__yf_reset_debug')
+		eval $(__yf_set_debug)
+		__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+		[ -n "$__yf_ansi_reset__" ] && __yf_debug '%s%sCommand line arguments:%s\n' "$__yf_ansi_underline__" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" || __yf_debug 'Command line arguments\n======================\n'
+		__yf_debug "__yf_shell_command='%s' (argv[0])\n" "$0"
+		__yf_debug '__yf_cmdline_items_count=%u (argc)\n' "$__yf_cmdline_items_count"
+		___yf_index=0
+		while [ "$___yf_index" -lt "$__yf_cmdline_items_count" ]; do
+			___yf_index=$(( ___yf_index + 1 ))
+			__yf_debug "__yf_cmdline_item_%u='%s' (argv[%u])\n" "$___yf_index" "$(eval "printf -- '%s' \"\$__yf_cmdline_item_$___yf_index\"")" "$___yf_index"
+		done
+		__yf_debug '%s----------------------------------------------------------------------------%s\n' "$__yf_ansi_bright_red__" "$__yf_ansi_reset__"
+		unset ___yf_index
+		eval $($___yf_save_debug)
+		unset ___yf_save_debug
+	}
+else
+	unset __yf_has_debug_support
+
+	__yf_set_debug() { :; }
+	__yf_reset_debug() { :; }
+	__yf_is_debug() { return 1; }
+	__yf_debug() { :; }
+fi
+#######################################################################################################
+#                                                                                                     #
+# functions to display messages to user                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_errmsg()
+{
+	__yf_show_script_name "$(__yf_is_terminal 2 && printf -- "$__yf_ansi_bright_red__$__yf_ansi_bold__")" 1>&2
+	___yf_mask="$1"
+	shift
+	__yf_is_terminal 2 && printf -- "$__yf_ansi_bold__" 1>&2
+	printf -- "${___yf_mask}" "$@" 1>&2
+	__yf_is_terminal 2 && printf -- "${__yf_ansi_reset__}\a" 1>&2
+	__yf_nl_err
+	unset ___yf_mask
+}
+__yf_emsg()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_internal_emsg()
+{
+	___yf_mask="$(__yf_internal_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_info_output()
+{
+	__yf_show_script_name "$(__yf_is_terminal 2 && printf -- "$__yf_ansi_bright_green__$__yf_ansi_bold__")" 1>&2
+	__yf_is_terminal 2 && printf -- "$__yf_ansi_bold__" 1>&2
+	___yf_mask="$1"
+	shift
+	__yf_is_terminal 2 && printf -- "${__yf_ansi_reset__}\a" 1>&2
+	printf -- "${___yf_mask}" "$@" 1>&2
+	__yf_is_terminal 2 && printf -- "${__yf_ansi_reset__}" 1>&2
+	__yf_nl_err
+	unset ___yf_mask
+}
+__yf_info()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_info_output "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+#######################################################################################################
+#                                                                                                     #
+# functions to get raw input from terminal (non-echoed password input, function keys, etc.)           #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'raw-input'; then
+	__yf_has_rawinput_support=1
+	# not yet released to the public, interface is still changing
+fi
+#######################################################################################################
+#                                                                                                     #
+# functions to draw simple frames on terminal for message boxes or data input (use it with raw-input) #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'drawing'; then
+	__yf_has_drawing_support=1
+	# not yet released for public use, interface will be changed some more times
+fi
+#######################################################################################################
+#                                                                                                     #
+# functions to process options and arguments from command line                                        #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'options'; then
+	__yf_has_options_support=1
+###############################################################################################ARGTYPE#
+#                                                                                                     #
+# argument type handling and validation                                                               #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# The 'arg_type' property of an option defines, which characters are valid for a value and - for the  #
+# complexer types - which conditions should be checked while validating this value. The framework     #
+# will check the value during assignment to the '__yf_option_<name>' variable only, if there's no     #
+# callback function present - otherwise the callback function is in charge of such checks.            #
+#                                                                                                     #
+# The following types are supported, with the shown character sets and their additional checks.       #
+#                                                                                                     #
+# Each entry consists of at least three lines - the first one contains the supported 'arg_type' value #
+# and the second one a list of supported characters in this set as a (basic) regular expression.      #
+#                                                                                                     #
+# Unprintable values use octal notation (\0[0-7]*) in character set definitions. Any octal or         #
+# hexadecimal numbers are padded left with zeros to the next full byte size, if necessary and a       #
+# fitting number of digits isn't insisted on by the used definition.                                  #
+#                                                                                                     #
+# All character set definitions exclude non-ASCII values - if you really have to use any extended     #
+# characters, use your own callback function for validation, especially for diacritics in German.     #
+#                                                                                                     #
+# The third line of an entry contains my attempt of a description - it may span more than a single    #
+# line if needed.                                                                                     #
+#                                                                                                     #
+# To protect the shell code from injections, the default 'arg_type' value isn't 'any', as someone may #
+# expect. It's 'alnum', what limits usual argument values to alphanumeric characters, which will not  #
+# and never interfere with shell code.                                                                #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# any                                                                                                 #
+#                                                                                                     #
+# any                                                                                                 #
+#                                                                                                     #
+# no further checks will be done                                                                      #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# digit                                                                                               #
+#                                                                                                     #
+# [0-9]*                                                                                              #
+#                                                                                                     #
+# POSIX class: decimal digits                                                                         #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# alnum                                                                                               #
+#                                                                                                     #
+# [0-9A-Za-z]*                                                                                        #
+#                                                                                                     #
+# POSIX class: alphanumeric characters                                                                #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# alpha                                                                                               #
+#                                                                                                     #
+# [A-Za-z]*                                                                                           #
+#                                                                                                     #
+# POSIX class: alphabetic characters (letters)                                                        #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# upper                                                                                               #
+#                                                                                                     #
+# [A-Z]*                                                                                              #
+#                                                                                                     #
+# POSIX class: upper case letters                                                                     #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# lower                                                                                               #
+#                                                                                                     #
+# [a-z]*                                                                                              #
+#                                                                                                     #
+# POSIX class: lower case letters                                                                     #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# ascii                                                                                               #
+#                                                                                                     #
+# [\0000-\0177]*                                                                                      #
+#                                                                                                     #
+# POSIX class: ASCII (from 0x00 to 0x7F)                                                              #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# blank                                                                                               #
+#                                                                                                     #
+# [ \t]*                                                                                              #
+#                                                                                                     #
+# POSIX class: space and tab character, not valid as stand-alone type                                 #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# space                                                                                               #
+#                                                                                                     #
+# [ \t\r\n\v\f]*                                                                                      #
+#                                                                                                     #
+# POSIX class: all white-space characters incl. line breaks (from ASCII) - not usable as type value   #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# graph                                                                                               #
+#                                                                                                     #
+# [\041-\0176]*                                                                                       #
+#                                                                                                     #
+# POSIX class: all visible characters (no space, no control characters)                               #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# print                                                                                               #
+#                                                                                                     #
+# [\040-\0176]*                                                                                       #
+#                                                                                                     #
+# POSIX class: all visible characters (with space, without control characters)                        #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# cntrl                                                                                               #
+#                                                                                                     #
+# [\000-\037\0177]*                                                                                   #
+#                                                                                                     #
+# POSIX class: control characters only, not usable as stand-alone type                                #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# punct                                                                                               #
+#                                                                                                     #
+# [!"\#$%&'()*+,\-\./:;<=>?@\[\\\]^_`{|}~]*                                                           #
+#                                                                                                     #
+# POSIX class: punctuation characters and symbols from ASCII table                                    #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# word                                                                                                #
+#                                                                                                     #
+# [0-9_A-Za-z]                                                                                        #
+#                                                                                                     #
+# POSIX class: valid characters between word boundaries                                               #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xdigit                                                                                              #
+#                                                                                                     #
+# [0-9A-Fa-f]*                                                                                        #
+#                                                                                                     #
+# POSIX class: hexadecimal digits with letters in any case                                            #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xldigit                                                                                             #
+#                                                                                                     #
+# [0-9a-f]*                                                                                           #
+#                                                                                                     #
+# only hexadecimal digits with letters in lower case                                                  #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xudigit                                                                                             #
+#                                                                                                     #
+# [0-9A-F]*                                                                                           #
+#                                                                                                     #
+# only hexadecimal digits with letters in upper case                                                  #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# odigit                                                                                              #
+#                                                                                                     #
+# [0-7]*                                                                                              #
+#                                                                                                     #
+# only octal digits                                                                                   #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xnumber                                                                                             #
+#                                                                                                     #
+# (0x)?([0-9A-Fa-f]{2})+                                                                              #
+#                                                                                                     #
+# hexadecimal number, optionally prefixed with '0x', with two digits for each byte                    #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xunumber                                                                                            #
+#                                                                                                     #
+# (0x)?([0-9A-F]{2})+                                                                                 #
+#                                                                                                     #
+# same as 'xnumber', but only with upper case letters                                                 #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# xlnumber                                                                                            #
+#                                                                                                     #
+# (0x)?([0-9a-f]{2})+                                                                                 #
+#                                                                                                     #
+# same as 'xnumber', but only with lower case letters                                                 #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# onumber                                                                                             #
+#                                                                                                     #
+# 0([0-7])+                                                                                           #
+#                                                                                                     #
+# an octal number, prefixed with 0, if first digit would be another one                               #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# integer                                                                                             #
+#                                                                                                     #
+# [-+]?[0-9]*                                                                                         #
+#                                                                                                     #
+# (optionally signed) decimal integer number                                                          #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# decimal                                                                                             #
+#                                                                                                     #
+# [-+]?[0-9]*(.[0-9]*)*                                                                               #
+#                                                                                                     #
+# decimal number, with or without sign and an optional fractional part - only the english form (a dot #
+# as decimal delimiter) is supported, a different locale doesn't get honored here                     #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# base64                                                                                              #
+#                                                                                                     #
+# [0-9A-Za-z+/=]*                                                                                     #
+#                                                                                                     #
+# only characters used for Base64 encodings, but no line breaks                                       #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# pathname                                                                                            #
+#                                                                                                     #
+# [^?$*"'`<>;=]*                                                                                      #
+#                                                                                                     #
+# any character (escaped if needed) not in the list above - if you want to use these characters in a  #
+# path name (what's usually POSSIBLE in Linux), use a callback function and run your own validation   #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# existing_pathname                                                                                   #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'pathname', but an additional check, that the path exists and is a directory, will be made  #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# missing_pathname                                                                                    #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'pathname', but an additional check, that the path does NOT exist (and is not a file, too), #
+# will be made                                                                                        #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# filename                                                                                            #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# any character (escaped if needed) not in the list above - if you want to use these characters in a  #
+# file name (what's usually POSSIBLE in Linux), use a callback function and run your own validation   #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# readable_filename                                                                                   #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'filename', but an additional check, that the file exists and IS READABLE, will be made -   #
+# and obviously also 'special files' (like character and block devices or FIFOs) will be accepted, as #
+# long as they're accessible for read operations by the (effective) user                              #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# regular_filename                                                                                    #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'existing_filename', but here an additional check, whether it's a regular file, is included #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# missing_filename                                                                                    #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'filename', but an additional check, that the file does NOT exist already, will be made -   #
+# existing 'special files' (character or block devices and FIFOs/sockets, etc.) with the specified    #
+# name will also lead to a failure, due to the used 'test -e <file_name> && fail' check               #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# executable_filename                                                                                 #
+#                                                                                                     #
+# see 'pathname' above                                                                                #
+#                                                                                                     #
+# same as 'filename', but an additional check, that the file exists and has the 'executable' flag     #
+# set, will be made                                                                                   #
+#                                                                                                     #
+#-----------------------------------------------------------------------------------------------------#
+#                                                                                                     #
+# custom=<mask>                                                                                       #
+#                                                                                                     #
+# <mask> is used as a regular expression to validate the value                                        #
+#                                                                                                     #
+# use this to validate the value with your own mask (but without your own callback function)          #
+#                                                                                                     #
+# Additional information:                                                                             #
+#                                                                                                     #
+# The original value has to match (exactly) the outcome of 'expr <value> : \(<mask>\)' and you have   #
+# to consider, that the 'expr' command supports basic regular expressions (BRE) only. The given mask  #
+# will be surrounded with parentheses to get the matching part of value from 'expr'.                  #
+#                                                                                                     #
+# To give an example ... a 'arg_type' value of                                                        #
+#                                                                                                     #
+# custom=[A-Z]* [a-z]*                                                                                #
+# (specified as arg_type="custom=[A-Z]* [a-z]*" to protect the space character in-between)            #
+#                                                                                                     #
+# and an option argument of                                                                           #
+#                                                                                                     #
+# 'FOO bar'                                                                                           #
+#                                                                                                     #
+# will lead to a call like this:                                                                      #
+#                                                                                                     #
+# expr 'FOO bar' : '\([A-Z]* [a-z]*\)'                                                                #
+#                                                                                                     #
+# and it's output would be 'FOO bar', what matches the input value - so the validation was successful #
+# and the value gets assigned.                                                                        #
+#                                                                                                     #
+# If you change the mask as follows:                                                                  #
+#                                                                                                     #
+# custom=[A-Z]* [a-z]\{2\}                                                                            #
+#                                                                                                     #
+# a match with the same value would lead to output of 'FOO ba', what doesn't match the original value #
+# - therefore the validation has failed and an error message will be shown.                           #
+#                                                                                                     #
+###############################################################################################ARGTYPE#
+	__yf_get_arg_type_mask()
+	{
+		___yf_rc=0
+		case "$1" in
+			('any')
+				printf -- '.*'
+				;;
+			('digit')
+				printf -- '[[:digit:]]*'
+				;;
+			('alnum')
+				printf -- '[[:alnum:]]*'
+				;;
+			('alpha')
+				printf -- '[A-Za-z]*'
+				;;
+			('upper')
+				printf -- '[A-Z]*'
+				;;
+			('lower')
+				printf -- '[a-z]*'
+				;;
+			('ascii')
+				printf -- '[[:cntrl:][:print:]]*' # workaround
+				;;
+			('blank')
+				printf -- '[[:blank:]]*'
+				___yf_rc=1
+				;;
+			('space')
+				printf -- '[[:space:]]*'
+				___yf_rc=1
+				;;
+			('graph')
+				printf -- '[[:graph:]]*'
+				;;
+			('print')
+				printf -- '[[:print:]]*'
+				;;
+			('cntrl')
+				printf -- '[[:cntrl:]]*'
+				___yf_rc=1
+				;;
+			('punct')
+				printf -- '[[:punct:]]*'
+				;;
+			('word')
+				printf -- '[0-9A-Z_a-z]*'
+				;;
+			('xdigit')
+				printf -- '[[:xdigit:]]*'
+				;;
+			('xldigit')
+				printf -- '[0-9a-f]*'
+				;;
+			('xudigit')
+				printf -- '[0-9A-F]*'
+				;;
+			('odigit')
+				printf -- '[0-7]*'
+				;;
+			('xnumber')
+				printf -- '\(0[xX]\)\?\([[:xdigit:]]\{2\}\)\+'
+				;;
+			('xunumber')
+				printf -- '\(0[xX]\)\?\([0-9A-F]\{2\}\)\+'
+				;;
+			('xlnumber')
+				printf -- '\(0[xX]\)\?\([0-9a-f]\{2\}\)\+'
+				;;
+			('onumber')
+				printf -- '0[0-7]*'
+				;;
+			('integer')
+				printf -- '[-+]\?[0-9]*'
+				;;
+			('decimal')
+				printf -- '[-+]\?[0-9]*\(\.[0-9]\+\)\?'
+				;;
+			('base64')
+				printf -- '[[:alnum:]+/=]*'
+				;;
+			('pathname'|'existing_pathname'|'missing_pathname'|'filename'|'readable_filename'|'regular_filename'|'missing_filename'|'executable_filename')
+				printf -- '[^?$*"%c`<>;=]*' "'"
+				;;
+			(custom=*)
+				printf -- '%s' "$(expr \( "$1" : 'custom=\(.*\)' \) )"
+				;;
+			(*)
+				___yf_rc=1
+				;;
+		esac
+		eval "unset ___yf_rc && return $___yf_rc"
+	}
+	__yf_arg_type_has_conditions()
+	{
+		for ___yf_item in existing_pathname missing_pathname readable_filename regular_filename missing_filename executable_filename; do
+			[ "$___yf_item" = "$1" ] && unset ___yf_item && return 0
+		done
+		unset ___yf_item
+		return 1
+	}
+
+	__yf_validate_argument_value()
+	{
+		[ "$(expr \( "$2" : "\($1\)" \) )" = "$2" ] && return 0 || return 1
+	}
+	__yf_check_argument_type_conditions()
+	{
+		___yf_rc=0
+		___yf_optname="$(__yf_get_option_item 'varname' "$3")"
+		case "$1" in
+			('existing_pathname')
+				if ! [ -d "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified directory/path '%s' does not exist." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			('missing_pathname')
+				if [ -d "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified directory/path '%s' does exist already." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			('readable_filename')
+				if ! [ -r "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified file '%s' does not exist or is not readable." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			('regular_filename')
+				if ! [ -f "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified file '%s' does not exist or isn't a regular file." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			('executable_filename')
+				if ! [ -f "$2" ] || ! [ -x "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified file '%s' isn't a regular file or is not executable." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			('missing_filename')
+				if [ -e "$2" ]; then
+					__yf_errmsg "option_value_validation - for option '%s': The specified file '%s' exists already." "$___yf_optname" "$2"
+					___yf_rc=1
+				fi
+				;;
+			(*)
+				__yf_option_error 'invopttype' 'validate_option' "$1" "$___yf_optname"
+				___yf_rc=1
+				;;
+		esac
+		eval "unset ___yf_rc && return $___yf_rc"
+	}
+	__yf_check_argument_value()
+	{
+		___yf_arg_type="$(__yf_get_option_item 'arg_type' "$1")"
+		__yf_validate_argument_value "$(__yf_get_arg_type_mask "$___yf_arg_type")" "$2" && ___yf_rc=0 || ___yf_rc=1
+		if [ "$___yf_rc" -eq 0 ] && __yf_arg_type_has_conditions "$___yf_arg_type"; then
+			__yf_check_argument_type_conditions "$___yf_arg_type" "$2" "$1" || ___yf_rc=1
+		fi
+		eval "unset ___yf_rc && return $___yf_rc"
+	}
+
+	__yf_get_option_item()
+	{
+		___yf_local="$(printf -- "\$__yf_option_%u_%s" "$2" "$1")"
+		eval [ -z \"$___yf_local\" ] && [ -n "$3" ] && ___yf_local="$3"
+		eval printf -- '%s' \"$___yf_local\"
+		unset ___yf_local
+	}
+	__yf_set_option_item()
+	{
+		printf -- "__yf_option_%u_%s='%s'\n" "$2" "$1" "$3"
+	}
+	__yf_get_short_option_index()
+	{
+		___yf_option_index=0
+		while [ "$___yf_option_index" -lt "$__yf_options_count" ]; do
+			___yf_option_index=$(( ___yf_option_index + 1 ))
+			if [ "$(__yf_get_option_item 'short' "$___yf_option_index")" = "$1" ]; then
+				printf -- '%u' "$___yf_option_index"
+				unset ___yf_option_index
+				return 0
+			fi
+		done
+		printf -- '0'
+		unset ___yf_option_index
+		return 1
+	}
+	__yf_get_long_option_index()
+	{
+		___yf_option_index=0
+		while [ "$___yf_option_index" -lt "$__yf_options_count" ]; do
+			___yf_option_index=$(( ___yf_option_index + 1 ))
+			if [ "$(__yf_get_option_item 'long' "$___yf_option_index")" = "$1" ]; then
+				printf -- '%u' "$___yf_option_index"
+				unset ___yf_option_index
+				return 0
+			fi
+		done
+		printf -- '0'
+		unset ___yf_option_index
+		return 1
+	}
+
+	__yf_declare_options_error_default_callback()
+	{
+		if ! __yf_has_function "$1"; then
+			__yf_errmsg "declare_options_error_default_callback: Missing specified error callback function '%s'." "$1"
+			__yf_set_error
+			return 1
+		fi
+		__yf_options_error_default_callback="$1"
+	}
+
+	__yf_declare_option()
+	{
+		___yf_varname=$1
+		___yf_has_arg=0
+		___yf_has_arg_type=0
+		___yf_has_callback=0
+		___yf_has_errorcallback=0
+		___yf_has_maxoccur=0
+		___yf_has_multioccur=0
+		___yf_opt_num=$(( __yf_options_count + 1 ))
+		__yf_set_option_item 'varname' "$___yf_opt_num" "$___yf_varname"
+		shift
+		while [ "$#" -gt 0 ]; do
+			___yf_var="$1"
+			shift
+			___yf_opt_prop_name="$(expr \( "$___yf_var" : '\([^=]*\)=.*' \) )"
+			___yf_opt_prop_value="$(expr \( "$___yf_var" : '[^=]*=\(.*\)' \) )"
+			if [ -z "$___yf_opt_prop_name" ] || [ -z "$___yf_opt_prop_value" ]; then
+				__yf_errmsg "declare_option - for option '%s': Malformed option property found: %s - property ignored." "$___yf_varname" "$___yf_var"
+				continue
+			fi
+			case "$___yf_opt_prop_name" in
+				('long'|'desc')
+					__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+					;;
+				('short')
+					if [ "${#___yf_opt_prop_value}" -gt 1 ]; then
+						__yf_errmsg "declare_option - for option '%s': Short value (%s) for option is too large." "$___yf_varname" "$___yf_opt_prop_value"
+						__yf_set_error
+					else
+						__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+					fi
+					;;
+				('maxoccur')
+					if ! __yf_value_is_unsigned_decimal "$___yf_opt_prop_value" || [ "$___yf_opt_prop_value" -lt 1 ]; then
+						__yf_errmsg "declare_option - for option '%s': Value for '%s' property (%s) has to be an unsigned decimal number (> 1)." "$___yf_varname" "$___yf_opt_prop_name" "$___yf_opt_prop_value"
+						__yf_set_error
+					else
+						__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+						___yf_has_maxoccur=1
+						[ "$___yf_opt_prop_value" -gt 1 ] && ___yf_has_multioccur=1
+					fi
+					;;
+				('mandatory_arg'|'optional_arg')
+					__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+					___yf_has_arg=1
+					___yf_arg_type='alnum'
+					;;
+				('arg_type')
+					if __yf_aflush __yf_get_arg_type_mask "$___yf_opt_prop_value"; then
+						___yf_has_arg_type=1
+						__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+					else
+						__yf_option_error 'invoptdecl' 'prepare_options' "$___yf_varname" "$___yf_opt_prop_value" "$___yf_opt_prop_name"
+						__yf_set_error
+					fi
+					;;
+				('callback')
+					if ! __yf_has_function "$___yf_opt_prop_value"; then
+						__yf_errmsg "declare_option - for option '%s': Missing callback function (%s) for option." "$___yf_varname" "$___yf_opt_prop_value"
+						__yf_set_error
+					else
+						__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+						___yf_has_callback=1
+					fi
+					;;
+				('error_cb')
+					if ! __yf_has_function "$___yf_opt_prop_value"; then
+						__yf_errmsg "declare_option - for option '%s': Missing error callback function (%s) for option." "$___yf_varname" "$___yf_opt_prop_value"
+						__yf_set_error
+					else
+						__yf_set_option_item "$___yf_opt_prop_name" "$___yf_opt_num" "$___yf_opt_prop_value"
+						___yf_has_errorcallback=1
+					fi
+					;;
+				(*)
+					__yf_set_error
+					__yf_option_error 'unknoptdecl'
+					;;
+			esac
+		done
+		if [ "$___yf_has_multioccur" -eq 1 ] && [ "$___yf_has_arg" -eq 1 ] && [ "$___yf_has_callback" -eq 0 ]; then
+			__yf_errmsg "declare_option - for option '%s': For multiple occurrences of an option with (optional or mandatory) argument, a callback function is required." "$___yf_varname"
+			__yf_set_error
+		fi
+		[ "$___yf_has_maxoccur" = '1' ] || __yf_set_option_item 'maxoccur' "$___yf_opt_num" '1'
+		__yf_set_option_item 'occurred' "$___yf_opt_num" '0'
+		if [ "$___yf_has_arg" -eq 0 ] && [ "$___yf_has_arg_type" -eq 1 ]; then
+			__yf_errmsg "declare_option - for option '%s': Property '%s' is only valid for options with an (optional or mandatory) argument." "$___yf_varname" 'arg_type'
+			__yf_set_error
+		fi
+		[ "$___yf_has_arg" = '1' ] && [ "$___yf_has_arg_type" = '0' ] && __yf_set_option_item 'arg_type' "$___yf_opt_num" 'alnum'
+		if [ "$___yf_has_errorcallback" = '0' ]; then
+			__yf_set_option_item 'error_cb' "$___yf_opt_num" "$__yf_options_error_default_callback"
+		fi
+		unset ___yf_var
+		unset ___yf_varname
+		unset ___yf_opt_num
+		unset ___yf_has_maxoccur
+		unset ___yf_has_arg
+		unset ___yf_has_arg_type
+		unset ___yf_has_errorcallback
+		unset ___yf_has_callback
+		__yf_options_count=$(( __yf_options_count + 1 ))
+	}
+
+	__yf_declare_debug_option()
+	{
+		__yf_declare_option 'debug' callback='set_debug_callback' short='d' long='debug' maxoccur='1' desc="$(__yf_internal_get_localized 'HLP_option_debug')"
+	}
+	set_debug_callback()
+	{
+		__yf_set_debug
+		printf -- '__yf_option_debug=1\n'
+		__yf_debug "enabled debug output due to specified option '%s'\n" "$2"
+	}
+
+	__yf_declare_help_option()
+	{
+		__yf_declare_option 'help' callback='help_callback' short='h' long='help' maxoccur='1' desc="$(__yf_internal_get_localized 'HLP_option_help')"
+	}
+	help_callback()
+	{
+		__yf_debug "display usage help and exit due to specified option '%s'" "$2"
+#		__yf_usage force_color | __yf_show_with_less 1>&8
+		__yf_usage force_color 1>&8
+		printf -- 'exit 0\n'
+		return 1
+	}
+
+	__yf_declare_version_option()
+	{
+		__yf_declare_option 'version' callback='version_callback' short='V' long='version' maxoccur='1' desc="$(__yf_internal_get_localized 'HLP_option_version')"
+	}
+	version_callback()
+	{
+		__yf_show_version 1>&8
+		__yf_show_copyright 1>&8
+		__yf_show_license 1>&8
+		printf -- 'exit 0\n'
+		__yf_debug "display version info and exit due to specified option '%s'" "$2"
+		return 1
+	}
+
+	__yf_prepare_options()
+	{
+		__yf_options_count=0
+		! __yf_has_function 'declare_options' && __yf_nl_err && __yf_internal_emsg 'ERR_missing_declare_options' && __yf_nl_err && exit 1
+		declare_options
+		___yf_rc=$?
+		[ "$___yf_rc" = '1' ] && __yf_set_error || printf -- '__yf_options_count=%u;\n' "$__yf_options_count"
+		eval "unset ___yf_rc && return $___yf_rc"
+	}
+	__yf_prepare_options__="eval __yf_options=\"\$(__yf_prepare_options)\" ; [ -z \"\$__yf_options\" ] && exit 1 || eval \"\$__yf_options\" ; unset __yf_options"
+
+	__yf_is_short_option()
+	{
+		[ "$(expr \( "$1" : '\(-\)[a-zA-Z0-9?]\+' \) )" = '-' ] && return 0 || return 1
+	}
+	__yf_is_long_option()
+	{
+		[ -n "$(expr \( "$1" : '\(--[^=]\+\)' \) )" ] && return 0 || return 1
+	}
+	__yf_is_option()
+	{
+		[ "$1" = '--' ] && return 1
+		__yf_is_short_option "$1" && return 0
+		[ "$__yf_use_posix_options" = '1' ] && return 1
+		__yf_is_long_option "$1" && return 0
+		return 1
+	}
+	__yf_has_option_argument()
+	{
+		[ -n "$(__yf_get_option_item 'arg_type' "$1")" ] && return 0 || return 1
+	}
+
+	__yf_has_option_callback()
+	{
+		[ -n "$(__yf_get_option_item 'callback' "$1")" ] && return 0 || return 1
+	}
+
+	__yf_has_option_error_callback()
+	{
+		[ -n "$(__yf_get_option_item 'error_cb' "$1")" ] && return 0 || return 1
+	}
+
+	__yf_internal_option_error_callback()
+	{
+		___yf_error="$1"
+		shift
+		case "$___yf_error" in
+			('unknopt')
+				# unknown option found in 'process_options'
+				__yf_internal_emsg 'ERR_option_unknopt' "$2"
+				;;
+			('ambgopt')
+				# ambiguous option found in 'process_options'
+				__yf_internal_emsg 'ERR_option_ambiguous' "$2"
+				;;
+			('missarg')
+				# missing mandatory argument detected in 'process_options'
+				__yf_internal_emsg 'ERR_option_missing_argument' "$3" "$4"
+				;;
+			('invmultopt')
+				# too much occurrences of an option detected in 'process_options'
+				__yf_internal_emsg 'ERR_option_occurrences' "$2" "$4"
+				;;
+			('invoptdecl')
+				# invalid option property value detected in 'declare_options'
+				__yf_internal_emsg 'ERR_option_invalid_optioN_decl' "$2" "$3" "$2"
+				;;
+			('invvalue')
+				# option value doesn't match expected format in 'process_options'
+				__yf_internal_emsg "$(printf 'ERR_option_validation_%s' "$2")" "$3"
+				;;
+			(*)
+				# invalid/unhandled error name
+				__yf_internal_emsg "ERR_option_inverrorname" "$___yf_error"
+				;;
+		esac
+		unset ___yf_error
+	}
+
+	__yf_option_error()
+	{
+		if [ "$2" = "0" ] || ! __yf_has_option_error_callback "$2"; then
+			eval ___yf_result=\"\$($__yf_options_error_default_callback "$@")\"
+		else
+			___yf_error_callback="$(__yf_get_option_item 'error_cb' "$2")"
+			eval ___yf_result=\"\$($___yf_error_callback "$@")\"
+			unset ___yf_error_callback
+		fi
+		unset ___yf_result
+	}
+	__yf_options_error_default_callback="__yf_internal_option_error_callback"
+
+	__yf_set_option_value()
+	{
+		if __yf_has_option_callback "$1"; then
+			eval \$\(__yf_get_option_item 'callback' \"$1\"\) "$@"
+			return $?
+		else
+			___yf_varname="$(__yf_get_option_item 'varname' "$1")"
+			___yf_argument="$(__yf_get_option_item 'optional_arg' "$1")"
+			___yf_maxoccur="$(__yf_get_option_item 'maxoccur' "$1")"
+			if [ "$4" -gt "$___yf_maxoccur" ]; then
+				__yf_option_error 'invmultopt' "$1" "$2" "$4" "$___yf_max_occur"
+				return 1
+			fi
+			[ -z "$___yf_argument" ] && ___yf_argument="$(__yf_get_option_item 'mandatory_arg' "$1")" && ___yf_arg_is_mandatory=1
+			if [ -z "$___yf_argument" ]; then
+				printf -- '__yf_option_%s=%u\n' "$___yf_varname" "$4"
+			else
+				if [ "$___yf_arg_is_mandatory" -eq 1 ]; then
+					__yf_option_error 'missarg' "$1" "$___yf_varname" "$___yf_argument" "$2"
+					return 1
+				else
+					__yf_debug "Using mask '%s' for validation of option argument '%s'\n" "$(__yf_get_arg_type_mask "$(__yf_get_option_item 'arg_type' "$1")")" "$5"
+					if __yf_check_argument_value "$1" "$5"; then
+						printf -- "__yf_option_%s='%s'\n" "$___yf_varname" "$5"
+					else
+						__yf_option_error 'invvalue' "$1" "$2" "$5"
+						return 1
+					fi
+				fi
+			fi
+		fi
+		unset ___yf_varname
+		unset ___yf_argument
+		unset ___yf_arg_is_mandatory
+		unset ___yf_maxoccur
+	}
+
+	__yf_set_parameter_item()
+	{
+		printf -- "__yf_parameter_%u='%s'\n" "$1" "$2"
+	}
+
+	__yf_is_long_option_unique()
+	{
+		___yf_len=${#1}
+		___yf_opt_ind=1
+		___yf_opt_found=0
+		___yf_rc=1
+		while [ "$___yf_opt_ind" -le "$__yf_options_count" ]; do
+			___yf_long="$(__yf_get_option_item 'long' "$___yf_opt_ind")"
+			[ "$___yf_len" -gt "${#___yf_long}" ] && ___yf_opt_ind=$(( ___yf_opt_ind + 1 )) && continue
+			___yf_long="$(expr \( "$___yf_long" : "\(.\{$___yf_len\}\).*" \) )"
+			if [ "$___yf_long" = "$1" ]; then
+				if [ "$___yf_opt_found" -eq 0 ]; then
+					___yf_opt_found=$___yf_opt_ind
+				else
+					break
+				fi
+			fi
+			___yf_opt_ind=$(( ___yf_opt_ind + 1 ))
+		done
+		if [ "$___yf_opt_ind" -gt "$__yf_options_count" ]; then
+			printf -- '%u\n' "$___yf_opt_found"
+			___yf_rc=0
+		else
+			printf -- "ambiguous\n"
+			___yf_rc=1
+		fi
+		unset ___yf_len
+		unset ___yf_opt_ind
+		unset ___yf_opt_found
+		unset ___yf_long
+		eval "unset ___yf_rc && return $___yf_rc"
+	}
+
+	__yf_count_option_occurrence()
+	{
+		__yf_set_option_item 'occurred' "$___yf_index" "$(( "$(__yf_get_option_item 'occurred' "$___yf_index" '0')" + 1 ))"
+	}
+
+	__yf_process_options()
+	{
+		___yf_exit=0
+		___yf_no_callback=0
+		___yf_item_index=0
+		___yf_parm_count=0
+		___yf_end_of_options=-1
+		__yf_use_posix_options=$(__yf_ui_feature 'posix-options' && printf -- '1' || printf -- '0')
+		while [ "$___yf_exit" = '0' ] && [ "$___yf_item_index" -lt "$__yf_cmdline_items_count" ]; do
+			___yf_item_index=$(( ___yf_item_index + 1 ))
+			eval "set -- \"\$__yf_cmdline_item_$___yf_item_index\" \"\$__yf_cmdline_item_$(( ___yf_item_index + 1 ))\""
+			unset ___yf_options_value
+			if __yf_is_short_option "$1"; then
+				___yf_options_string="$(expr \( "$1" : '-\(.*\)' \) )"
+				while [ -n "$___yf_options_string" ]; do
+					___yf_options_short="$(expr \( "$___yf_options_string" : '\(.\).*' \) )"
+					___yf_options_string="$(expr \( "$___yf_options_string" : '.\(.*\)' \) )"
+					eval "$(__yf_count_option_occurrence "$___yf_index")"
+					___yf_index=$(__yf_get_short_option_index "$___yf_options_short")
+					if [ "$___yf_index" = '0' ]; then
+						__yf_option_error 'unknopt' 0 "$___yf_options_short"
+						___yf_exit=1
+						break
+					else
+						___yf_occurred="$(__yf_get_option_item 'occurred' "$___yf_index" '0')"
+						___yf_occurred=$(( ___yf_occurred + 1 ))
+						eval "$(__yf_set_option_item 'occurred' "$___yf_index" "$___yf_occurred")"
+						if __yf_has_option_argument "$___yf_index"; then
+							if [ -n "$___yf_options_string" ];then
+								___yf_options_value="$___yf_options_string"
+								unset ___yf_options_string
+							else
+								if ! __yf_is_option "$2" && ! [ "$2" = '--' ]; then
+									___yf_options_value="$2"
+									___yf_item_index=$(( ___yf_item_index + 1 ))
+								fi
+							fi
+						fi
+						if ! __yf_set_option_value "$___yf_index" "$(__yf_get_option_item 'short' "$___yf_index")" 'short' "$___yf_occurred" "$___yf_options_value"; then
+							___yf_exit=1
+						fi
+					fi
+				done
+			elif [ "$1" = '--' ]; then
+				___yf_end_of_options=$(( ___yf_item_index + 1 ))
+			elif [ "$__yf_use_posix_options" = '1' ]; then
+				___yf_end_of_options=$___yf_item_index
+			elif __yf_is_long_option "$1"; then
+				___yf_options_string="$(expr \( "$1" : '--\([^=]*\)=\?.*' \) )"
+				[ "$(expr \( "$1" : '[^=]*\(=\).*' \) )" = '=' ] && ___yf_options_has_value=1 || ___yf_options_has_value=0
+				___yf_options_value="$(expr \( "$1" : '[^=]*=\(.*\)' \) )"
+				___yf_index=$(__yf_is_long_option_unique "$___yf_options_string")
+				if [ "$___yf_index" = 'ambiguous' ]; then
+					__yf_option_error 'ambgopt' 0 "$___yf_options_string"
+					___yf_exit=1
+				elif [ "$___yf_index" = '0' ]; then
+					__yf_option_error 'unknopt' 0 "$___yf_options_string"
+					___yf_exit=1
+				else
+					eval "$(__yf_count_option_occurrence "$___yf_index")"
+					if [ "$___yf_options_has_value" = '0' ] && __yf_has_option_argument "$___yf_index"; then
+						if ! __yf_is_option "$2" && ! [ "$2" = '--' ]; then
+							___yf_options_value="$2"
+							___yf_options_has_value=1
+							___yf_item_index=$(( ___yf_item_index + 1 ))
+						fi
+					fi
+					if ! __yf_set_option_value "$___yf_index" "$(__yf_get_option_item 'long' "$___yf_index")" 'long' "$___yf_occurred" "$___yf_options_value"; then
+						___yf_exit=1
+					fi
+				fi
+			else
+				___yf_parm_count=$(( ___yf_parm_count + 1 ))
+				__yf_set_parameter_item "$___yf_parm_count" "$1"
+			fi
+			if ! [ "$___yf_end_of_options" = '-1' ]; then
+				___yf_item_index=$___yf_end_of_options
+				while [ "$___yf_item_index" -lt "$__yf_cmdline_items_count" ]; do
+					___yf_parm_count=$(( ___yf_parm_count + 1 ))
+					__yf_set_parameter_item "$___yf_parm_count" "$(printf -- '\$__yf_cmdline_item_%u' "$___yf_item_index")"
+					___yf_item_index=$(( ___yf_item_index + 1 ))
+				done
+			fi
+		done
+		printf -- '__yf_parameters_count=%u\n' "$___yf_parm_count"
+		unset ___yf_parm_count
+		unset ___yf_options_string
+		unset ___yf_opt
+		unset ___yf_options_value
+		unset ___yf_options_has_value
+		unset ___yf_options_short
+		unset ___yf_options_more
+		unset ___yf_end_of_options
+		unset ___yf_occurred
+		unset ___yf_varname
+		unset ___yf_short
+		unset ___yf_long
+		unset ___yf_index
+		unset ___yf_item_index
+		unset ___yf_rc
+		eval "unset ___yf_exit && return $___yf_exit"
+	}
+
+	__yf_process_options__="eval exec 9>&2 8>&1 ; ___yf_options_processing=\"\$(__yf_process_options ; [ \"\$?\" -ne 0 ] && printf -- \"__yf_set_error 1 ;\")\" ; exec 9>&- 8>&- ; eval \"\$___yf_options_processing\" ; unset ___yf_options_processing"
+fi
+
+__yf_save_command_line__="eval ___yf_cmdline_processing=\"\$(unset ___yf_index ; while [ \$# -gt 0 ]; do ___yf_index=\$(( ___yf_index + 1 )) ; printf -- \"__yf_cmdline_item_%u=\\\"%s\\\"\\\n\" \"\$___yf_index\" \"\$(__yf_escape_specials \"\$1\")\" ; shift ; done ; printf -- \"__yf_cmdline_items_count=%u\" "\$___yf_index")\"; eval \"\$___yf_cmdline_processing\" ; unset ___yf_cmdline_processing "
+#######################################################################################################
+#                                                                                                     #
+# functions to render markdown text to ANSI sequences                                                 #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'markdown'; then
+	__yf_has_markdown_support=1
+	# not yet released to the public version, ANSI color/font support on terminal needs to be extended a bit
+fi
+#######################################################################################################
+#                                                                                                     #
+# temporary directory creation                                                                        #
+#                                                                                                     #
+#######################################################################################################
+__yf_get_random_name()
+{
+	[ -r /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && return 0
+	__yf_aflush command -v md5sum && printf -- '%s-%u-%.12s' "$(printf -- '%x' "$(date +%s)")" "$$" "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | md5sum | sed -n -e 's|^\([0-9a-fA-F]*\).*|\1|p')" && return 0
+	__yf_aflush command -v sha1sum && printf -- '%s-%u-%.12s' "$(printf -- '%x' "$(date +%s)")" "$$" "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | sha1sum | sed -n -e 's|^\([0-9a-fA-F]*\).*|\1|p')" && return 0
+	__yf_aflush command -v sha256sum && printf -- '%s-%u-%.12s' "$(printf -- '%x' "$(date +%s)")" "$$" "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | sha256sum | sed -n -e 's|^\([0-9a-fA-F]*\).*|\1|p')" && return 0
+	__yf_aflush command -v cksum && printf -- '%s-%u-%s' "$(printf -- '%x' "$(date +%s)")" "$$" "$(printf -- '%x' "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | cksum | sed -n -e 's|^\([0-9a-fA-F]*\).*|\1|p')")" && return 0
+	unset ___yf_sum
+	for ___yf_var in $(cat /proc/self/stat); do	[ "$(expr \( "$___yf_var" : '\([0-9]*\)' \) )" = "$___yf_var" ] && ___yf_sum=$(( ___yf_sum + ___yf_var )); done
+	printf -- '%s-%u-%.12s' "$(printf -- '%x' "$(date +%s)")" "$$" "$(expr \( "$___yf_sum" : '.*\(.\{12\}\)$' \) )"
+}
+__yf_get_tempdir()
+{
+	___yf_dir="${YF_TMPDIR}"
+	___yf_dir="${___yf_dir:-$TMPDIR}"
+	___yf_dir="${___yf_dir:-$TMP}"
+	___yf_dir="${___yf_dir:-/tmp}"
+	___yf_dir="${___yf_dir}/$(__yf_get_random_name)"
+	while [ -d "$___yf_dir" ]; do ___yf_dir="${___yf_dir}_$$"; done
+	! __yf_eflush mkdir -p "$___yf_dir" && unset ___yf_dir && return 1
+	printf -- "___yf_temp_dir='%s'" "$___yf_dir"
+	unset ___yf_dir
+}
+__yf_get_tempname()
+{
+	printf -- '%s/%s' "$___yf_temp_dir" "$(__yf_get_random_name)"
+}
+__yf_get_tempdir__="eval $(__yf_get_tempdir)"
+#######################################################################################################
+#                                                                                                     #
+# prerequisite checks                                                                                 #
+#                                                                                                     #
+#######################################################################################################
+__yf_check_required_command()
+(
+	IFS=:
+	set -- $1
+	for ___yf_cmd_item in $@; do
+		__yf_oflush command -v -- $___yf_cmd_item && unset ___yf_cmd_item && exit 0
+	done
+	unset ___yf_cmd_item
+	exit 1
+)
+__yf_check_required_commands()
+{
+	for ___yf_cmd in $@; do
+		__yf_check_required_command $___yf_cmd && continue
+		__yf_internal_emsg 'ERR_missing_command' "$(printf -- '%s\n' "$___yf_cmd" | sed -e 's|:| or |g')"
+		unset ___yf_cmd
+		return 1
+	done
+	unset ___yf_cmd
+	return 0
+}
+__yf_check_required_commands__="eval __yf_check_required_commands \"\$__yf_required_commands\" || exit 1"
+
+__yf_check_required_script()
+{
+: #	TODO: add function code
+}
+__yf_check_required_scripts()
+{
+: #	TODO: add function code
+}
+__yf_check_required_scripts__="eval __yf_check_required_scripts \"\$__yf_required_scripts\" || exit 1"
+#######################################################################################################
+#                                                                                                     #
+# internal message definitions                                                                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# english                                                                                             #
+#                                                                                                     #
+#######################################################################################################
+eval $(
+	__yf_int_msg 'en' 'ERR_missing_command'         'required_commands: Missing a required command: %s.' ;
+	__yf_int_msg 'en' 'ERR_missing_script'          'required_scripts: Missing another needed shell script: %s.'
+	__yf_int_msg 'en' 'ERR_is_terminal'             'check_terminal: %s is a terminal device. %s'
+	__yf_int_msg 'en' 'ERR_missing_usage_text'      "usage: Missing callback function 'usage_text' to display help screen."
+	__yf_int_msg 'en' 'ERR_missing_declare_options' "prepare_options: Missing callback function 'declare_options', but option processing was requested."
+	__yf_int_msg 'en' 'ERR_invalid_option_decl'		"prepare_options: Invalid value '%s' for '%s' property of option '%s'."
+	__yf_int_msg 'en' 'ERR_unknown_option_prop'		"%s: Unknown option property '%s' found for option '%s' - property will be ignored, but error flag has been set."
+	__yf_int_msg 'en' 'ERR_option_unknopt'			"process_options: Unknown option '%s' specified."
+	__yf_int_msg 'en' 'ERR_option_invtype'			"validate_option: Invalid 'arg_type' value '%s' found for option '%s'."
+	__yf_int_msg 'en' 'ERR_option_ambiguous'		"process_options: The specified option '%s' is ambiguous."
+	__yf_int_msg 'en' 'ERR_option_missing_arg'		"process_options: Missing the mandatory argument value (%s) for option '%s'."
+	__yf_int_msg 'en' 'ERR_option_occurrences'		"process_options: Option '%s' was specified too often (maxoccur=%u)."
+	__yf_int_msg 'en' 'ERR_option_inverrorname'		"options_error_handler: Invalid error handler reason '%s'."
+	__yf_int_msg 'en' 'HLP_purpose'                 'Purpose'
+	__yf_int_msg 'en' 'HLP_usage'                   'Usage'
+	__yf_int_msg 'en' 'HLP_supported_options'       "Supported $(__yf_undl 'options') are:"
+	__yf_int_msg 'en' 'HLP_option_help'             'show this information and exit (overrules all other options)'
+	__yf_int_msg 'en' 'HLP_option_version'          'show version and exit (overrules all other options)'
+	__yf_int_msg 'en' 'HLP_option_debug'            'display debug info on STDERR'
+)
+#######################################################################################################
+#                                                                                                     #
+# german                                                                                              #
+#                                                                                                     #
+#######################################################################################################
+if __yf_ui_feature 'l10n' && [ "$__yf_language__" = 'de' ]; then
+	eval $(
+		__yf_int_msg 'de' 'ERR_missing_command'         'Ein benötigtes Programm fehlt: %s.'
+		__yf_int_msg 'de' 'ERR_missing_script'          'Ein weiteres benötigtes Skript ist nicht vorhanden: %s.'
+		__yf_int_msg 'de' 'ERR_is_terminal'             '%s ist ein Terminal. %s'
+		__yf_int_msg 'de' 'ERR_missing_usage_text'      "Die Funktion 'usage_text' zur Anzeige der Hilfe fehlt."
+		__yf_int_msg 'de' 'ERR_missing_declare_options' "Die Funktion 'declare_options' für die Verarbeitung der Kommandozeilen-Parameter fehlt."
+		__yf_int_msg 'de' 'ERR_unknown_option'          "Die angegebene Option '%s' ist unbekannt."
+		__yf_int_msg 'de' 'HLP_purpose'                 'Zweck'
+		__yf_int_msg 'de' 'HLP_usage'                   'Aufruf'
+		__yf_int_msg 'de' 'HLP_supported_options'       "Verfügbare $(__yf_undl 'Optionen') sind:"
+		__yf_int_msg 'de' 'HLP_option_help'             '(ausschließliche) Anzeige dieser Hilfe-Information'
+		__yf_int_msg 'de' 'HLP_option_version'          '(ausschließliche) Anzeige der Versionsinformation'
+		__yf_int_msg 'de' 'HLP_option_debug'            'zusätzliche Debug-Informationen auf STDERR ausgeben'
+	)
+fi
+#######################################################################################################
+#                                                                                                     #
+# error propagation                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+__yf_set_error()
+{
+	__yf_error_flag=1
+	__yf_exit_code=${1:-1}
+}
+__yf_exit_on_error__="eval [ \"\$__yf_exit_on_error_flag_set\" = '1' ] && ! [ \"\$__yf_error_flag\" = '0' ] && \$__yf_exit__"
+#######################################################################################################
+#                                                                                                     #
+# exit function - remove as much - framework related - variables as possible                          #
+#                                                                                                     #
+#######################################################################################################
+__yf_exit_callback()
+{
+	if __yf_has_function 'exit_callback'; then
+		exit_callback "$___yf_exit"
+	fi
+}
+__yf_cleanup_vars__="for ___yf_var in \$(set | sed -n -e 's|^\(__[_]\?[Yy][Ff]_[^=]*\)=.*|\1|p'); do [ \"\$___yf_var\" = \"___yf_exit\" ] && continue; unset \$___yf_var; done;"
+__yf_exit__="eval ___yf_exit=\$__yf_exit_code; __yf_exit_callback; eval \$__yf_cleanup_vars__; unset ___yf_var; exit \$___yf_exit"
+trap "set | grep -q '__yf_exit__=.*' 2>/dev/null && \$__yf_exit__" EXIT
+$__yf_restore_trace_setting__
+#######################################################################################################
+#                                                                                                     #
+# end of YourFritz UI framework inclusions                                                            #
+#                                                                                                     #
+#################################################################################################YF_UI#
+if [ -n "$YF_UI_GENERATE_FILE" ]; then
+	___yf_input="${__YF_SCRIPT_DIR:-.}/yf_ui"
+	___yf_output="$YF_UI_GENERATE_FILE"
+	__yf_eflush rm $___yf_output
+	__yf_eflush touch $___yf_output
+	exec 9>&1
+	exec 1>"$___yf_output"
+	printf -- '# YourFritz UI Framework Version: %s\n' "$(sed -n -e 's|^#.*, version \([0-9\.]*\).*#\$|\1|p' "$___yf_input")"
+	printf -- '# SPDX-License-Identifier: LicenseRef-limited-license-see-text-below\n'
+	printf -- '# Generated as: %s\n' "$___yf_output"
+	printf -- '# Generated at: %s\n' "$(date)"
+	printf -- '# Generated with: YF_UI_FEATURES=''%s''\n' "$YF_UI_FEATURES"
+	printf -- '# Autoupdate: yes\n'
+	printf -- '# vim: set tabstop=4 syntax=sh :\n'
+	___yf_first_line="$(sed -n -e '/^# SPDX.*$/=' -- "$___yf_input")"
+	___yf_last_line="$(sed -n -e '/^#*YF_UI#$/=' -- "$___yf_input")"
+	___yf_first_line=$(( ___yf_first_line + 1 ))
+	sed -n -e "$___yf_first_line,/^#*\$/p" -- "$___yf_input" | sed -n -e '/^#*VER#$/,$p' | sed -e '/^#*\(VER\)#/s|VER|###|'
+	sed -n -e "${___yf_first_line},${___yf_last_line}p" -- "$___yf_input" | ( [ "$__YF_UI_KEEP_COMMENTS" = '1' ] && cat - || ( sed -e '/^#.*/d'; sed -n -e "$(( ___yf_last_line - 4 )),${___yf_last_line}p" "$___yf_input" ) )
+	exec 1>&-
+	exec 1>&9 9>&-
+	unset ___yf_input
+	unset ___yf_output
+fi
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################

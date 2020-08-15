@@ -1,6 +1,12 @@
 #! /bin/true
-# vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
-# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# ATTENTION:                                                                                          #
+# This script will not run as "command", include it with a dot (.) command into your script.          #
+#                                                                                                     #
+#######################################################################################################
+# vim: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
+# SPDX-License-Identifier: LicenseRef-limited-license-see-text-below
 ###################################################################################################VER#
 #                                                                                                     #
 # YourFritz Shell Script Library generator, version 0.8.3                                             #
@@ -9,7 +15,7 @@
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2016-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2016-2020 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -287,7 +293,7 @@ else
 	rm "$YF_SCRIPT_GENERATE_FILE" 2>/dev/null
 	cat >>"$YF_SCRIPT_GENERATE_FILE" <<EOD
 # YourFritz Shell Script Library Version: $YF_SCRIPTLIB_VERSION
-# SPDX-License-Identifier: GPL-2.0-or-later WITH restriction to combine it with a license file and point out its source project, if it gets distributed further
+# SPDX-License-Identifier: LicenseRef-limited-license-see-text-below
 # Generated as: $YF_SCRIPT_GENERATE_FILE
 # Generated at: $(date 2>/dev/null)
 # Generated with: YF_SCRIPT_FUNCTIONS="$YF_SCRIPT_FUNCTIONS"
