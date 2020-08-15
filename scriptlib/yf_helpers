@@ -1,57 +1,79 @@
 #! /bin/true
 # vi: set tabstop=4 syntax=sh : # colorize it in 'vi' and use shorter tabstops
 # SPDX-License-Identifier: GPL-2.0-or-later
-#######################################################################################
-#                                                                                     #
-# summarize some often needed helper (shell) functions, which provide replacements    #
-# of missing features in the very limited environment of FRITZ!OS with only a small   #
-# selection of busybox applets and without many "generally available" commands like   #
-# "awk" or "od" and so on ...                                                         #
-#                                                                                     #
-# Surely some functions may be implemented in a more effective manner ... but the     #
-# purpose of this file is to provide a very basic implementation of such functions    #
-# with as few dependencies as possible and the normal shell in a busybox-based        #
-# environment is "ash", which has limited capabilities too.                           #
-#                                                                                     #
-# If possible, additional attention was paid to make the functions POSIX compatible   #
-# so they may be used from a more limited shell like 'dash'.                          #
-#                                                                                     #
-# If nothing else is mentioned for a function, it's designed to run from any platform #
-# supporting BusyBox - it should be possible to use these functions from MIPS, ARMv6  #
-# (Puma6), ARMv7 (Raspberry Pi) and x86 (Puma6/x86).                                  #
-#                                                                                     #
-# Copyright (C) 2014-2020 P.Hämmerlein (http://www.yourfritz.de)                      #
-#                                                                                     #
-# This program is free software; you can redistribute it and/or modify it under the   #
-# terms of the GNU General Public License as published by the Free Software           #
-# Foundation; either version 2 of the License, or (at your option) any later version. #
-#                                                                                     #
-# This program is distributed in the hope that it will be useful,but WITHOUT ANY      #
-# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A     #
-# PARTICULAR PURPOSE. See the GNU General Public License under                        #
-#                                                                                     #
-# http://www.gnu.org/licenses/gpl-2.0.html                                            #
-#                                                                                     #
-# for more details.                                                                   #
-#                                                                                     #
-#######################################################################################
-#                                                                                     #
-# internal helpers, used to solve dependencies and create an include file with the    #
-# really needed functions                                                             #
-#                                                                                     #
-#######################################################################################
-#                                                                                     #
-# Dependency markers are:                                                             #
-#                                                                                     #
-# U: - needed utilities, these commands MUST be present                               #
-# W: - weak utility dependencies, missing commands will be emulated (that's slow)     #
-# I: - other helper scripts to be included                                            #
-# F: - needed functions; used to build a dependency tree to include only the really   #
-#      needed function definitions                                                    #
-# K: - subset keywords for this file; it will be included, if one of them is present  #
-#      in the YF_SCRIPT_SUBSETS variable                                              #
-#                                                                                     #
-#######################################################################################
+###################################################################################################VER#
+#                                                                                                     #
+# YourFritz Shell Script Library generator, version 0.8.3                                             #
+#                                                                                                     #
+# This script is part of the YourFritz project from https://github.com/PeterPawn/YourFritz.           #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# The YourFritz Shell Script Library functions are licensed according to the following terms:         #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including library functions in your own script(s) permanently, to deliver only one single #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
+# this section HAS TO BE prefixed by its own header, like it's created by this script AND the end of  #
+# this section HAS TO BE marked clearly.                                                              #
+#                                                                                                     #
+# If you've changed anything to the content of library functions, these changes HAVE TO BE marked     #
+# with the name of author AND the date of change AND a short explanation, what was changed (if it's   #
+# not obvious).                                                                                       #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This library summarizes some often needed helper (shell) functions, which provide replacements of   #
+# missing features in an environment, where only a POSIX compatible shell is available and the set of #
+# available commands is limited to (mostly) POSIX compatible commands and options, too.               #
+#                                                                                                     #
+# Surely some functions may be implemented in a more effective manner ... but the purpose of this     #
+# library is to provide a very basic implementation of such functions with as few dependencies as     #
+# possible.                                                                                           #
+#                                                                                                     #
+# If nothing else is mentioned for a function, it's designed to run from any platform supporting      #
+# BusyBox's 'ash' or even Debian's 'dash' shell and it should be possible to use these functions from #
+# MIPS, ARMv6 (Puma6), ARMv7 (Raspberry Pi) and x86/x86_64 (Puma6/x86) platforms.                     #
+#                                                                                                     #
+# For a short description, how to include this library into your own scripts, visit the 'README.md'   #
+# file from: https://github.com/PeterPawn/YourFritz/blob/master/scriptlib/README.md                   #
+#                                                                                                     #
+#######################################################################################################
+YF_SCRIPTLIB_VERSION=0.8.3
+#######################################################################################################
+#                                                                                                     #
+# internal helpers, used to solve dependencies and create an include file with the really needed      #
+# functions                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# Dependency markers are:                                                                             #
+#                                                                                                     #
+# U: - needed utilities, these commands MUST be present                                               #
+# W: - weak utility dependencies, missing commands will be emulated (that's slow)                     #
+# I: - other helper scripts to be included                                                            #
+# F: - needed functions; used to build a dependency tree to include only the really                   #
+#      needed function definitions                                                                    #
+# K: - subset keywords for this file; it will be included, if one of them is present                  #
+#      in the YF_SCRIPT_SUBSETS variable                                                              #
+#                                                                                                     #
+#######################################################################################################
 __yf_helpers_exit()
 (
 	[ $SHLVL -le 3 ] && printf "return" || printf "exit"
@@ -233,11 +255,11 @@ __yf_helpers_check_command()
 		__yf_helpers_message W "$(printf "Missing '%s' utility, it's needed by one or more imported functions." "$(__yf_helpers_bold "$cmd")")"
 	return 1
 )
-#######################################################################################
-#                                                                                     #
-# check prerequisites                                                                 #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# check prerequisites                                                                                 #
+#                                                                                                     #
+#######################################################################################################
 [ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_start=$(date +%s)
 __YF_SCRIPT_DIR="${YF_SCRIPT_DIR:-.}"
 __YF_SCRIPT_FUNCTIONS_DIR="$__YF_SCRIPT_DIR/functions"
@@ -248,22 +270,69 @@ for __yf_temp in ${__yf_helpers_needed_commands}; do
 	__yf_helpers_check_command "${__yf_temp}" || eval $(__yf_helpers_exit) 130
 done
 [ -d "${__YF_SCRIPT_FUNCTIONS_DIR}" ] || __yf_helpers_message F "$(printf "Missing helpers function directory '%s' - please set YF_SCRIPT_DIR to the appropriate path (the library base directory)." "$(__yf_helpers_bold "${__YF_SCRIPT_FUNCTIONS_DIR}")")"
-#######################################################################################
-#                                                                                     #
-# check automatic function assembly                                                   #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# check automatic function assembly                                                                   #
+#                                                                                                     #
+#######################################################################################################
 [ "$YF_SCRIPT_SAVE" = "1" ] && [ -z "$YF_SCRIPT_GENERATE_FILE" ] && YF_SCRIPT_GENERATE_FILE="$0.yf_scriptlib"
-#######################################################################################
-#                                                                                     #
-# include wanted functions                                                            #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# include wanted functions                                                                            #
+#                                                                                                     #
+#######################################################################################################
 if [ -z "${YF_SCRIPT_GENERATE_FILE}" ]; then
 	[ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_message I "$(printf "include functions into the current shell instance with the dot (.) command\n")" 1>&2
 else
 	rm "$YF_SCRIPT_GENERATE_FILE" 2>/dev/null
-	printf "# SPDX-License-Identifier: GPL-2.0-or-later WITH restriction to combine it with a license file and point out its source project, if it gets distributed further\n" >"$YF_SCRIPT_GENERATE_FILE"
+	cat >>"$YF_SCRIPT_GENERATE_FILE" <<EOD
+# YourFritz Shell Script Library Version: $YF_SCRIPTLIB_VERSION
+# SPDX-License-Identifier: GPL-2.0-or-later WITH restriction to combine it with a license file and point out its source project, if it gets distributed further
+# Generated as: $YF_SCRIPT_GENERATE_FILE
+# Generated at: $(date 2>/dev/null)
+# Generated with: YF_SCRIPT_FUNCTIONS="$YF_SCRIPT_FUNCTIONS"
+# Generated with: YF_SCRIPT_SUBSETS="$YF_SCRIPT_SUBSETS"
+# Autoupdate: yes
+# vim: set tabstop=4 syntax=sh :
+#######################################################################################################
+#                                                                                                     #
+# YourFritz Shell Script Library file, version $YF_SCRIPTLIB_VERSION                                                  #
+#                                                                                                     #
+# The functions from this script are a part of the YourFritz Shell Script Library from YourFritz      #
+# project at https://github.com/PeterPawn/YourFritz.                                                  #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# The YourFritz Shell Script Library functions are licensed according to the following terms:         #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including library functions in your own script(s) permanently, to deliver only one single #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
+# this section HAS TO BE prefixed by its own header, like it's created by yf_helpers script AND the   #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of library functions, these changes HAVE TO BE marked     #
+# with the name of author AND the date of change AND a short explanation, what was changed (if it's   #
+# not obvious).                                                                                       #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#######################################################################################################
+EOD
 	[ "$YF_HELPERS_DEBUG" = "1" ] && __yf_helpers_message I "$(printf "output shell functions file to '%s'\n" "$YF_SCRIPT_GENERATE_FILE")" 1>&2
 fi
 __yf_functions="$(__yf_helpers_find_functions)"
@@ -290,12 +359,19 @@ done
 [ "$YF_HELPERS_DEBUG" = "1" ] &&
 	__yf_helpers_message I "$(printf "checked %d mandatory commands\n" ${__yf_commands_count})" 1>&2 &&
 	__yf_helpers_message I "${__yf_commands}" 1>&2
+[ -n "$YF_SCRIPT_GENERATE_FILE" ] && cat >>"$YF_SCRIPT_GENERATE_FILE" <<'EOD'
+#######################################################################################################
+#                                                                                                     #
+# end of script library                                                                               #
+#                                                                                                     #
+##########################################################################################YF_SCRIPTLIB#
+EOD
 [ "$YF_SCRIPT_SAVE" = "1" ] && . "$YF_SCRIPT_GENERATE_FILE"
-#######################################################################################
-#                                                                                     #
-# housekeeping, remove as much unnecessary variables and functions as possible        #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# housekeeping, remove as much unnecessary variables and functions as possible                        #
+#                                                                                                     #
+#######################################################################################################
 __yf_vars="SUBSETS FUNCTIONS FUNCTIONS_DIR DIR"
 __yf_functions="check_command find_functions add_dependencies unique uniq uniqsort_inline uniq_inline string_compare contains get_line join_lines exit"
 for __yf_temp in ${__yf_functions}; do
@@ -316,8 +392,8 @@ unset -f __yf_helpers_csi
 unset -f __yf_helpers_message
 unset -v __yf_helpers_start
 unset -v __yf_temp
-#######################################################################################
-#                                                                                     #
-# end of file                                                                         #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# end of file                                                                                         #
+#                                                                                                     #
+#######################################################################################################
