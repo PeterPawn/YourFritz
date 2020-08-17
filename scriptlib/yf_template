@@ -1,0 +1,435 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: LicenseRef-limited-license-see-text-below
+#######################################################################################################
+#                                                                                                     #
+# YourFritz shell script template generator                                                           #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# yf_template, version 0.8.4                                                                          #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2020 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# The YourFritz Shell Script Library, the YourFritz UI framework functions and this script are        #
+# licensed according to the following terms:                                                          #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_SCRIPTLIB and/or YF_UI functions in your own script(s) permanently, to       #
+# deliver only one single file, you HAVE TO KEEP these functions together as one single continuous    #
+# part in your script AND this section HAS TO BE prefixed by its own header, like it's created by the #
+# generator script AND the end of this section HAS TO BE marked clearly.                              #
+#                                                                                                     #
+# If you've changed anything to the content of provided functions, these changes HAVE TO BE marked    #
+# with the name of author AND the date of change AND a short explanation, what was changed (if it's   #
+# not obvious).                                                                                       #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script may be used to create a sceleton of a new shell script, with code to include YourFritz  #
+# Shell Script library and/or YourFritz UI Framework functions or to generate (and optionally embed)  #
+# such external library files, if they do not exist already.                                          #
+#                                                                                                     #
+# There are different options, how the library files can be used. They may be included "live" (the    #
+# Shell Script library consists of many single files, each of them containing only one function and   #
+# some info regarding dependencies on other files), what takes some times on each invocation, but     #
+# assures the current content at each time, even after one of the library sources was updated.        #
+#                                                                                                     #
+# The second option is to create a special file containing the needed/wanted functions and store this #
+# file permanently on first invocation of the script. Each further call has only to include this file #
+# now - this approach saves some times, because the file is prepared only once while updating         #
+# functions from a library is still possible easily, as the "special file" has only to be deleted     #
+# after this update and it will be created again on next invocation of the script.                    #
+# Copying/redistributing such a shell script is still simple, as long as the library (source) files   #
+# are present and configured at the target system, too - we remember, that the "special files" get    #
+# (freshly) generated if they're missing at the new location.                                         #
+#                                                                                                     #
+# A third approach is to embed the library functions into the new script, replacing the code used to  #
+# include/generate/embed external library files. This way it's much harder to update any of the       #
+# embedded functions, but it's more simple to copy/redistribute the new shell script, because only    #
+# one single file is needed and the library has not to be present at the target system.               #
+#                                                                                                     #
+# The YourFritz license covers all of the solutions above, so this script generates the code needed   #
+# for all of them and the user (the author of the script code, that forms the "meat" of the new shell #
+# script at the bones of sceleton) decides with some variables, which approach is wanted.             #
+#                                                                                                     #
+# The names of these "special files" are built from the (new shell) script name, with a suffix of     #
+# ".yf_scriptlib" for YourFritz Shell Script library and a suffix of ".yf_ui" for YourFritz UI        #
+# Framework functions and these files are search for at two locations, while the first file with a    #
+# matching file name gets included, without further checks. The first location is the place, where    #
+# the current script was found - any (symbolic) links are solved to the "real file name" with a       #
+# "readlink -f" call. The second place is a sub-directory named "lib" at the location of the          #
+# YourFritz Shell Script library (the YourFritz UI framework uses the same variable name              #
+# "YF_SCRIPT_DIR" for this location) - it's less safe for these files, because name conflicts may     #
+# occur, if different shell scripts with the same base name from different locations in a system use  #
+# this place to store their "external library files" and overwrite the file(s) from others. If no     #
+# "YF_SCRIPT_DIR" value is specified, it's assumed to be the current directory (.).                   #
+#                                                                                                     #
+# If the handling of "external library files" is enabled (see "__YF_SCRIPT_LIBFILE" and               #
+# "__YF_UI_LIBFILE" below) and no existing file was found yet, the generated code checks, whether one #
+# of the upsearched locations is writable and if a writable place was found, the external library     #
+# file gets created there for further calls.                                                          #
+#                                                                                                     #
+# If already the first check succeeds (it's for the location of the script file, as described above), #
+# it seems to be possible to change the script file, too, and so embedding of needed functions is     #
+# considered/tried, if the user has set the "__YF_EMBED_LIBRARIES" value to "1". If embedding fails   #
+# for some reasons (e.g. the directory with the script file may be writable by caller, while the      #
+# script file itself could not be renamed), it will not change anything to the existing script -      #
+# specially there's no external library file kept for the next invocation, while it's still included  #
+# into the current/running instance.                                                                  #
+#                                                                                                     #
+# Embedding the code is done in these steps:                                                          #
+#                                                                                                     #
+# 1. The external library files are created, with a suffix                                            #
+#    of ".embed_lib" or ".embed_ui", at the same directory, where the original script file had been   #
+#    found. Any existing file(s) with such a name get(s) overwritten.                                 #
+# 2. The first part of the script file (up to the code used for library handling), the external       #
+#    library files (one or two, depending on the parts to include) and the rest of the script file    #
+#    (after the code used for library handling) are copied to a new file (with suffix ".embed") at    #
+#    the same directory.                                                                              #
+# 3. The lines of the resulting file are counted and compared to the expected value (part one of      #
+#    script, one or two library file(s), part two of script) - a difference leads to an abortion of   #
+#    further actions.                                                                                 #
+# 4. The owner ID, group ID and the access control flags of the new file are set as at the original   #
+#    one.                                                                                             #
+# 5. An existing file with script name and a suffix of ".yf_script" (pay attention to the difference  #
+#    between "yf_script" and "yf_scriptlib") is removed without further warnings.                     #
+# 6. The original script file is renamed, appending a suffix of ".yf_script" to the name. This will   #
+#    keep the existing inode intact and the running script instance will be able to access the        #
+#    original file furthermore, until it closes the existing descriptor.                              #
+# 7. The new file will be renamed to the original name - so it should be used starting with next      #
+#    invocation. Due to the further lack of code for library handling, the original file from step 5  #
+#    above serves as a backup copy of the original file.                                              #
+#                                                                                                     #
+# If something wents wrong from steps 1 to 5 above, the intermediate files are kept (for further      #
+# analysis of the problem), but nothing will be changed to the original script file. If at any later  #
+# time the process of library handling has to be forced again (e.g. due to an update to the own code  #
+# from this script), simply rename the backup copy to the original file name again.                   #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# script template generator function                                                                  #
+#                                                                                                     #
+#######################################################################################################
+___yf_generate_script_template()
+{
+	cat << 'EOD'
+#! /bin/sh -x
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later WITH exceptions
+#######################################################################################################
+#                                                                                                     #
+# <oneliner_with_ purpose_of_this_script>                                                             #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# <intended_name_of_script>, version <version_info>                                                   #
+#                                                                                                     #
+# Some functions from this script are from the YourFritz Shell Script library (YF_SCRIPTLIB) and/or   #
+# from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from                  #
+# https://github.com/PeterPawn/YourFritz.                                                             #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# <place_your_own_copyright_notice_here>                                                              #
+#                                                                                                     #
+# For the YourFritz Shell Script library and the YourFritz UI framework functions:                    #
+#                                                                                                     #
+# Copyright (C) 2016-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# <place_your_own_gpl_compatible_license_conditions_here>                                             #
+#                                                                                                     #
+# The YourFritz Shell Script Library and the YourFritz UI framework functions are licensed according  #
+# to the following terms:                                                                             #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
+# file, you HAVE TO KEEP these functions together as one single continous part in your script AND     #
+# this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of UI functions, these changes HAVE TO BE marked with the #
+# name of author AND the date of change AND a short explanation, what was changed (if it's not        #
+# obvious).                                                                                           #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# YourFritz shell script library and YourFritz UI inclusion                                           #
+#                                                                                                     #
+#################################################################################################EMBED#
+#                                                                                                     #
+# some variables to control the following flow of execution                                           #
+#                                                                                                     #
+#######################################################################################################
+##
+# script library directory
+#
+YF_SCRIPT_DIR="${YF_SCRIPT_DIR:-.}"
+#
+# use YourFritz script helpers (POSIX)
+#
+__YF_HELPERS=1
+#
+# use YourFritz UI helpers
+#
+__YF_UI_HELPERS=1
+#
+# supported languages must be defined before UI functions are included
+#
+YF_UI_LANGUAGES="en"
+#
+# which functions are wanted from YF_SCRIPTLIB?
+#
+#YF_SCRIPT_FUNCTIONS="<place names of needed functions here>"
+#YF_SCRIPT_SUBSETS="<place needed subset names here>"
+#
+# which UI features are used?
+#
+# UI features available:
+#
+# screen-color  - include support for colorized output on terminal devices
+# help          - include functions to display help/usage screen/version info
+# l10n          - include functions for localization of message texts
+# debug         - include debug ouput functions
+# posix-options - process only POSIX compatible options (no long option support)
+#
+YF_UI_FEATURES="screen-color help l10n debug"
+#
+# use prepared library file instead of "live generation" at runtime
+#
+__YF_SCRIPT_LIBFILE=1
+__YF_UI_LIBFILE=1
+#
+# create library files and embed them into this file (at first invocation only and if no library file was found), if script's location is writable
+#
+__YF_EMBED_LIBRARIES=0
+#######################################################################################################
+#                                                                                                     #
+# process script library initialization                                                               #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# check some basic commands needed for initialization                                                 #
+#                                                                                                     #
+#######################################################################################################
+for ___yf_cmd in readlink sed touch mv date ls chmod chown wc rm; do
+	[ -z "$(command -v -- $___yf_cmd)" ] && printf "Missing a required command: %%s.\a\n" "$___yf_cmd" && exit 127
+done
+unset ___yf_cmd
+#######################################################################################################
+#                                                                                                     #
+# determine script location and look for library file                                                 #
+#                                                                                                     #
+#######################################################################################################
+___yf_script_location="$(readlink -f -- "$0")"
+___yf_script_name="${___yf_script_location##*/}"
+___yf_script_dir="${___yf_script_location%/*}"
+#######################################################################################################
+#                                                                                                     #
+# local helper functions                                                                              #
+#                                                                                                     #
+#######################################################################################################
+___yf_is_location_writable() { [ -w "${1%/*}" ] && touch "$1" 2>/dev/null && [ -w "$1" ] && rm "$1" 2>/dev/null && return 0; return 1; }
+___yf_escape_ifs() { printf "%s\n" "$1" | sed -e "s|[$(printf "%s" "$IFS" | sed -e "s|.|\\\&|g")]|\\\&|g"; }
+#######################################################################################################
+#                                                                                                     #
+# process script library                                                                              #
+#                                                                                                     #
+#######################################################################################################
+if [ "$__YF_HELPERS" = "1" ]; then
+	__YF_SCRIPT_DIR="$YF_SCRIPT_DIR"
+	if [ "$__YF_SCRIPT_LIBFILE" = "1" ]; then
+		if [ -f "$___yf_script_location.yf_scriptlib" ]; then
+			. "$___yf_script_location.yf_scriptlib"
+			___yf_lib_included=1
+		elif [ -f "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_scriptlib" ]; then
+			. "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_scriptlib"
+			___yf_lib_included=1
+		else
+			if ___yf_is_location_writable "$___yf_script_location.embed_lib"; then
+				[ "$__YF_EMBED_LIBRARIES" = "1" ] && YF_SCRIPT_GENERATE_FILE="$___yf_script_location.embed_lib" || YF_SCRIPT_GENERATE_FILE="$___yf_script_location.yf_scriptlib"
+				YF_SCRIPT_SAVE=1
+				. "$__YF_SCRIPT_DIR/yf_helpers"
+				[ "$__YF_EMBED_LIBRARIES" = "1" ] && ___yf_embed_files="$___yf_embed_files${___yf_embed_files:+:}$(___yf_escape_ifs "$YF_SCRIPT_GENERATE_FILE")"
+				___yf_lib_included=1
+			elif ___yf_is_location_writable "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_scriptlib"; then
+				YF_SCRIPT_SAVE=1
+				YF_SCRIPT_GENERATE_FILE="$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_scriptlib"
+				. "$__YF_SCRIPT_DIR/yf_helpers"
+				___yf_lib_included=1
+			fi
+		fi
+	fi
+	[ "$___yf_lib_included" = "1" ] || . "$__YF_SCRIPT_DIR/yf_helpers"
+fi
+#######################################################################################################
+#                                                                                                     #
+# process UI library                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ "$__YF_UI_HELPERS" = "1" ]; then
+	__YF_SCRIPT_DIR="$YF_SCRIPT_DIR"
+	if [ "$__YF_UI_LIBFILE" = "1" ]; then
+		if [ -f "$___yf_script_location.yf_ui" ]; then
+			. "$___yf_script_location.yf_ui"
+			___yf_ui_included=1
+		elif [ -f "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_ui" ]; then
+			. "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_ui"
+			___yf_ui_included=1
+		else
+			if ___yf_is_location_writable "$___yf_script_location.embed_ui"; then
+				[ "$__YF_EMBED_LIBRARIES" = "1" ] && YF_UI_GENERATE_FILE="$___yf_script_location.embed_ui" || YF_UI_GENERATE_FILE="$___yf_script_location.yf_ui"
+				. "$__YF_SCRIPT_DIR/yf_ui"
+				[ "$__YF_EMBED_LIBRARIES" = "1" ] && ___yf_embed_files="$___yf_embed_files${___yf_embed_files:+:}$(___yf_escape_ifs "$YF_UI_GENERATE_FILE")"
+				___yf_ui_included=1
+			elif ___yf_is_location_writable "$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_ui"; then
+				YF_UI_GENERATE_FILE="$__YF_SCRIPT_DIR/lib/$___yf_script_name.yf_ui"
+				. "$__YF_SCRIPT_DIR/yf_ui"
+				___yf_ui_included=1
+			fi
+		fi
+	fi
+	unset YF_UI_SCRIPT_GENERATE_FILE
+	[ "$___yf_ui_included" = "1" ] || . "$__YF_SCRIPT_DIR/yf_ui"
+fi
+#######################################################################################################
+#                                                                                                     #
+# check, whether there's something to embed to this script now                                        #
+#                                                                                                     #
+#######################################################################################################
+if [ -n "$___yf_embed_files" ]; then
+	___yf_first_line=$(sed -n -e "/^#*EMBED#\$/=" -- "$___yf_script_location")
+	if [ -n "$___yf_first_line" ]; then
+		___yf_last_line=$(sed -n -e "$(( ___yf_first_line + 1 ))/^#*EMBED#\$/=" -- "$___yf_script_location")
+		if [ -n "$___yf_last_line" ]; then
+			if [ "$___yf_last_line" -gt "$___yf_first_line" ]; then
+				(
+					sed -n -e "1,${___yf_first_line}p" -- "$___yf_script_location"
+					eval set -- $___yf_embed_files
+					for ___yf_file in $@; do sed -n -e "p" -- "$___yf_file"; done
+					sed -n -e "${___yf_last_line},\$p" -- "$___yf_script_location"
+				) >> "$___yf_script_location.embed"
+				___yf_size=0
+				___yf_size=$(( ___yf_size - $(wc -l -- "$___yf_script_location") ))
+			fi
+		fi
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# cleanup variables used so far                                                                       #
+#                                                                                                     #
+#######################################################################################################
+___yf_vars="__YF_SCRIPT_DIR __YF_HELPERS __YF_UI_HELPERS __YF_SCRIPT_LIBFILE __YF_UI_LIBFILE __YF_EMBED_LIBRARIES YF_SCRIPT_SUBSETS YF_SCRIPT_FUNCTIONS"
+___yf_vars="$___yf_vars YF_SCRIPT_SAVE YF_HELPERS_DEBUG YF_SCRIPT_GENERATE_FILE YF_UI_GENERATE_FILE"
+___yf_vars="$___yf_vars ___yf_lib_included ___yf_ui_included ___yf_size ___yf_embed_files ___yf_first_line ___yf_last_line"
+___yf_vars="$___yf_vars ___yf_script_dir ___yf_script_location ___yf_script_name ___yf_ui_script_dir ___yf_ui_script_location ___yf_ui_script_name"
+for ___yf_var in $___yf_vars; do
+	unset $___yf_var
+done
+unset ___yf_var
+unset ___yf_vars
+#################################################################################################EMBED#
+#                                                                                                     #
+# YourFritz UI definitions for this script                                                            #
+#                                                                                                     #
+# - the following structures are only a sample, how to use framework functions                        #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# required command for this script, checks are done whether these commands exist                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_required_commands="sed cat rm mkdir touch wc cmp dd base64 tar gzip"
+#######################################################################################################
+#                                                                                                     #
+# help text to be diplayed, description of purpose and usage of this script                           #
+#                                                                                                     #
+#######################################################################################################
+usage_text()
+{
+		__purpose_hdr
+		__nl "Short description, what your own script is for."
+		__usage_hdr
+		__usage_opt "options"; __usage_opt_end;
+		__parameter_mand "parameter1"
+		__parameter_opt_with_repetition "parameter2";
+		__usage_end
+		__options_hdr
+		__option_debug
+		__option_help
+		__option_version
+		__nl; __option_show_opt "-s" "--sample" "name"; __option_show_desc "sample option with an argument"
+		__options_end
+		__nl "Long description of paramters and options. You may use $(__bold "bold") and $(__undl "underlined") words"
+		__nl "in your text."
+		__nl "You should limit the output in this description to 100 characters per line."
+		__nl "Some information is extracted from the header lines of your own script, see above for a sample or"
+		__nl "template."
+
+}
+#######################################################################################################
+#                                                                                                     #
+# L10N strings                                                                                        #
+#                                                                                                     #
+#######################################################################################################
+: #<place_own_message_templates_here>
+: #L10N_<tag>_<language>="<own_text>"
+#######################################################################################################
+#                                                                                                     #
+# everything was done, clean up things                                                                #
+#                                                                                                     #
+#######################################################################################################
+exit 0
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+EOD
+}
+#######################################################################################################
+#                                                                                                     #
+# call generator function                                                                             #
+#                                                                                                     #
+#######################################################################################################
+[ -n "$1" ] && ___yf_generate_file="$1" || ___yf_generate_file="/proc/self/fd/1"
+___yf_generate_script_template > "$___yf_generate_file"
+[ -n "$1" ] && chmod u+rwx "$___yf_generate_file"
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
