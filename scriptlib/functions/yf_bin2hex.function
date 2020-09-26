@@ -15,14 +15,15 @@
 #   input data converted to its hexadecimal format (one char per nibble) as string    #
 #                                                                                     #
 # return code:                                                                        #
-#   always 0 - no errors possible, empty input results in empty output                #
+#   0 - data converted successfully                                                   #
+#   1 - missing required commands, conversion failed                                  #
 #                                                                                     #
 # remarks:                                                                            #
 #   - this version can handle whitespace, newline and NUL characters too              #
 #                                                                                     #
 #######################################################################################
 #                                                                                     #
-# U: printf cmp                                                                       #
+# U: cat printf cmp                                                                   #
 # W: -                                                                                #
 # F: -                                                                                #
 # I: -                                                                                #
