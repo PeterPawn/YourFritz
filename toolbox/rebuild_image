@@ -139,6 +139,7 @@ sqfs_3_pack_be="$(readlink -f $(printf "%s/%s/%s/mksquashfs3-multi" "$(pwd)" "$s
 #######################################################################################################
 options=""
 parameters=""
+__is_debug() { return 0; }
 ########################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
@@ -253,7 +254,7 @@ set_user_and_group()
 }
 #######################################################################################################
 #                                                                                                     #
-# detect SquashFS image (version, compressor, endianess, offset for combined kernel/SquashFS files)   #
+# detect SquashFS image (version, compressor, byte-order, offset for combined kernel/SquashFS files)  #
 #                                                                                                     #
 #######################################################################################################
 getfiletype()
@@ -324,7 +325,7 @@ do_debug_info()
 	[ $padded -eq 1 ] && printf "Padding extracted kernel from %u bytes to the next %s byte boundary.\n" "$kernel_size" "$padding"
 	printf "SquashFS version used: %s\n" "$_sqfs_version"
 	printf "SquashFS compression used: %s\n" "$_sqfs_compression"
-	printf "SquashFS endianess used: %s\n" "$_sqfs_endian"
+	printf "SquashFS byte order used: %s\n" "$_sqfs_endian"
 	printf "\n>>>>> \033[37m\033[1mOutput of 'extract_version_values'\033[0m <<<<<\n"
 	"$SHELL" "$extract_values_file" "$name/$sqfs_unpacked" -m
 	printf ">>>>> ================================== <<<<<\n\n"
@@ -561,7 +562,7 @@ else
 			elif printf "%s" "$scan" | grep -q "^Found a valid little endian"; then
 				sqfs_endian="le" # older 7270 models were MIPSEL (with LE coding), using SquashFS 3, and newer models like 4040 and it's derivatives (with ARM cores) use LE coding with SquashFS 4, too
 			else
-				printf "Unable to detect endianess of SquashFS image(s).\n" 1>&2
+				printf "Unable to detect byte order of SquashFS image(s).\n" 1>&2
 				exit 1
 			fi
 		else
@@ -715,16 +716,16 @@ printf "%sRootFSLocation=\"%s\"\n" "$prefix" "$name/$sqfs_unpacked" >>"$name/$im
 #######################################################################################################
 pause=0
 pack=0
-#if [ $pause -eq 1 ]; then
-#	wait_for_decision "$name/$sqfs_unpacked" "$name/$wrapper_unpacked" 1>&2
-#	pack=$?
-#else
-#	printf "%sModificationScript=\"%s\"\n" "$prefix" "$modscript" >>"$name/$image_variables_file"
-#	do_debug_info 1>&2
-#	YF_REBUILD_SETTINGS="$name/$image_variables_file" "$SHELL" "$modscript" "$name/$sqfs_unpacked" 1>&2
-#	pack=$?
-#fi
-do_debug_info
+if [ $pause -eq 1 ]; then
+	wait_for_decision "$name/$sqfs_unpacked" "$name/$wrapper_unpacked" 1>&2
+	pack=$?
+else
+	printf "%sModificationScript=\"%s\"\n" "$prefix" "$modscript" >>"$name/$image_variables_file"
+	do_debug_info 1>&2
+	pack=0
+	#YF_REBUILD_SETTINGS="$name/$image_variables_file" "$SHELL" "$modscript" "$name/$sqfs_unpacked" 1>&2
+	#pack=$?
+fi
 #######################################################################################################
 #                                                                                                     #
 # pack the filesystem image, but detect needed parameters first                                       #
