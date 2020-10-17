@@ -714,7 +714,6 @@ printf "%sRootFSLocation=\"%s\"\n" "$prefix" "$name/$sqfs_unpacked" >>"$name/$im
 # let the user modify the unpacked data a bit                                                         #
 #                                                                                                     #
 #######################################################################################################
-pause=0
 pack=0
 if [ $pause -eq 1 ]; then
 	wait_for_decision "$name/$sqfs_unpacked" "$name/$wrapper_unpacked" 1>&2
