@@ -41,7 +41,7 @@
 # watch the overall size of the directories - if the created image (a single SquashFS image or the    #
 # 'ext2' image containing the 'wrapper' content and the SquashFS image for the root filesystem) gets  #
 # larger than the expected size of a filesystem partition (definitions are below in the constants     #
-# area), the script terminates with an error.                                                         # 
+# area), the script terminates with an error.                                                         #
 #                                                                                                     #
 # If this call finishes with an exit code of 0, the whole directory structure will be packed again,   #
 # with the same settings that were used for the original image.                                       #
@@ -92,293 +92,6 @@
 #   mktemp (opt.), file (opt.), dd, cmp, sed, mkdir, touch, date, rm, stat, readlink, sudo, chown, id #
 #                                                                                                     #
 #######################################################################################################
-usage_text()
-{
-	__purpose_hdr
-	__nl "This script may be used to query AVM's update information service (JUIS) for new versions.\n"
-	__nl "Due to the ability to configure many (or most) parameters of such a query manually, it is"
-	__nl "possible to look for fresh firmware for nearly all AVM devices.\n"
-	__nl "Nevertheless it's still possible to call the script only with the IP address of an existing"
-	__nl "(and locally reachable) FRITZ!OS-based router - then it simply will try to get all needed"
-	__nl "parameters for the query from this device.\n"
-	__nl "So it's still as easy as possible to look regularly, if a new firmware for your \"beloved"
-	__nl "router\" was published meanwhile - even from outside of this device and if you want to avoid"
-	__nl "any automatic discovery and installation of newer firmware versions, e.g. due to (reasonable)"
-	__nl "security concerns."
-	__usage_hdr
-	__usage_opt "options"; __usage_opt_end; __usage_opt "optional parameters"
-	__usage_end
-	__options_hdr
-	__option_debug 30
-	__option_help 30
-	__option_version 30
-	__nl; __option_show_opt 30 "-n" "--no-respawn"; __option_show_desc "do not respawn with 'bash', even if it's possible"
-	__nl; __option_show_opt 30 "-s" "--save-response" "filename"; __option_show_desc "save SOAP response to $(__undl "filename") for further processing"
-	__nl; __option_show_opt 30 "-i" "--ignore-cfgfile"; __option_show_desc "skip configuration file processing"
-	__nl; __option_show_opt 30 "-c" "--current"; __option_show_desc "try to get current version URL ('Patch' - see below - gets decremented)"
-	__nl; __option_show_opt 30 "-l" "--local"; __option_show_desc "use data from local device, do not try to read via network"
-	__nl; __option_show_opt 30 "-p" "--print-version"; __option_show_desc "show version number of found firmware on STDOUT"
-	__nl; __option_show_opt 30 "-r" "--use-real-serial"; __option_show_desc "send real Serial value read from device"
-	__options_end
-	__nl "The script attempts to read a configuration file with its own name (or better expressed:"
-	__nl "with the name, that was used to call it, because this may be a symbolic link, too) and an"
-	__nl "extension of 'cfg' from the same location, where the script itself was found. This file will"
-	__nl "be 'included' with a '.' (dot) command and may contain any shell statement - please be aware,"
-	__nl "that this may lead to a severe security threat, if anyone else may modify this file without your"
-	__nl "knowledge.\n"
-	__nl "To use another file instead, add a value named 'JUIS_CHECK_CFG', containing the name of a"
-	__nl "configuration file, to the environment of this script. To skip all configuration file"
-	__nl "processing, use the option '--ignore-cfgfile' (or '-i') from above.\n"
-	__nl "This configuration file may be used to set one or more of the needed settings (see below)"
-	__nl "from positional parameters on the command line and has to use the \"shift\" statement to"
-	__nl "remove any processed entries from the parameters collection.\n"
-}
-#######################################################################################################
-#                                                                                                     #
-# L10N strings                                                                                        #
-#                                                                                                     #
-#######################################################################################################
-languages="en"
-L10N_DBG_001_en="Reading and interpreting configuration file '%%s' with content:\\\\n"
-L10N_DBG_002_en="Configuration file processing finished.\\\\n"
-L10N_DBG_003_en="Variables set:\\\\n"
-L10N_DBG_004_en="Sent request:\\\\n"
-L10N_DBG_005_en="Received response:\\\\n"
-L10N_DBG_006_en="Reading values from '%%s:%%s/%%s': "
-L10N_DBG_007_en="Read response from device:\\\\n"
-L10N_DBG_008_en="Reading response from '%%s:%%s': "
-L10N_DBG_009_en="Setting '%%s' to '%%s' from command line parameter\\\\n"
-L10N_DBG_010_en="Splitting compound version number '%%s' to:\\\\n"
-L10N_DBG_011_en="Compound version number used for request: '%%s'\\\\n"
-L10N_DBG_012_en="Respawning script with Bash as shell, calling: %%s\\\\n"
-L10N_DBG_013_en="SOAP response will be saved to: %%s\\\\n"
-L10N_DBG_014_en="SOAP request nonce set to '%%s' from command line parameter\\\\n"
-L10N_DBG_015_en="Skipping configuration file processing ...\\\\n"
-L10N_DBG_016_en="SOAP response saved to: %%s\\\\n"
-L10N_DBG_017_en="Reading values from local file '%%s'.\\\\n"
-L10N_DBG_018_en="Just decremented the version number to get an answer with URL for current version.\\\\n"
-L10N_ERR_OPT_en="Unknown option '%%s' specified."
-L10N_ERR_SCR_en="Missing another needed executable: %%s."
-L10N_ERR_EXC_en="Missing a required command: %%s."
-L10N_ERR_TRM_en="%%s is a terminal device. %%s"
-L10N_ERR_001_en="Missing configuration file and first parameter (the IP address of a reachable FRITZ!Box) at the same time."
-L10N_ERR_002_en="Missing FRITZ!Box IP address or DNS name."
-L10N_ERR_003_en="Error reading '%%s' from FRITZ!Box device with address '%%s:%%s'."
-L10N_ERR_004_en="'%%s' item may only be empty or set to a fixed boolean value."
-L10N_ERR_005_en="Unknown setting '%%s' found at command line."
-L10N_ERR_006_en="The '%%s' item has to be set to '0' for 'inhouse versions' or '1' for others."
-L10N_ERR_007_en="Unexpected data received from network."
-L10N_ERR_008_en="Unexpected error code %s returned from %s."
-L10N_ERR_009_en="No newer version found, check was made with source version '%%s'."
-L10N_ERR_010_en="No data file '%%s' found - make sure it's a FRITZ!OS device, if you use '--local' option."
-L10N_ERR_011_en="(unused)"
-L10N_ERR_012_en="Error saving SOAP response to '%%s'."
-L10N_ERR_013_en="Missing file name after option '%%s'."
-L10N_ERR_014_en="Missing 'HW' value after processing all settings, it's part of AVM' server name and MUST be present."
-L10N_INF_001_en="Found newer version: %%s"
-L10N_HLP_PUR_en="Purpose"
-L10N_HLP_USG_en="Usage"
-L10N_HLP_SUP_en="Supported "
-L10N_HLP_OPT_en="options"
-L10N_HLP_ARE_en="are"
-L10N_HLP_DBG_en="display debug info on STDERR; must prefix all other options"
-L10N_HLP_HLP_en="show this information (must be the first option)"
-L10N_HLP_VER_en="show version and exit (must be the first option)"
-#######################################################################################################
-#                                                                                                     #
-# usage and display helpers from YourFritz framework (included to get a single file to copy/install)  #
-#                                                                                                     #
-#######################################################################################################
-__bold__="$(printf "\033[1m")"
-__undl__="$(printf "\033[4m")"
-__red__="$(printf "\033[1m\033[31m")"
-__gren__="$(printf "\033[1m\033[32m")"
-__yllw__="$(printf "\033[1m\033[33m")"
-__blue__="$(printf "\033[1m\033[34m")"
-__rset__="$(printf "\033[0m")"
-__bold() { printf "$__bold__"; printf -- "$@"; printf "$__rset__"; }
-__undl() { printf "$__undl__"; printf -- "$@"; printf "$__rset__"; }
-__show_script_name()
-{
-	printf "%s${0#*/}\033[0m: " "$1"
-}
-__get_script_lines()
-{
-	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" "$0" | \
-	sed -e '1d;$d' | \
-	sed -e 's|# \(.*\) *#$|\1|' | \
-	sed -e 's|^#*#$|--|p' | \
-	sed -e '$d'
-}
-__license()
-{
-	__get_script_lines "LIC"
-}
-__version()
-{
-	__get_script_lines "VER" | sed -e "1,2s|^\([^,]*\),\(.*\)\$|$__bold__\1$__rset__,\2|"
-}
-__copyright()
-{
-	__get_script_lines "CPY"
-}
-__get_language()
-(
-	__get_language_code()
-	{
-		printf "%s\n" "$1" | sed -n -e "1s|^\([A-Za-z]*\).*|\1|p" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/"
-	}
-
-	lang="$1"
-	shift
-
-	if ! [ -z "$LC_ALL" ]; then
-		check="$(__get_language_code "$LC_ALL")"
-	else
-		[ -z "$LANG" ] || check="$(__get_language_code "$LANG")"
-	fi
-	if ! [ -z "$check" ]; then
-		[ "$lang" = "$check" ] || \
-		for l in $*; do
-			[ "$l" = "$check" ] && lang="$l" && break
-		done
-	fi
-	printf "%s" "$lang"
-)
-__language__="$(eval __get_language $languages)"
-__get_localized()
-{
-	eval printf "\"\$L10N_${1}_${__language__}\""
-}
-__emsg()
-{
-	__show_script_name "$__red__" 1>&2
-	mask="$1"
-	shift
-	printf "${__bold__}${mask}${__rset__}\a\n" "$@" 1>&2
-}
-__info()
-{
-	__show_script_name "$__gren__" 1>&2
-	mask="$1"
-	shift
-	printf "${__bold__}${mask}${__rset__}\n" "$@" 1>&2
-}
-__check_option()
-{
-	o="$1"
-	shift
-	for v in $*; do
-		[ "$o" = "$v" ] && printf 1 && return 0
-	done
-	printf 0
-	return 1
-}
-__is_option()
-{
-	[ "$(expr \( "$1" : "\(.\).*" \) )" = "-" ] && return 0 || return 1
-}
-__is_last_option()
-{
-	[ "$1" = "--" ] && return 0 || return 1
-}
-__options_end__="eval while __is_option \"\$1\"; do __is_last_option \"\$1\" && shift && break;\
-	__emsg \"\$(__get_localized ERR_OPT)\" \"\$1\"; exit 1; done;"
-__version_option()
-{
-	if __check_option "$1" "-V" "--version" >/dev/null; then
-		__version
-		__copyright
-		__license
-		printf "\n"
-		exit 1
-	fi
-	return 1
-}
-__version_option__="eval __version_option \$@ && exit 0"
-__help_option()
-{
-	if __check_option "$1" "-h" "--help" >/dev/null; then
-		[ -t 1 ] && command -v less >/dev/null && (__usage | less) || __usage
-		exit 1
-	fi
-}
-__help_option__="eval __help_option \$@"
-__debug_option()
-{
-	__check_option "$1" "-d" "--debug" && return 0
-	return 1
-}
-__debug_option__="eval __debug_set__=\$(__debug_option \$1) && __debug_text__=\"\$1\" && shift"
-__debug_on__="eval __debug_set__=1; __debug_text__=\"-d\";"
-__is_debug() { [ $__debug_set__ -eq 1 ] && return 0 || return 1; }
-__debug()
-{
-	[ $__debug_set__ -eq 1 ] || return;
-	mask="$1"
-	shift
-	printf "%sdebug%s: " "$__yllw__" "$__rset__" 1>&2
-	printf -- "$mask" "$@" 1>&2
-}
-__usage()
-(
-	indent=0
-	__indent_on() { indent=$(( indent + 4 )); }
-	__indent_off() { indent=$(( indent - 4 )); }
-	__indent() { [ $indent -gt 0 ] && printf "%0${indent}s" " "; };
-	__nl() { printf "\n%s" "$(__indent)"; printf -- "$1"; }
-	__purpose_hdr() { __nl; __bold "$(__get_localized HLP_PUR):"; printf "\n"; }
-	__usage_name() { __bold "${0#*/}"; }
-	__usage_hdr() { printf "\n"; __nl; __bold "$(__get_localized HLP_USG):\n"; __indent_on; __nl "$(__usage_name)"; }
-	__usage_end() { __indent_off; printf "\n"; }
-	__usage_opt_int() { v="$1"; shift; [ $# ] && m="$@"; printf -- "[ %s%s ]" "$(__undl "$v")" "$m"; unset m v; };
-	__usage_opt_end() { printf -- " [ -- ]"; }
-	__usage_opt() { printf -- " %s" "$(__usage_opt_int "$@")"; }
-	__usage_arg() { printf -- " %s" "$(__undl "$1")"; }
-	__options_hdr() { __nl "$(__get_localized HLP_SUP)"; __undl "$(__get_localized HLP_OPT)"; printf " $(__get_localized HLP_ARE):\n"; }
-	__options_end() { printf "\n"; }
-	__option_show_opt() {
-		printf -- "%s, %s" "$2" "$3"
-		__l4__=${#4}
-		[ $__l4__ -gt 0 ] && printf " %s%s%s" "$__undl__" "$4" "$__rset__" && __l4__=$(( __l4__ + 1 ))
-		printf "%0$(( $1 - ${#2} - ${#3} - __l4__ - 3 ))s" " "
-		unset __l4__
-	}
-	__option_show_desc() { printf -- "- %s" "$@"; }
-	__option_debug() { __nl; __option_show_opt ${1:-15} "-d" "--debug"; __option_show_desc "$(__get_localized HLP_DBG)"; }
-	__option_help()	{ __nl; __option_show_opt ${1:-15} "-h" "--help"; __option_show_desc "$(__get_localized HLP_HLP)"; }
-	__option_version()	{ __nl; __option_show_opt ${1:-15} "-V" "--version"; __option_show_desc "$(__get_localized HLP_VER)"; }
-	__end() { printf "\n%s\n" "$__rset__"; }
-
-	__version
-	__copyright
-	__license
-	usage_text
-	__end
-)
-__check_required_command()
-(
-	IFS=:
-	set -- $1
-	for n in $@; do
-		command -v $n 2>/dev/null 1>&2 && exit 0
-	done
-	exit 1
-)
-__check_required_commands()
-{
-	for n in $@; do
-		__check_required_command $n && continue
-		__emsg "$(__get_localized ERR_EXC)" "$(printf "%s\n" "$n" | sed -e "s|:| or |g")"
-		return 1
-	done
-	return 0
-}
-__check_required_commands__="eval __check_required_commands \"\$__required_commands\" || exit 1"
-
-__required_commands="sed mkfifo:mknod cat rm mkdir touch wc cmp date"
-[ -z "${BASH_VERSION}" ] && __required_commands="$__required_commands nc"
-#######################################################################################################
 #                                                                                                     #
 # constants                                                                                           #
 #                                                                                                     #
@@ -426,80 +139,6 @@ sqfs_3_pack_be="$(readlink -f $(printf "%s/%s/%s/mksquashfs3-multi" "$(pwd)" "$s
 #######################################################################################################
 options=""
 parameters=""
-$__help_option__
-$__version_option__
-$__debug_option__
-#__no_cfgfile=0
-#__no_respawn=0
-#__use_real_serial=0
-#__get_current=0
-#__use_local=0
-#__show_new_version=0
-#__save_output=""
-#while [ $# -gt 0 ]; do
-#	parameters="$*"
-#	__is_option "$1" || break
-#	__is_last_option "$1" && shift && options="${options:+${options} }$1" && break
-#	if __check_option "$1" "-i" "--ignore-cfgfile" >/dev/null; then
-#		__no_cfgfile=1
-#		options="${options:+${options} }--ignore-cfgfile"
-#		shift
-#		parameters="$*"
-#		continue
-#	elif __check_option "$1" "-n" "--no-respawn" >/dev/null; then
-#		__no_respawn=1
-#		shift
-#		continue
-#	elif __check_option "$1" "-r" "--use-real-serial" >/dev/null; then
-#		__use_real_serial=1
-#		options="${options:+${options} }--use-real-serial"
-#		shift
-#		parameters="$*"
-#		continue
-#	elif __check_option "$1" "-c" "--current" >/dev/null; then
-#		__get_current=1
-#		options="${options:+${options} }--current"
-#		shift
-#		parameters="$*"
-#		continue
-#	elif __check_option "$1" "-l" "--local" >/dev/null; then
-#		__use_local=1
-#		options="${options:+${options} }--local"
-#		shift
-#		parameters="$*"
-#		continue
-#	elif __check_option "$1" "-p" "--print-version" >/dev/null; then
-#		__show_new_version=1
-#		options="${options:+${options} }--print-version"
-#		shift
-#		parameters="$*"
-#		continue
-#	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
-#		if [ ${#2} -eq 0 ] || __is_option "$2"; then
-#			__emsg "$(__get_localized ERR_013)" "$1" && exit 1
-#		else
-#			__save_output="$2"
-#			options="${options:+${options} }--save-response $2"
-#			shift 2
-#			parameters="$*"
-#			continue
-#		fi
-#	else
-#		$__options_end__
-#	fi
-#done
-#__is_debug && options="--debug${options:+ $options}"
-#######################################################################################################
-#                                                                                                     #
-# check environment                                                                                   #
-#                                                                                                     #
-#######################################################################################################
-$__check_required_commands__
-#######################################################################################################
-#                                                                                                     #
-# subfunctions                                                                                        #
-#                                                                                                     #
-#######################################################################################################
 ########################################################################################################
 #                                                                                                     #
 # subfunctions                                                                                        #
@@ -648,7 +287,7 @@ getpackeroptions()
 #######################################################################################################
 #                                                                                                     #
 # display debug output - will be called on alternative screen, if supported by terminal and pause     #
-#                        mode is active                                                               # 
+#                        mode is active                                                               #
 #                                                                                                     #
 #######################################################################################################
 do_debug_info()
@@ -745,7 +384,7 @@ wait_for_decision()
 			display=1
 		fi
 	done
-	printf "\033[?1049l" 
+	printf "\033[?1049l"
 	[ $debug -eq 1 ] && printf "Your answer was: \033[37m\033[1m%s\033[0m\n" "$answer"
 	return $result
 }
@@ -966,10 +605,10 @@ else
 		if $su_do losetup -r "$loopdev" "$name/$avm_ext2_image_wrapper" 2>/dev/null; then
 			if $su_do mount -t ext2 -r "$loopdev" "$name/$avm_ext2_mount" 2>/dev/null; then
 				$su_do cp -a "$name/$avm_ext2_mount/"* "$name/$wrapper_unpacked/" 2>/dev/null
-				$su_do umount "$name/$avm_ext2_mount" 2>/dev/null	
+				$su_do umount "$name/$avm_ext2_mount" 2>/dev/null
 			else
 				printf "Error mounting 'ext2' image.\n" 1>&2
-				exit 1	
+				exit 1
 			fi
 			$su_do losetup -d "$loopdev" 2>/dev/null
 		else
@@ -1006,7 +645,7 @@ else
 	size=$(stat -c %s "$name/$kernel_image")
 	if [ $(( size % $padding )) -ne 0 ]; then
 		padded=1
-		kernel_size=$size	
+		kernel_size=$size
 		dd if=/dev/zero bs=1 count=$(( padding - ( size % padding ) )) 2>/dev/null >>"$name/$kernel_image"
 	else
 		padded=0
