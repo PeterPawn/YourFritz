@@ -135,7 +135,7 @@ readonly avm_version_main_components="VERSION SUBVERSION"
 readonly avm_version_major_name="CONFIG_VERSION_MAJOR"
 readonly avm_version_date="DATE"
 readonly avm_product_name="CONFIG_PRODUKT"
-readonly version_files="$yourfritz_version_file $freetz-ng-version $freetz_version_file $modfs_version_file"
+readonly version_files="$yourfritz_version_file $freetz_ng_version_file $freetz_version_file $modfs_version_file"
 readonly modified_by="YourFritz Freetz-NG Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
