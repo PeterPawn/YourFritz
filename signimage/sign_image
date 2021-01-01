@@ -81,8 +81,8 @@ fi
 ####################################################################################
 show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
 show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
-show_version() 
-{ 
+show_version()
+{
 	local v
 	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
@@ -193,7 +193,7 @@ echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
 echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
 else
 	show_error
 	exit 1
@@ -202,7 +202,7 @@ echo -en "Check \x1B[1mrsa\x1B[0m command ... " 1>&2
 echo "" | "$YF_SIGNIMAGE_OPENSSL" rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
 else
 	show_error
 	exit 1
@@ -233,7 +233,7 @@ echo -en "Verify hash algorithm \x1B[1m$hash_algo\x1B[0m is supported ... " 1>&2
 echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo 2>&1 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
 else
 	show_error
 	exit 1
@@ -253,14 +253,28 @@ fi
 # verify input file format                                                         #
 #                                                                                  #
 ####################################################################################
+printf "Checking input file format ... " 1>&2
 "$YF_SIGNIMAGE_DD" if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null
 if [ $? -ne 0 ]; then
+	show_error
 	echo -e "Input file doesn't look like a TAR archive." 1>&2
 	exit 1
 fi
 "$YF_SIGNIMAGE_DD" if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null
 if [ $? -eq 0 ]; then
+	show_error
 	echo -e "Input file contains extended headers (PaxHeaders) and may not be signed this way." 1>&2
+	exit 1
+fi
+####################################################################################
+#                                                                                  #
+# check first archive member (name=./var/, type=directory)                         #
+#                                                                                  #
+####################################################################################
+if ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=7 2>/dev/null | base64)" = "Li92YXIvAA==" ] || \
+   ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=1 skip=156 2>/dev/null)" = "5" ]; then
+	show_error
+	printf "First member of archive file has to be a directory and has to use the name './var/'.\n" 1>&2
 	exit 1
 fi
 ####################################################################################
@@ -293,6 +307,7 @@ while read line; do
 	eval $line
 	copy_blocks=$(( copy_blocks + BLOCKS ))
 	if [ "$MEMBER" == "./var/signature" ]; then
+		show_error
 		echo -e "The input file already contains a member \x1B[1m./var/signature\x1B[0m and may not be signed (again) by this script." 1>&2
 		exit 1
 	fi
@@ -300,6 +315,7 @@ done <"$tmp/image_members"
 file_size="$(stat -c %s "$image_file")"
 file_blocks=$(( file_size / 512 ))
 eoa_blocks=$(( file_blocks - copy_blocks ))
+show_ok
 if [ $eoa_blocks -gt 2 ]; then
 	echo -e "The end of archive markers at the input file are too large: blocks expected=\x1B[1m2\x1B[0m, blocks present=\x1B[1m$eoa_blocks\x1B[0m." 1>&2
 	echo -e "The input file will be truncated after the last archive member." 1>&2
@@ -333,7 +349,7 @@ if [ ${#SIGN_ON_BOX} -gt 0 ]; then
 				fi
 			fi
 		fi
-	fi		
+	fi
 fi
 ####################################################################################
 #                                                                                  #
@@ -363,7 +379,7 @@ if [ $on_box -eq 0 ]; then
 	"$YF_SIGNIMAGE_OPENSSL" rsa -in "${name_prefix}.${private_extension}" -noout -passin "pass:$KEYPASSWORD" 2>/dev/null 1>&2
 	rc=$?
 	if [ $rc -eq 0 ]; then
-		show_ok 
+		show_ok
 	else
 		show_error
 		exit 1
@@ -411,7 +427,7 @@ fi
 #                                                                                  #
 # - the input file will be combined with another 1 KB containing zeros             #
 # - any superfluous blocks at the end of the archive are truncated                 #
-# - the original EoA entry will be replaced with an empty 1K block for the sig     #                                        
+# - the original EoA entry will be replaced with an empty 1K block for the sig     #
 # - an additional 1K block of zeros serves as new EoA header                       #
 #                                                                                  #
 ##################################A#################################################
