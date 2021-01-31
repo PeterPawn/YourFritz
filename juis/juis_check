@@ -541,7 +541,7 @@ __version_option()
 	fi
 	return 1
 }
-__version_option__="eval __version_option \$@ && exit 0"
+__version_option__="eval __version_option \"\$@\" && exit 0"
 __help_option()
 {
 	if __check_option "$1" "-h" "--help" >/dev/null; then
@@ -549,7 +549,7 @@ __help_option()
 		exit 1
 	fi
 }
-__help_option__="eval __help_option \$@"
+__help_option__="eval __help_option \"\$@\""
 __debug_option()
 {
 	__check_option "$1" "-d" "--debug" && return 0
@@ -725,15 +725,15 @@ __get_current=0
 __use_local=0
 __show_new_version=0
 __save_output=""
+escape_value() { printf "%s\n" "$@" | sed -e "s| |$(printf "\342\200\212")|g"; }
+unescape_value() { printf "%s\n" "$@" | sed -e "s|$(printf "\342\200\212")| |g"; }
 while [ $# -gt 0 ]; do
-	parameters="$*"
-	__is_option "$1" || break
-	__is_last_option "$1" && shift && options="${options:+${options} }$1" && break
+	! __is_option "$1" && parameters="${parameters}${parameters:+ }$(escape_value "$1")" && shift && continue
+	__is_last_option "$1" && shift && options="${options:+${options} }$(escape_value "$1")" && continue
 	if __check_option "$1" "-i" "--ignore-cfgfile" >/dev/null; then
 		__no_cfgfile=1
 		options="${options:+${options} }--ignore-cfgfile"
 		shift
-		parameters="$*"
 		continue
 	elif __check_option "$1" "-n" "--no-respawn" >/dev/null; then
 		__no_respawn=1
@@ -743,34 +743,29 @@ while [ $# -gt 0 ]; do
 		__use_real_serial=1
 		options="${options:+${options} }--use-real-serial"
 		shift
-		parameters="$*"
 		continue
 	elif __check_option "$1" "-c" "--current" >/dev/null; then
 		__get_current=1
 		options="${options:+${options} }--current"
 		shift
-		parameters="$*"
 		continue
 	elif __check_option "$1" "-l" "--local" >/dev/null; then
 		__use_local=1
 		options="${options:+${options} }--local"
 		shift
-		parameters="$*"
 		continue
 	elif __check_option "$1" "-p" "--print-version" >/dev/null; then
 		__show_new_version=1
 		options="${options:+${options} }--print-version"
 		shift
-		parameters="$*"
 		continue
 	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
 		if [ ${#2} -eq 0 ] || __is_option "$2"; then
 			__emsg "$(__get_localized ERR_013)" "$1" && exit 1
 		else
-			__save_output="$2"
-			options="${options:+${options} }--save-response $2"
+			__save_output="$(unescape_value "$2")"
+			options="${options:+${options} }--save-response $(escape_value "$2")"
 			shift 2
-			parameters="$*"
 			continue
 		fi
 	else
@@ -788,6 +783,7 @@ if [ $__no_respawn -eq 0 ] && [ -z "${BASH_VERSION}" ]; then
 		exit $?
 	fi
 fi
+set -- $parameters
 #######################################################################################################
 #                                                                                                     #
 # check environment                                                                                   #
@@ -1232,7 +1228,7 @@ names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inh
 # device                                                                                              #
 #                                                                                                     #
 #######################################################################################################
-for nv in $*; do
+for nv in $@; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
@@ -1244,7 +1240,7 @@ for nv in $*; do
 				eval $n='$$_empty'
 			else
 				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
-				eval $n=\'$value\'
+				eval $n=\'$(unescape_value "$value")\'
 			fi
 			valid=1
 			break
@@ -1371,7 +1367,7 @@ done
 # process additional command line settings again, they overrule all other values                      #
 #                                                                                                     #
 #######################################################################################################
-for nv in $*; do
+for nv in $@; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
@@ -1383,7 +1379,7 @@ for nv in $*; do
 				eval $n=''
 			elif ! [ "$value" = "detect" ]; then
 				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
-				eval $n=\'$value\'
+				eval $n=\'$(unescape_value "$value")\'
 			fi
 			valid=1
 			if [ "$n" = "$version_name" ]; then
