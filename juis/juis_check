@@ -547,9 +547,9 @@ __help_option()
 	if __check_option "$1" "-h" "--help" >/dev/null; then
 		if [ -t 1 ]; then
 			pager="${PAGER:-less}"
-			[ "$pager" = "less" ] && pager_options="-R"
-			if command -v $pager >/dev/null; then
-				__usage | $pager $pager_options
+			[ "$pager" = "less" ] && pager_options="-R" || unset pager_options
+			if command -v "$pager" >/dev/null; then
+				__usage | "$pager" $pager_options
 				exit 1
 			fi
 		fi
