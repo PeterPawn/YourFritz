@@ -130,7 +130,7 @@ usage_text()
 		__nl "$__red__            Wert, der definitiv nicht der tatsächlichen MAC-Adresse entspricht, verwendet."
 		__nl "$__red__            Wer den echten Wert verwenden möchte, kann das durch Angabe der Option '-r'"
 		__nl "$__red__            erreichen - die Daten werden dann aber ohne weitere Nachfrage an den Hersteller"
-		__nl "$__red__            gesendet."
+		__nl "$__red__            gesendet.$__rset__"
 		__nl "Name        der Produktname der FRITZ!Box (CONFIG_PRODUKT), kann auch Leerzeichen enthalten"
 		__nl "HW          der Wert von 'HWRevision' aus dem FRITZ!Box-Environment im TFFS"
 		__nl "OEM         der Wert für das 'Branding', hiermit wird bei Boxen, die speziell für bestimmte"
@@ -272,7 +272,7 @@ usage_text()
 		__nl "$__red__            Due to GDPR-based privacy concerns, a random value is used now. If you need"
 		__nl "$__red__            to submit the real value of your device, you may call the script with '-r'"
 		__nl "$__red__            option - the data will be sent without further notification or information"
-		__nl "$__red__            in this case."
+		__nl "$__red__            in this case.$__rset__"
 		__nl "Name        the product name"
 		__nl "HW          the hardware revision"
 		__nl "OEM         the OEM value used (also known as the 'branding')"
@@ -545,7 +545,15 @@ __version_option__="eval __version_option \"\$@\" && exit 0"
 __help_option()
 {
 	if __check_option "$1" "-h" "--help" >/dev/null; then
-		[ -t 1 ] && command -v less >/dev/null && (__usage | less) || __usage
+		if [ -t 1 ]; then
+			pager="${PAGER:-less}"
+			[ "$pager" = "less" ] && pager_options="-R"
+			if command -v $pager >/dev/null; then
+				__usage | $pager $pager_options
+				exit 1
+			fi
+		fi
+		__usage
 		exit 1
 	fi
 }
