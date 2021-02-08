@@ -1126,7 +1126,7 @@ replace_in_file()
 #######################################################################################################
 get_decimal_value()
 (
-	expr "$1" : "^0*\([1-9]*[0-9]*\)"
+	expr "$1" : "0*\([1-9]*[0-9]\+\)"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1465,6 +1465,7 @@ done
 #                                                                                                     #
 #######################################################################################################
 if [ $__get_current -eq 1 ]; then
+	set -x
 	for dec_value in $version_decrement; do
 		eval [ \$$dec_value -eq 0 ] && eval $dec_value=99 && continue
 		eval $dec_value=$(( $dec_value - 1 ))
@@ -1472,6 +1473,7 @@ if [ $__get_current -eq 1 ]; then
 		break
 	done
 	__debug "$(__get_localized DBG_018)"
+	set +x
 fi
 eval $version_name="$version_string"
 __debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
