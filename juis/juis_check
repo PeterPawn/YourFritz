@@ -1287,14 +1287,23 @@ if [ $detect -eq 1 ]; then
 	boxinfo="$(mktmp -p "$td")"
 	if [ $__use_local -eq 1 ]; then
 		if ! [ -f "$local_dir/$boxinfo1" ]; then
-			__emsg "$(__get_localized ERR_010)" "$local_dir/$boxinfo1"
-			exit 3
+			if ! [ -f "$local_dir/$boxinfo2" ]; then
+				__emsg "$(__get_localized ERR_010)" "$local_dir/$boxinfo1"
+				exit 3
+			else
+				__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo2"
+				cat "$local_dir/$boxinfo2" >"$boxinfo"
+				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+				ns="j"
+				replace="$boxinfo2_replace_names"
+			fi
+		else
+			__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo1"
+			cat "$local_dir/$boxinfo1" >"$boxinfo"
+			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
+			ns="q"
+			replace="$boxinfo1_replace_names"
 		fi
-		__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo1"
-		cat "$local_dir/$boxinfo1" >"$boxinfo"
-		names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
-		ns="q"
-		replace="$boxinfo1_replace_names"
 	else
 		if [ -z "$Box" ]; then
 			__emsg "$(__get_localized ERR_002)"
