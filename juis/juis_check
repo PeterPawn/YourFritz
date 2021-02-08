@@ -412,6 +412,8 @@ L10N_ERR_013_en="Missing file name after option '%%s'."
 L10N_ERR_013_de="Der Option '%%s' muss ein Dateiname folgen."
 L10N_ERR_014_en="Missing 'HW' value after processing all settings, it's part of AVM' server name and MUST be present."
 L10N_ERR_014_de="Der Wert für 'HW' fehlt für die Abfrage bei AVM - er ist Bestandteil des Servernamens und MUSS vorhanden sein."
+L10N_ERR_015_en="Values requiring detection: %%s"
+L10N_ERR_015_de="Werte, die von der FRITZ!Box gelesen werden müssen: %%s"
 L10N_INF_001_en="Found newer version: %%s"
 L10N_INF_001_de="Neue Version gefunden: %%s"
 L10N_HLP_PUR_en="Purpose"
@@ -1267,12 +1269,13 @@ done
 #                                                                                                     #
 #######################################################################################################
 detect=0
+needed_variables=""
 for n in $names; do
 	[ "$n" = "$inhouse_option_name" ] && continue
 	eval var="\$$n"
 	if [ -z "$var" ] || [ "$var" = "detect" ]; then
 		detect=1
-		break
+		needed_variables="$needed_variables${needed_variables:+ }$n"
 	fi
 done
 #######################################################################################################
@@ -1295,6 +1298,7 @@ if [ $detect -eq 1 ]; then
 	else
 		if [ -z "$Box" ]; then
 			__emsg "$(__get_localized ERR_002)"
+			__emsg "$(__get_localized ERR_015)" "$needed_variables"
 			exit 1
 		fi
 		device_read "$Box" "$boxport" "$boxinfo1" >"$boxinfo"
