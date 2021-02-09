@@ -1319,7 +1319,7 @@ for nv in $@; do
 		. "$spl"
 		rm "$spl" 2>/dev/null
 	fi
-	if [ $valid -ne 1 ]; then
+	if [ $valid -ne 1 ] && ! [ "$name" = "$nonce_option_name" ]; then
 		__emsg "$(__get_localized ERR_005)" "$name"
 		exit 1
 	fi
