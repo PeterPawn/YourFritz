@@ -7,13 +7,13 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# juis_check, version 0.4                                                                             #
+# juis_check, version 0.5                                                                             #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2010-2018 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2010-2021 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -414,6 +414,12 @@ L10N_ERR_014_en="Missing 'HW' value after processing all settings, it's part of 
 L10N_ERR_014_de="Der Wert für 'HW' fehlt für die Abfrage bei AVM - er ist Bestandteil des Servernamens und MUSS vorhanden sein."
 L10N_ERR_015_en="Values requiring detection: %%s"
 L10N_ERR_015_de="Werte, die von der FRITZ!Box gelesen werden müssen: %%s"
+L10N_ERR_016_en="Missing value for '%%s' variable."
+L10N_ERR_016_de="Der Wert für den '%%s'-Parameter fehlt."
+L10N_ERR_017_en="The value for '%%s' variable (%%s) is neither a known name nor a valid number."
+L10N_ERR_017_de="Der Wert für den '%%s'-Parameter (%%s) ist weder einer der bekannten Namen, noch eine gültige Nummer."
+L10N_ERR_018_en="The parameters '%%s' and '%%s' are mutually exclusive, please use only '%%s' because '%%s' is deprecated now."
+L10N_ERR_018_de="Die Angabe von '%%s' und '%%s' bei demselben Aufruf ist nicht erlaubt, bitte nur '%%s' verwenden, weil '%%s' nicht mehr genutzt werden sollte."
 L10N_INF_001_en="Found newer version: %%s"
 L10N_INF_001_de="Neue Version gefunden: %%s"
 L10N_HLP_PUR_en="Purpose"
@@ -661,7 +667,18 @@ flags_name="Flag"
 # the (variable's) name and meaning are a little bit confusing, but really 'true' or 'false' in shell
 # syntax  ... a value of "1" means "no inhouse version" (or 'inhouse=false') and "0" searches for non-public
 # versions
+# Public=0 uses BuildType=1000 and Public=1 uses Buildtype=1001.
+# Public variable has been deprecated now, use $buildtype_option_name from below instead.
 inhouse_option_name="Public"
+# firmware build type - found in 'juis_boxinfo.xml' with XML tag 'Buildtype'
+# This variable is mutually exclusive with $inhouse_option_name, which is maintained for backward compatibility only.
+# The specified value is converted to upper case letters and compared to the list of known, pre-defined values below.
+# If a match is found, the associated value will be used for our JUIS request, otherwise the value will be checked,
+# whether it contains only one to five digits (according to AVM's error message, if an invalid value was used) and
+# in this case the raw value is used for the JUIS request.
+buildtype_option_name="Buildtype"
+known_buildtype_values="RELEASE:1 LABOR:1001 BETA:1001 LABBETA:1001 PLUS:1007 LABPLUS:1007 INHOUSE:1000 INHAUS:1000 PHONE:1004 LABPHONE:1004"
+buildtype_option_default="1"
 # nonce variable name for response signature
 nonce_option_name="Nonce"
 # local file retrieval constants
@@ -978,6 +995,28 @@ device_read()
 )
 #######################################################################################################
 #                                                                                                     #
+# check and convert Buildtype value specified                                                         #
+#                                                                                                     #
+#######################################################################################################
+check_buildtype_value()
+(
+	value="$(printf "%s\n" "$1" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/")"
+	for k in $known_buildtype_values; do
+		n="$(expr "$k" : "\([^:]*\):.*")"
+		v="$(expr "$k" : "[^:]*:\(.*\)")"
+		if [ "$n" = "$value" ]; then
+			printf "%s\n" "$v"
+			exit 0
+		fi
+	done
+	if [ "$(expr "$value" : "\([0-9]\{1,5\}\)")" = "$value" ]; then
+		printf "%s\n" "$value"
+		exit 0
+	fi
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # wrap 'realpath' call with never-failing code, if the native binary is missing (on MacOS X)          #
 #                                                                                                     #
 #######################################################################################################
@@ -1231,7 +1270,10 @@ else
 	__debug "$(__get_localized DBG_015)"
 fi
 # we use the older variant with a 'Version' value here to retain backward compatibility
-names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name $buildtype_option_name"
+inhouse_option_set=0
+buildtype_option_set=0
+eval $buildtype_option_name="$buildtype_option_default"
 #######################################################################################################
 #                                                                                                     #
 # first attempt to process name/value pairs from command line, to set variables without an existing   #
@@ -1242,7 +1284,7 @@ for nv in $@; do
 	name="${nv%%=*}"
 	value="${nv#*=}"
 	valid=0
-	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name $buildtype_option_name"
 	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			__debug "$(__get_localized DBG_009)" "$n" "$value"
@@ -1251,6 +1293,21 @@ for nv in $@; do
 			else
 				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
 				eval $n=\'$(unescape_value "$value")\'
+				[ "$n" = "$inhouse_option_name" ] && inhouse_option_set=1
+				if [ "$n" = "$buildtype_option_name" ] && ! [ "$value" = "detect" ]; then
+					if ! [ -z "$value" ]; then
+						if [ -z "$(check_buildtype_value "$value")" ]; then
+							__emsg "$(__get_localized ERR_017)" "$buildtype_option_name" "$value"
+							exit 1
+						else
+							eval $buildtype_option_name="$(check_buildtype_value "$value")"
+						fi
+					else
+						__emsg "$(__get_localized ERR_016)" "$buildtype_option_name"
+						exit 1
+					fi
+					buildtype_option_set=1
+				fi
 			fi
 			valid=1
 			break
@@ -1262,7 +1319,20 @@ for nv in $@; do
 		. "$spl"
 		rm "$spl" 2>/dev/null
 	fi
+	if [ $valid -ne 1 ]; then
+		__emsg "$(__get_localized ERR_005)" "$name"
+		exit 1
+	fi
 done
+#######################################################################################################
+#                                                                                                     #
+# time to check mutual exclusions for variables/parameters                                            #
+#                                                                                                     #
+#######################################################################################################
+if [ "$inhouse_option_set" = "1" ] && [ "$buildtype_option_set" = "1" ]; then
+	__emsg "$(__get_localized ERR_018)" "$buildtype_option_name" "$inhouse_option_name" "$buildtype_option_name" "$inhouse_option_name"
+	exit 1
+fi
 #######################################################################################################
 #                                                                                                     #
 # check still missing variables, after the configuration file and command line were processed         #
@@ -1272,6 +1342,7 @@ detect=0
 needed_variables=""
 for n in $names; do
 	[ "$n" = "$inhouse_option_name" ] && continue
+	[ "$n" = "$buildtype_option_name" ] && continue
 	eval var="\$$n"
 	if [ -z "$var" ] || [ "$var" = "detect" ]; then
 		detect=1
@@ -1293,14 +1364,14 @@ if [ $detect -eq 1 ]; then
 			else
 				__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo2"
 				cat "$local_dir/$boxinfo2" >"$boxinfo"
-				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name $buildtype_option_name"
 				ns="j"
 				replace="$boxinfo2_replace_names"
 			fi
 		else
 			__debug "$(__get_localized DBG_017)" "$local_dir/$boxinfo1"
 			cat "$local_dir/$boxinfo1" >"$boxinfo"
-			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
+			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name $buildtype_option_name"
 			ns="q"
 			replace="$boxinfo1_replace_names"
 		fi
@@ -1319,12 +1390,12 @@ if [ $detect -eq 1 ]; then
 				__emsg "$(__get_localized ERR_003)" "$boxinfo2" "$Box" "$boxport"
 				exit 3
 			else
-				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name"
+				names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $inhouse_option_name $buildtype_option_name"
 				ns="j"
 				replace="$boxinfo2_replace_names"
 			fi
 		else
-			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
+			names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name $buildtype_option_name"
 			ns="q"
 			replace="$boxinfo1_replace_names"
 		fi
@@ -1345,7 +1416,13 @@ fi
 for n in $names; do
 	eval var="\$$n"
 	if [ "$var" = "$$_empty" ]; then
-		[ "$n" = "$inhouse_option_name" ] && eval ${inhouse_option_name}=1 || eval $n=""
+		if [ "$n" = "$inhouse_option_name" ]; then
+			eval ${inhouse_option_name}=1
+		elif [ "$n" = "$buildtype_option_name" ] && [ "$inhouse_option_set" = "0" ]; then
+			eval ${buildtype_option_name}="$buildtype_option_default"
+		else
+			eval $n=""
+		fi
 	elif ! [ "${var#fixed:}" = "$var" ]; then
 		eval $n="${var#fixed:}"
 	elif [ "$n" = "$inhouse_option_name" ]; then
@@ -1378,6 +1455,8 @@ for n in $names; do
 			done
 			. "$spl"
 			rm "$spl" 2>/dev/null
+		elif [ "$n" = "$buildtype_option_name" ]; then
+			buildtype_option_set=1
 		fi
 	else
 		eval $n=\'$var\'
@@ -1393,14 +1472,19 @@ for nv in $@; do
 	value="${nv#*=}"
 	valid=0
 	[ "$name" = "$inhouse_option_name" ] && continue
-	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name"
+	l_names="$(get_names "$common_names $serial_name" "$alt_names" 1) $flags_name $buildtype_option_name"
 	for n in $l_names; do
 		if [ "$n" = "$name" ]; then
 			if [ "$value" = "empty" ]; then
-				eval $n=''
+				[ "$n" = "$buildtype_option_name" ] && eval ${buildtype_option_name}="$buildtype_option_default" || eval $n=''
 			elif ! [ "$value" = "detect" ]; then
-				[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
-				eval $n=\'$(unescape_value "$value")\'
+				if [ "$n" = "$buildtype_option_name" ]; then
+					# invalid values are detected earlier already
+					eval $buildtype_option_name="$(check_buildtype_value "$value")"
+				else
+					[ "$n" = "$flags_name" ] && value="$(printf "%s\n" "$value" | sed -e "s|,| |g")"
+					eval $n=\'$(unescape_value "$value")\'
+				fi
 			fi
 			valid=1
 			if [ "$n" = "$version_name" ]; then
@@ -1430,15 +1514,19 @@ for nv in $@; do
 done
 #######################################################################################################
 #                                                                                                     #
-# prepare additional variables                                                                        #
+# check mutual exclusions of variables/parameters again and process '$inhouse_option_name', if needed #
 #                                                                                                     #
 #######################################################################################################
-[ -z "$(eval printf "%s" "\$$inhouse_option_name")" ] && eval $inhouse_option_name=1
-if ! [ "$(eval printf "%s" "\$$inhouse_option_name")" = "0" ] && ! [ "$(eval printf "%s" "\$$inhouse_option_name")" = "1" ]; then
-	__emsg "$(__get_localized ERR_006)" "$inhouse_option_name"
+if [ "$inhouse_option_set" = "1" ] && [ "$buildtype_option_set" = "1" ]; then
+	__emsg "$(__get_localized ERR_018)" "$buildtype_option_name" "$inhouse_option_name" "$buildtype_option_name" "$inhouse_option_name"
 	exit 1
+elif [ "$inhouse_option_set" = "1" ]; then
+	if ! [ "$(eval printf "%s" "\$$inhouse_option_name")" = "0" ] && ! [ "$(eval printf "%s" "\$$inhouse_option_name")" = "1" ]; then
+		__emsg "$(__get_localized ERR_006)" "$inhouse_option_name"
+		exit 1
+	fi
+	eval $buildtype_option_name="100\$$inhouse_option_name"
 fi
-eval type="100\$$inhouse_option_name"
 if [ -z "$HW" ]; then
 	__emsg "$(__get_localized ERR_014)"
 	exit 4
@@ -1481,11 +1569,11 @@ __debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
 #                                                                                                     #
 #######################################################################################################
 if __is_debug; then
-	names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $inhouse_option_name"
+	names="$(get_names "$common_names $serial_name" "$alt_names" 2) $flags_name $buildtype_option_name"
 	__debug "$delimiter_line"
 	__debug "$(__get_localized DBG_003)"
 	__debug "$delimiter_line"
-	for n in $names type hostname nonce; do
+	for n in $names hostname nonce; do
 		__debug "%s=\"%s\"\n" "$n" "$(eval printf "%s" \"\$$n\")"
 	done
 	__debug "$delimiter_line"
@@ -1498,7 +1586,7 @@ fi
 body="$(mktmp -p "$td")"
 header="$(mktmp -p "$td")"
 response="$(mktmp -p "$td")"
-printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$type" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" >>"$body"
+printf "$body_tmpl" "$nonce" "$Name" "$HW" "$Major" "$Minor" "$Patch" "$Buildnumber" "$(eval printf "%s" "\$$buildtype_option_name")" "$Serial" "$OEM" "$Lang" "$Country" "$Annex" "$Flag_XML" >>"$body"
 len=$(wc -c <"$body")
 printf "$headerline_0" "$juisurl" >>"$header"
 printf "$headerline_1" "$hostname" "$juisport" >>"$header"
