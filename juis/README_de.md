@@ -45,13 +45,9 @@ shift
 
 \- damit wird also als erster und einziger Parameter die Angabe des DNS-Namens oder der IP-Adresse der FRITZ!Box erwartet, von der weitere Einstellungen zu lesen wären. Gleichzeitig dürfen aber auf der Kommandozeile noch weitere Angaben folgen, die dann ihrerseits einen der weiter unten beschriebenen Parameter festlegen (solange bei der Beschreibung der Variablen nichts anderes steht).
 
-Bei Angabe der Option ```--show-response```, wird die SOAP-Response aus der AVM-Antwort extrahiert
-(also die HTTP-Header aus der Antwort entfernt) und das Ergebnis nach STDERR ausgegeben. Um
-diese Anzeige übersichtlicher zu gestalten, wird dabei ein Programm zur Formatierung der (im
-Original einzeiligen) Ausgabe verwendet, sofern ein solches gefunden wird. Standardmäßig wird
-dabei nach ```xmllint``` aus dem ```libxml2```-Projekt (<http://xmlsoft.org/index.html>) gesucht, dieser
-Name kann mit der Environment-Variablen ```XML_LINTER``` überschrieben werden. Wird kein passendes
-Programm gefunden, erfolgt die Ausgabe der Daten 1:1 so, wie sie von AVM gesendet wurden.
+Bei Angabe der Option ```--show-response```, wird die SOAP-Response aus der AVM-Antwort extrahiert (also die HTTP-Header aus der Antwort entfernt) und das Ergebnis nach STDERR ausgegeben. Um diese Anzeige übersichtlicher zu gestalten, wird dabei ein Programm zur Formatierung der (im Original einzeiligen) Ausgabe verwendet, sofern ein solches gefunden wird. Standardmäßig wird dabei nach ```xmllint``` aus dem ```libxml2```-Projekt (<http://xmlsoft.org/index.html>) gesucht, dieser Name kann mit der Environment-Variablen ```XML_LINTER``` überschrieben werden. Wird kein passendes Programm gefunden, erfolgt die Ausgabe der Daten 1:1 so, wie sie von AVM gesendet wurden.
+
+---
 
 Egal, auf welchem Weg man jetzt die notwendigen Parameter bereitstellt (ob bereits beim Aufruf der Skript-Datei über das Shell-Environment oder über entsprechende Paare aus Namen und Werten (verbunden durch ein Gleichheitszeichen) auf der Kommandozeile oder über die Anweisungen in einer Konfigurationsdatei), am Ende braucht es für die Abfrage die folgenden Werte:
 
@@ -71,7 +67,7 @@ Egal, auf welchem Weg man jetzt die notwendigen Parameter bereitstellt (ob berei
 | Country | | der in der Box eingestellte Ländercode (nach ITU-Empfehlung - E.164) |
 | Flag | | eine durch Kommata getrennte Liste von _Flags_, die bei der Abfrage des AVM-Servers zu verwenden sind - eine erfolgreiche Abfrage für die FRITZ!Box 6590 braucht hier z.B. (derzeitiger Stand, kann sich bei AVM jederzeit ändern) die Angabe von ```cable_retail```, damit man eine sinnvolle Antwort erhält |
 | | | |
-| Buildtype | | dieser Parameter wird von AVM benutzt, um die verschiedenen Entwicklungsreihen der Firmware (Release, Labor, Inhouse, spez. Beta-Versionen für einzelne Änderungen, etc.) voneinander zu unterscheiden. Eigentlich besteht sein Wert aus einer ein- bis fünfstelligen Dezimalzahl und so kann dieser Wert hier (sofern man ihn kennt) auch direkt angegeben werden. Fehlt er, wird er üblicherweise von einer vorhandenen FRITZ!Box gelesen (s.u. für die Beschreibung von ```Box```). Wird er explizit nicht angegeben (Wert ```empty```), wird ```1``` als Standard verwendet.<br />Um diesen Parameter auch ohne Kenntnis der passenden numerischen Angaben benutzbar zu machen, gibt es ein paar vordefinierte Namen für diese Firmware-Serien. Ein angegebener Wert wird zuerst in Großschreibweise überführt (es spielt also keine Rolle, wie der Wert geschrieben wurde, solange die Abfolge der Buchstaben paßt) und das Ergebnis mit den Bezeichnungen aus der unten stehenden Liste verglichen. Handelt es sich beim angegebene Wert um einen dieser Bezeichner, wird der ihm zugeordnete numerische Wert für die Anfrage bei AVM verwendet. Da es für einige Werte mehrere (gebräuchliche) Namen gibt, sind einige Werte auch mehrfach in der Liste vorhanden.<br />RELEASE=1<br />LABOR=1001<br />BETA=1001<br />LABBETA=1001<br />PLUS=1007<br />LABPLUS=1007<br />INHOUSE=1000<br />INHAUS=1000<br />PHONE=1004<br />LABPHONE=1004 |
+| Buildtype | | dieser Parameter wird von AVM benutzt, um die verschiedenen Entwicklungsreihen der Firmware (Release, Labor, Inhouse, spez. Beta-Versionen für einzelne Änderungen, etc.) voneinander zu unterscheiden. Eigentlich besteht sein Wert aus einer ein- bis fünfstelligen Dezimalzahl und so kann dieser Wert hier (sofern man ihn kennt) auch direkt angegeben werden. Fehlt er, wird er üblicherweise von einer vorhandenen FRITZ!Box gelesen (s.u. für die Beschreibung von ```Box```). Wird er explizit nicht angegeben (Wert ```empty```), wird ```1``` als Standard verwendet.<br />Um diesen Parameter auch ohne Kenntnis der passenden numerischen Angaben benutzbar zu machen, gibt es ein paar vordefinierte Namen für diese Firmware-Serien. Ein angegebener Wert wird zuerst in Großschreibweise überführt (es spielt also keine Rolle, wie der Wert geschrieben wurde, solange die Abfolge der Buchstaben paßt) und das Ergebnis mit den Bezeichnungen aus der unten stehenden Liste verglichen. Handelt es sich beim angegebene Wert um einen dieser Bezeichner, wird der ihm zugeordnete numerische Wert für die Anfrage bei AVM verwendet. Da es für einige Werte mehrere (gebräuchliche) Namen gibt, sind einige Werte auch mehrfach in der Liste vorhanden.<br />```RELEASE=1```<br />```LABOR=1001```<br />```BETA=1001```<br />```LABBETA=1001```<br />```PLUS=1007```<br />```LABPLUS=1007```<br />```INHOUSE=1000```<br />```INHAUS=1000```<br />```PHONE=1004```<br />```LABPHONE=1004``` |
 | | | |
 | Public | | ```1```, um nur nach offziellen Versionen zu suchen oder ```0```, um auch die sogenannten _Inhouse_-Versionen zu finden<br />**Das Verwenden dieses Parameters wird ab Version 0.5 nicht mehr empfohlen, stattdessen sollte der Parameter 'Buildtype' (s.o.) genutzt werden.**<br />Wird er weiterhin genutzt, wird für ```Public=0``` der Wert ```1000``` und für ```Public=1``` der Wert ```1001``` als ```Buildtype``` verwendet. Eine gleichzeitige Benutzung von ```Public``` und ```Buildtype``` ist nicht erlaubt. |
 | | | |
@@ -85,13 +81,10 @@ Sollten jedenfalls am Ende noch irgendwelche Angaben fehlen (die Option ```--deb
 
 Für jede benötigte Einstellung kann man auch den Wert ```detect``` angeben, das hat denselben Effekt wie das Fehlen dieser Einstellung und führt zum Versuch, den Wert aus der Box zu lesen. Will man einen Wert nicht angeben und gleichzeitig verhindern, dass dieser aus dem Gerät gelesen wird, kann man ```empty``` angeben - das Ergebnis ist dann ein leerer Wert. Als drittes _Schlüsselwort_ im Wert einer Variablen kann ```fixed``` angegeben werden, dem dann - durch einen Doppelpunkt getrennt - der eigentliche Wert folgt. Das ist zwar dasselbe wie die direkte Angabe des Wertes, aber wenn dieser Wert selbst eines der Schlüsselworte wäre (also ```detect``` oder ```empty```), dann braucht man auch mal das ```fixed:``` als Präfix.
 
-Wenn man einen Wert angeben will (oder muss), der seinerseits ein Leerzeichen (oder irgendeinanderes Zeichen aus der IFS-Variablen) enthält, muss man diesen Wert beim Aufruf passend in Anführungszeichen setzen. Alternativ kann anstelle eines normalen Leerzeichens auch das Unicode-Zeichen für ```ZERO WIDTH SPACE``` (U+200B) benutzt werden, diese Zeichen werden vor der Verwendung im SOAP-Request durch normale ```SPACE```-Kodierungen (U+0020) ersetzt. Verwendet man Anführungszeichen, kann man diese nach eigenem Ermessen entweder um die gesamte Angabe von ```Parameter=Wert``` setzen oder auch nur um ```Wert```; die Angaben:
+Wenn man einen Wert angeben will (oder muss), der seinerseits ein Leerzeichen (oder irgendeinanderes Zeichen aus der IFS-Variablen) enthält, muss man diesen Wert beim Aufruf passend in Anführungszeichen setzen. Alternativ kann anstelle eines normalen Leerzeichens auch das Unicode-Zeichen für ```ZERO WIDTH SPACE``` (U+200B) benutzt werden, diese Zeichen werden vor der Verwendung im SOAP-Request durch normale ```SPACE```-Kodierungen (U+0020) ersetzt. Verwendet man Anführungszeichen, kann man diese nach eigenem Ermessen entweder um die gesamte Angabe von ```Parameter=Wert``` setzen oder auch nur um ```Wert```; die Angaben ```'Name=FRITZ!Box 7490 (UI)'``` und ```Name='FRITZ!Box 7490 (UI)'``` sind also vom Ergebnis her identisch. Doppelte Anführungszeichen sollte man hier nur nutzen, wenn ihre Verwendung einen speziellen Grund hat, z.B. Shell-Variablen in der Angabe, die beim Aufruf substituiert werden sollen.
 
-```'Name=FRITZ!Box 7490 (UI)'``` und
-```Name='FRITZ!Box 7490 (UI)'```
-
-sind also vom Ergebnis her identisch. Doppelte Anführungszeichen sollte man hier nur nutzen, wenn ihre Verwendung einen speziellen Grund hat, z.B. Shell-Variablen in der Angabe, die beim Aufruf substituiert werden sollen.
 ---
+
 Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Informationen über das Ergebnis zu erhalten - dabei werden die folgenden Werte verwendet:
 
 | Wert | Bedeutung |
@@ -102,7 +95,9 @@ Der Rückgabewert des Skripts (der 'exit code') kann verwendet werden, um Inform
 | 3 | unvollständige Parameter, i.d.R. auch das Ergebnis einer nicht erreichbaren FRITZ!Box beim Versuch, fehlende Werte von dort zu lesen |
 | 4 | die Abfrage bei AVM war falsch, das kann an fehlenden oder falschen Parametern liegen und ist am Ende nur eine Schlussfolgerung aus der Tatsache, dass es gar keine Antwort vom AVM-Server innerhalb der Timeout-Zeitspanne gab (der könnte aber auch ganz simpel mal ausgefallen sein), die Antwort nicht von ```200 OK``` als Status-Code begleitet ist oder in der Antwort nicht die erwarteten Felder - das wären ```Found``` und ```DownloadURL``` im XML-Namespace ```ns3``` (```http://juis.avm.de/response```) - vorhanden sind |
 | 5 | Fehler bei der Netzwerk-Kommunikation (Host nicht gefunden, Timeout, etc.) |
+
 ---
+
 Wer eine Lizenz für MS Office hat, kann auch die Version in Excel von @Chatty benutzen: <https://github.com/TheChatty/JUISinExcel>
 
 Mittlerweile gibt es auch eine Windows-Version mit graphischer Oberfläche (die kann dann u.a. auch Firmware für Zubehör bei AVM suchen), nähere Informationen kann man hier nachlesen: <https://www.ip-phone-forum.de/threads/update-check-juischeck-f%C3%BCr-windows.301927/post-2310055>

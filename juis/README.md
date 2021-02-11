@@ -55,11 +55,9 @@ This configuration file may be used to set one or more of the needed settings (s
 from positional parameters on the command line and has to use the ```shift``` statement to
 remove any processed entries from the parameters collection.
 
-If the option ```--show-response``` is specified, the SOAP response (without HTTP headers) will be
-written to STDERR. This will be done using a XML formatter/linter, if present, and the default
-command looked up is ```xmllint``` from the ```libxml2``` project (<http://xmlsoft.org/index.html>). This
-default value may be replaced by an environment variable named ```XML_LINTER```.
------------------------------------------------------------------------------------------------
+If the option ```--show-response``` is specified, the SOAP response (without HTTP headers) will be written to STDERR. This will be done using a XML formatter/linter, if present, and the default command looked up is ```xmllint``` from the ```libxml2``` project (<http://xmlsoft.org/index.html>). This default value may be replaced by an environment variable named ```XML_LINTER```.
+
+---
 
 Any remaining values from command line are expected to be a name/value pair for one of the
 following known settings:
@@ -80,7 +78,7 @@ following known settings:
 | Country | | the ITU recommended country code (E.164) |
 | Flag | | a comma-delimited list of flags to be included into the request |
 | | | |
-| Buildtype | | this parameter is used by AVM to distinguish between various lines/series of firmware development.<br />The value is a number (with 1 to 5 digits) and may be specified this way, if the needed/wanted value is known. A missing value will be read from device usually (see ```Box``` below), but if it's left off intentionally (specified as ```empty```), a default value of ```1``` is used.<br />To make calls with a specific value more handy, some known values (formerly seen by AVM or others) are available to be used in place of a numeric value. A specified value is converted to upper case and compared to the names below. If a match was found, the corresponding numeric value will be used for the JUIS request. Due to different (well-known) names for the same value, some duplicates exist.<br />RELEASE=1<br />LABOR=1001<br />BETA=1001<br />LABBETA=1001<br />PLUS=1007<br />LABPLUS=1007<br />INHOUSE=1000<br />INHAUS=1000<br />PHONE=1004<br />LABPHONE=1004 |
+| Buildtype | | this parameter is used by AVM to distinguish between various lines/series of firmware development.<br />The value is a number (with 1 to 5 digits) and may be specified this way, if the needed/wanted value is known. A missing value will be read from device usually (see ```Box``` below), but if it's left off intentionally (specified as ```empty```), a default value of ```1``` is used.<br />To make calls with a specific value more handy, some known values (formerly seen by AVM or others) are available to be used in place of a numeric value. A specified value is converted to upper case and compared to the names below. If a match was found, the corresponding numeric value will be used for the JUIS request. Due to different (well-known) names for the same value, some duplicates exist.<br />```RELEASE=1```<br />```LABOR=1001```<br />```BETA=1001```<br />```LABBETA=1001```<br />```PLUS=1007```<br />```LABPLUS=1007```<br />```INHOUSE=1000```<br />```INHAUS=1000```<br />```PHONE=1004```<br />```LABPHONE=1004``` |
 | | | |
 | Public | | ```1``` to check only for public versions, ```0``` to accept "inhouse builds" instead<br />**This parameter is deprecated now (since version 0.5), use 'Buildtype' (see above) instead.**<br />If it's still used (it's mutually exclusive with 'Buildtype'), a value of '1001' for 'Public=1' and '1000' for 'Public=0' will be used as 'Buildtype'. |
 | | | |
@@ -114,14 +112,10 @@ in quotes. Or you may use the Unicode character ```ZERO WIDTH SPACE``` (U+200B) 
 occurrence of this character will be replace by a normal ```SPACE``` (U+0020), before the value
 gets used in the SOAP request.
 If you're using quotes, it doesn't matter, whether you're enclosing the parameter name and
-its value within, or if only the value itself is quoted. That means:
+its value within, or if only the value itself is quoted. That means, ```'Name=FRITZ!Box 7490 (UI)'``` and ```Name='FRITZ!Box 7490 (UI)'``` have the same outcome. You should avoid using double quotes ("), if there's not a special reason to use them - e.g. the substitution of variables within a value.
 
-```'Name=FRITZ!Box 7490 (UI)'``` and
-```Name='FRITZ!Box 7490 (UI)'```
-
-have the same outcome. You should avoid using double quotes ("), if there's not a special
-reason to use them - e.g. the substitution of variables within a value.
 ---
+
 The exit code of this script may be used to distinguish between the results, the following
 values are used:
 
@@ -133,7 +127,9 @@ values are used:
 | 3 | incomplete parameters (usually an unreachable device with address from 'Box') |
 | 4 | wrong SOAP call built with specified and/or read parameters - it's the inference based on a missing answer, a status code other than '200 OK' from AVM or a malformed answer, which has to be a valid SOAP response in case of success |
 | 5 | network I/O error (host not found, no answer, etc.) |
+
 ---
+
 If you've a license to use MS Office (the Desktop version, because the cloud-based variant doesn't support macros, as far as I know), you could also use the Excel-based version of this check (by @Chatty): <https://github.com/TheChatty/JUISinExcel>
 
 And meanwhile there's also a Windows version with a GUI (and more features, e.g. searching for accessories firmware), it's discussed here: <https://www.ip-phone-forum.de/threads/update-check-juischeck-f%C3%BCr-windows.301927/post-2310055>
