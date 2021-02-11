@@ -163,18 +163,22 @@ usage_text()
 		__nl "            auch direkt angegeben werden. Fehlt er, wird er üblicherweise von einer vorhandenen"
 		__nl "            FRITZ!Box gelesen (s.u. für die Beschreibung von 'Box'). Wird er explizit nicht"
 		__nl "            angegeben (Wert 'empty'), wird '$buildtype_option_default' als Standard verwendet."
-# TODO: Display predefined values
+		__nl "            Um diesen Parameter auch ohne Kenntnis der passenden numerischen Angaben benutzbar"
+		__nl "            zu machen, gibt es ein paar vordefinierte Namen für diese Firmware-Serien. Ein"
+		__nl "            angegebener Wert wird zuerst in Großschreibweise überführt (es spielt also keine"
+		__nl "            Rolle, wie der Wert geschrieben wurde, solange die Abfolge der Buchstaben paßt)"
+		__nl "            und das Ergebnis mit den Bezeichnungen aus der unten stehenden Liste verglichen."
+		__nl "            Handelt es sich beim angegebene Wert um einen dieser Bezeichner, wird der ihm"
+		__nl "            zugeordnete numerische Wert für die Anfrage bei AVM verwendet. Da es für einige"
+		__nl "            Werte mehrere (gebräuchliche) Namen gibt, sind einige Werte auch mehrfach in der"
+		__nl "            Liste vorhanden."
+		get_known_buildtype_values | \
+		while read name value; do
+			__nl "            $name=$value"
+		done
 		__nl "-----------------------------------------------------------------------------------------------"
 		__nl "$inhouse_option_name      '1', um nur nach offziellen Versionen zu suchen oder '0', um auch die sogenannten"
-		__nl "            'Inhouse'-Versionen (zumindest bei einigen dieser Firmware-Einträge steht dann ein"
-		__nl "            'Inhouse' oder 'Inhaus' auch in der Beschreibung der Version in der SOAP-Antwort,"
-		__nl "            daher habe ich diese Benennung irgendwann mal übernommen) zu finden, für die AVM"
-		__nl "            aber natürlich noch viel weniger Support leistet als für die offiziellen Labor-"
-		__nl "            Versionen (und für die gibt es schon keinen Support) - dieser Parameter eignet sich"
-		__nl "            auch nicht für den Einstieg in eine Labor-Reihe, der muss immer noch über die"
-		__nl "            manuelle Installation der ersten Labor-Version erfolgen und erst danach kann man"
-		__nl "            dann (vermutlich auf der Basis von 'Buildnumber') auch weitere Labor-Versionen über"
-		__nl "            die Abfrage bei AVM finden"
+		__nl "            'Inhouse'-Versionen zu finden"
 		__nl "$__red__            Das Verwenden dieses Parameters wird ab Version 0.5 nicht mehr empfohlen,"
 		__nl "$__red__            stattdessen sollte der Parameter '$buildtype_option_name' (s.o.) genutzt werden.$__rset__"
 		__nl "            Wird er weiterhin genutzt, wird für '${inhouse_option_name}=0' der Wert '1000' und für '${inhouse_option_name}=1'"
@@ -322,8 +326,15 @@ usage_text()
 		__nl "            needed/wanted value is known. A missing value will be read from device usually (see"
 		__nl "            'Box' below), but if it's left off intentionally (specified as 'empty'), a default"
 		__nl "            value of '$buildtype_option_default' is used."
-
-# TODO: Display predefined values
+		__nl "            To make calls with a specific value more handy, some known values (formerly seen by"
+		__nl "            AVM or others) are available to be used in place of a numeric value. A specified"
+		__nl "            value is converted to upper case and compared to the names below. If a match was"
+		__nl "            found, the corresponding numeric value will be used for the JUIS request. Due to"
+		__nl "            different (well-known) names for the same value, some duplicates exist."
+		get_known_buildtype_values | \
+		while read name value; do
+			__nl "            $name=$value"
+		done
 		__nl "-----------------------------------------------------------------------------------------------"
 		__nl "$inhouse_option_name      '1' to check only for public versions, '0' to accept 'inhouse builds' instead"
 		__nl "$__red__            This parameter is deprecated now (since version 0.5), use '$buildtype_option_name' (see above)"
@@ -742,6 +753,14 @@ inhouse_option_name="Public"
 buildtype_option_name="Buildtype"
 known_buildtype_values="RELEASE:1 LABOR:1001 BETA:1001 LABBETA:1001 PLUS:1007 LABPLUS:1007 INHOUSE:1000 INHAUS:1000 PHONE:1004 LABPHONE:1004"
 buildtype_option_default="1"
+get_known_buildtype_values()
+(
+	for item in $known_buildtype_values; do
+		name="$(expr "$item" : "\([^:]*\):.*")"
+		value="$(expr "$item" : "[^:]*:\(.*\)")"
+		printf "%s %s\n" "$name" "$value"
+	done
+)
 # nonce variable name for response signature
 nonce_option_name="Nonce"
 # local file retrieval constants
