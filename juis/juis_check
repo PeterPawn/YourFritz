@@ -430,6 +430,8 @@ L10N_ERR_020_en="Network communication failed."
 L10N_ERR_020_de="Bei der Netzwerk-Kommunikation ist ein Fehler aufgetreten."
 L10N_INF_001_en="Found newer version: %%s"
 L10N_INF_001_de="Neue Version gefunden: %%s"
+L10N_INF_002_en="JUIS response was:"
+L10N_INF_002_de="JUIS-Antwort:"
 L10N_HLP_PUR_en="Purpose"
 L10N_HLP_PUR_de="Zweck"
 L10N_HLP_USG_en="Usage"
@@ -759,6 +761,7 @@ __use_real_serial=0
 __get_current=0
 __use_local=0
 __show_new_version=0
+__show_response=0
 __save_output=""
 escape_value() { printf "%s\n" "$@" | sed -e "s| |$(printf "\342\200\212")|g"; }
 unescape_value() { printf "%s\n" "$@" | sed -e "s|$(printf "\342\200\212")| |g"; }
@@ -792,6 +795,11 @@ while [ $# -gt 0 ]; do
 	elif __check_option "$1" "-p" "--print-version" >/dev/null; then
 		__show_new_version=1
 		options="${options:+${options} }--print-version"
+		shift
+		continue
+	elif __check_option "$1" "-a" "--show-response" >/dev/null; then
+		__show_response=1
+		options="${options:+${options} }--show-response"
 		shift
 		continue
 	elif __check_option "$1" "-s" "--save-response" >/dev/null; then
@@ -1676,6 +1684,15 @@ if ! [ -z "$__save_output" ]; then
 		exit 1
 	else
 		__debug "$(__get_localized DBG_016)" "$(realpath "$__save_output")"
+	fi
+fi
+if [ "$__show_response" = "1" ]; then
+	__info "$(__get_localized INF_002)"
+	if __check_required_command "${XML_LINTER:-xmllint}"; then
+		xmllint --format "$xmlresp" 1>&2
+	else
+		cat "$xmlresp" 1>&2
+		printf "\n" 1>&2
 	fi
 fi
 found="$(extract_xml "$xmlresp" "ns3" "Found")"
