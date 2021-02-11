@@ -8,7 +8,7 @@ Dank der Möglichkeit, fast jeden Aspekt bzw. Parameter einer solchen Abfrage na
 
 Trotzdem kann sich der Aufruf des Skripts im einfachsten Fall auf die Angabe des DNS-Namens oder der IP-Adresse einer existierenden (und von der LAN-Seite erreichbaren) FRITZ!Box im ersten Parameter beschränken und alle weiteren Angaben für die Abfrage beim Hersteller werden dann von dieser FRITZ!Box gelesen.
 
-Damit ist es nach wie vor ganz einfach, regelmäßig bei AVM (dem Hersteller der FRITZ!Box) nach neuer Firmware zu suchen - auch von _außerhalb_ der FRITZ!Box und für den Fall, dass man aus (nachvollziehbaren) Sicherheitsbedenken lieber auf die automatische Suche und die automatische Installation neuer Firmware verzichten möchte ... es gab in der Vergangenheit da einige Vorkommnisse, bei denen offensichtlich die vorhandenen Einstellungen zum Update nicht wirklich berücksichtigt wurden von der Firmware.
+Damit ist es nach wie vor ganz einfach, regelmäßig bei AVM (dem Hersteller der FRITZ!Box) nach neuer Firmware zu suchen - auch von _außerhalb_ der FRITZ!Box und für den Fall, dass man aus (nachvollziehbaren) Sicherheitsbedenken lieber auf die automatische Suche und die automatische Installation neuer Firmware verzichten möchte.
 
 **Aufruf:**
 

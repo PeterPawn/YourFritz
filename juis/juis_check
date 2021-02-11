@@ -62,9 +62,7 @@ usage_text()
 		__nl "Damit ist es nach wie vor ganz einfach, regelmäßig bei AVM (dem Hersteller der FRITZ!Box)"
 		__nl "nach neuer Firmware zu suchen - auch von 'außerhalb' der FRITZ!Box und für den Fall, dass"
 		__nl "man aus (nachvollziehbaren) Sicherheitsbedenken lieber auf die automatische Suche und die"
-		__nl "automatische Installation neuer Firmware verzichten möchte ... es gab in der Vergangenheit"
-		__nl "da einige Vorkommnisse, bei denen offensichtlich die vorhandenen Einstellungen zum Update"
-		__nl "nicht wirklich berücksichtigt wurden von der Firmware."
+		__nl "automatische Installation neuer Firmware verzichten möchte."
 		__usage_hdr
 		__usage_opt "Optionen"; __usage_opt_end; __usage_opt "optionale Parameter"
 		__usage_end
