@@ -217,6 +217,7 @@ usage_text()
 		__nl "      mal ausgefallen sein), die Antwort nicht von '200 OK' als Status-Code begleitet ist"
 		__nl "      oder in der Antwort nicht die erwarteten Felder - das wären 'Found' und 'DownloadURL'"
 		__nl "      im XML-Namespace 'ns3' (http://juis.avm.de/response) - vorhanden sind"
+		__nl "5     Fehler bei der Netzwerk-Kommunikation (Host nicht gefunden, Timeout, etc.)"
 	else
 		__purpose_hdr
 		__nl "This script may be used to query AVM's update information service (JUIS) for new versions.\n"
@@ -332,6 +333,7 @@ usage_text()
 		__nl "4      wrong SOAP call built with specified and/or read parameters - it's the inference based"
 		__nl "       on a missing answer, a status code other than '200 OK' from AVM or a malformed answer,"
 		__nl "       which has to be a valid SOAP response in case of success"
+		__nl "5      network I/O error (host not found, no answer, etc.)"
 	fi
 }
 #######################################################################################################
@@ -376,6 +378,8 @@ L10N_DBG_017_en="Reading values from local file '%%s'.\\\\n"
 L10N_DBG_017_de="Lesen der Parameter aus der lokalen Datei '%%s'.\\\\n"
 L10N_DBG_018_en="Just decremented the version number to get an answer with URL for current version.\\\\n"
 L10N_DBG_018_de="Die Versionsnummer wurde dekrementiert, um eine Antwort mit der URL für die aktuelle Version zu erhalten.\\\\n"
+L10N_DBG_019_en="TCP request using internal network feature (from Bash) failed, 'netcat' (nc) will be tried next: "
+L10N_DBG_019_de="Die Abfrage mit den Netzwerk-Funktionen der 'Bash'-Shell war nicht erfolgreich, jetzt wird es mit 'netcat' (nc) erneut versucht: "
 L10N_ERR_OPT_en="Unknown option '%%s' specified."
 L10N_ERR_OPT_de="Unbekannte Option '%%s' beim Aufruf angegeben."
 L10N_ERR_SCR_en="Missing another needed executable: %%s."
@@ -420,6 +424,10 @@ L10N_ERR_017_en="The value for '%%s' variable (%%s) is neither a known name nor 
 L10N_ERR_017_de="Der Wert für den '%%s'-Parameter (%%s) ist weder einer der bekannten Namen, noch eine gültige Nummer."
 L10N_ERR_018_en="The parameters '%%s' and '%%s' are mutually exclusive, please use only '%%s' because '%%s' is deprecated now."
 L10N_ERR_018_de="Die Angabe von '%%s' und '%%s' bei demselben Aufruf ist nicht erlaubt, bitte nur '%%s' verwenden, weil '%%s' nicht mehr genutzt werden sollte."
+L10N_ERR_019_en="TCP connection using Bash' internal network feature failed and 'netcat' (nc) was not found."
+L10N_ERR_019_de="Die TCP-Funktion der 'Bash'-Shell hat ein Problem und 'netcat' (nc) konnte nicht gefunden werden."
+L10N_ERR_020_en="Network communication failed."
+L10N_ERR_020_de="Bei der Netzwerk-Kommunikation ist ein Fehler aufgetreten."
 L10N_INF_001_en="Found newer version: %%s"
 L10N_INF_001_de="Neue Version gefunden: %%s"
 L10N_HLP_PUR_en="Purpose"
@@ -803,11 +811,13 @@ __is_debug && options="--debug${options:+ $options}"
 if [ $__no_respawn -eq 0 ] && [ -z "${BASH_VERSION}" ]; then
 	bash="$(command -v bash 2>/dev/null)"
 	if ! [ -z "$bash" ]; then
-		[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
-		options="${options:+${options} }--no-respawn "
-		__debug "$(__get_localized DBG_012)" "command bash $xtrace$0 $options$parameters"
-		command bash $xtrace$0 $options$parameters
-		exit $?
+		if command bash --help 2>/dev/null | grep -q "GNU bash" 2>/dev/null; then
+			[ "$(set -o 2>/dev/null | sed -n -e 's|^xtrace[ \t]*\(.*\)$|\1|p')" = "on" ] && xtrace="-x " || xtrace=""
+			options="${options:+${options} }--no-respawn "
+			__debug "$(__get_localized DBG_012)" "command bash $xtrace$0 $options$parameters"
+			command bash $xtrace$0 $options$parameters
+			exit $?
+		fi
 	fi
 fi
 set -- $parameters
@@ -830,11 +840,21 @@ $__check_required_commands__
 tcp_read()
 (
 	rc=0
-	if [ -z "${BASH_VERSION}" ]; then
-		run_nc $1 $2 "$3" $4
-		rc=$?
-	else
+	if [ -n "${BASH_VERSION}" ]; then
 		use_devtcp $1 $2 "$3" $4
+		rc=$?
+		if [ "$rc" -ne 0 ]; then
+			__debug "$(__get_localized DBG_019)"
+			if __check_required_command "nc"; then
+				run_nc $1 $2 "$3" $4
+				rc=$?
+			else
+				__emsg "$(__get_localized ERR_019)"
+				rc=1
+			fi
+		fi
+	else
+		run_nc $1 $2 "$3" $4
 		rc=$?
 	fi
 	exit $rc
@@ -855,7 +875,9 @@ use_devtcp()
 	__is_debug && trap='printf\ "\\\\n"\ 1\>\&7\;exec\ 2\>\&7' || trap='exec\ 2\>\&7'
 	eval trap "$trap" EXIT
 	exec 2>/dev/null
+	set -e
 	exec 5<>/dev/tcp/$host/$port
+	set +e
 	cat <&5 >"$out" &
 	catpid=$!
 	cat >&5
@@ -869,9 +891,9 @@ use_devtcp()
 	exec 5>&-
 	sleep 1
 	kill -s 0 $catpid && kill $catpid
+	__is_debug && printf "\n" 1>&7
 	trap '' EXIT
 	exec 2>&7
-	__is_debug && printf "\n" 1>&2
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1608,12 +1630,17 @@ fi
 #######################################################################################################
 __debug "$(__get_localized DBG_008)" "$hostname" "$juisport"
 ( cat "$header"; printf "\r\n"; cat "$body" ) | tcp_read "$hostname" "$juisport" "$response" "$remote_timeout"
-if __is_debug; then
-	__debug "$(__get_localized DBG_005)"
-	__debug "$delimiter_line"
-	sed -e "s|^|       |" "$response" 1>&2
-	printf "\n" 1>&2
-	__debug "$delimiter_line"
+if [ "$?" -ne 0 ] || ! [ -s "$response" ]; then
+	__emsg "$(__get_localized ERR_020)"
+	exit 5
+else
+	if __is_debug; then
+		__debug "$(__get_localized DBG_005)"
+		__debug "$delimiter_line"
+		sed -e "s|^|       |" "$response" 1>&2
+		printf "\n" 1>&2
+		__debug "$delimiter_line"
+	fi
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -1659,7 +1686,7 @@ fi
 URL="$(extract_xml "$xmlresp" "ns3" "DownloadURL")"
 delay="$(sed -n -e "s|^Download-Delay: \([0-9]*\)|\1|p" "$response")"
 Version="$(extract_xml "$xmlresp" "ns3" "Version")"
-__info "$(__get_localized INF_001)" "$Version" 1>&2
+__info "$(__get_localized INF_001)" "$Version"
 printf "URL=%s\n" "$URL"
 [ -z "$delay" ] || printf "DelayDownload=%s\n" "$delay"
 [ $__show_new_version -eq 1 ] && printf "NewVersion=\"%s\"\n" "$Version"
