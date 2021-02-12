@@ -1762,7 +1762,7 @@ if [ "$__show_response" = "1" ]; then
 	__info "$(__get_localized INF_002)"
 	[ -z "$XML_LINTER" ] && XML_LINTER="xmllint --format \"%s\""
 	linter_cmd="$XML_LINTER"
-	[ -z "$(expr "$linter_cmd" : ".*\(%s\).*")" ] && linter_cmd="$linter_cmd %s"
+	[ -z "$(expr "$linter_cmd" : ".*\(%s\).*")" ] && linter_cmd="$linter_cmd \"%s\""
 	linter="$(set -- $XML_LINTER && printf "%s" "$1")"
 	if __check_required_command "$linter"; then
 		eval "$(printf "$linter_cmd" "$xmlresp")" 1>&2
