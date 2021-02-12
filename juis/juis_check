@@ -1740,7 +1740,9 @@ fi
 #######################################################################################################
 xmlresp="$(mktmp -p "$td")"
 # AVM's response is one single line, extraction may need a more sophisticated command, if this changes
+# and a newline character is appended to make further appends easier and safer.
 sed -n -e "\$p" "$response" >"$xmlresp"
+printf "\n" >>"$xmlresp"
 if ! [ -z "$__save_output" ]; then
 	exec 7>&2
 	exec 2>/dev/null
@@ -1758,11 +1760,14 @@ if ! [ -z "$__save_output" ]; then
 fi
 if [ "$__show_response" = "1" ]; then
 	__info "$(__get_localized INF_002)"
-	if __check_required_command "${XML_LINTER:-xmllint}"; then
-		xmllint --format "$xmlresp" 1>&2
+	[ -z "$XML_LINTER" ] && XML_LINTER="xmllint --format \"%s\""
+	linter_cmd="$XML_LINTER"
+	[ -z "$(expr "$linter_cmd" : ".*\(%s\).*")" ] && linter_cmd="$linter_cmd %s"
+	linter="$(set -- $XML_LINTER && printf "%s" "$1")"
+	if __check_required_command "$linter"; then
+		eval "$(printf "$linter_cmd" "$xmlresp")" 1>&2
 	else
 		cat "$xmlresp" 1>&2
-		printf "\n" 1>&2
 	fi
 fi
 found="$(extract_xml "$xmlresp" "ns3" "Found")"
