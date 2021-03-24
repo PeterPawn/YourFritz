@@ -74,6 +74,11 @@ src="${src%/}"
 # at least one slash is needed, if called for root filesystem
 [ -z "$src" ] && src="/"
 
+if ! [ -d "$src" ]; then
+	printf "'%s' is not a valid directory name / directory was not found.\a\n" "$src" 1>&2
+	exit 1
+fi
+
 for cmd in sed grep find date readlink expr; do
 	if ! command -v $cmd >/dev/null 2>&1; then
 		printf "Missing '%s' command, needed for this script.\a\n" "$cmd" 1>&2
