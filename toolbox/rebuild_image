@@ -621,8 +621,10 @@ else
 		set_user_and_group "$name/$avm_sqfs_image"
 		sqfs_packer="${sqfs_4_pack_be}"
 		sqfs_unpacker="${sqfs_unpack_be}"
-	elif [ "$box_type" = "nand" ] && [ $sqfs_version -eq 3 ]; then # fs.avm may be a wrapper image (before 06.5x)
+#	elif [ "$box_type" = "nand" ] && [ $sqfs_version -eq 3 ]; then # fs.avm may be a wrapper image (before 06.5x)
+	elif [ "$box_type" = "nand" ]; then # fs.avm may be a wrapper image (before 06.5x and since 07.19 again)
 		box_type="nand_wrapper_sqfs"
+		sqfs_unpacker="${sqfs_unpack_be}"
 		mv "$name/$avm_sqfs_image" "$name/$avm_sqfs_image_wrapper" 2>/dev/null
 		scan_wrapper="$("$sqfs_unpacker" -k -s "$name/$avm_sqfs_image_wrapper" 2>&1)"
 		su_do="$(checkuid)"
@@ -635,7 +637,6 @@ else
 		$su_do mv "$name/$wrapper_unpacked/$rootfs_image" "$name/$avm_sqfs_image" 2>/dev/null
 		set_user_and_group "$name/$avm_sqfs_image"
 		sqfs_packer="${sqfs_3_pack_be}"
-		sqfs_unpacker="${sqfs_unpack_be}"
 	else
 		eval sqfs_packer="\${$(printf "%s%s%s%s" "sqfs_" "${sqfs_version}" "_pack_" "${sqfs_endian}")}"
 		eval sqfs_unpacker="\${$(printf "sqfs_unpack_%s" "${sqfs_endian}")}"
