@@ -112,7 +112,7 @@
 206 meshd.cfg mesh controller configuration
 208 cert.cfg
 209 usb.cfg USB configuration settings (WebDAV is included too)
-210 xdslmode
+210 broadband.cfg (previous name: xdslmode)
 211 umts.cfg
 212 maild.xml
 213 timeprofile.cfg

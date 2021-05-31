@@ -1,10 +1,12 @@
-510 @M
+510 @N
 431 AutoMDIX
 259 DMC
+459 HardwareFeatures
 256 HWRevision
 260 HWSubRevision
 257 ProductID
 258 SerialNumber
+460 SoftwareFeatures
 425 annex
 385 autoload
 512 bb0
@@ -34,6 +36,7 @@
 415 kernel_args1
 423 language
 408 linux_fs_start
+461 linux_fs_status
 392 maca
 393 macb
 394 macwlan
