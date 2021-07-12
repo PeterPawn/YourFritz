@@ -397,7 +397,7 @@ function WriteFile {
             #
             $copytask = $file.CopyToAsync($stream)
             $waiting = $False
-            $waitloops = 20
+            $waitloops = 21
             while ($sending -or $waiting) {
                 if ($copytask.IsCompleted) {
                     $stream.Close()
@@ -406,9 +406,7 @@ function WriteFile {
                     $sending = $False
                     # try to get an answer from the device after closing the data stream and the connection, the response from the device was
                     # very late during my tests
-                    if (-not $waiting) {
-                        $waiting = $True
-                    }
+                    $waiting = $True
                     $waitcount = $waitcount - 1
                     if ($waitcount -le 0) {
                         $waiting = $False
