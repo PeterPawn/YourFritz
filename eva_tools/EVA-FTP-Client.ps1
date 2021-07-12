@@ -396,7 +396,9 @@ function WriteFile {
             # PSRemotingProtocolVersion      2.2
             #
             $copytask = $file.CopyToAsync($stream)
-            while ($sending) {
+            $waiting = $False
+            $waitloops = 20
+            while ($sending -or $waiting) {
                 if ($copytask.IsCompleted) {
                     $stream.Close()
                     $file.Close()
@@ -404,18 +406,36 @@ function WriteFile {
                     $sending = $False
                     # try to get an answer from the device after closing the data stream and the connection, the response from the device was
                     # very late during my tests
-                    Start-Sleep -Milliseconds 5000
+                    if (-not $waiting) {
+                        $waiting = $True
+                    }
+                    $waitcount = $waitcount - 1
+                    if ($waitcount -le 0) {
+                        $waiting = $False
+                    }
+                    if ($waiting) {
+                        Write-Debug "Waiting for control channel message for $waitcount seconds ..."
+                    }
                 }
                 $answer = [String]::Empty
                 $answer = ReadAnswer
                 if (ParseAnswer $answer "226") {
                     $sending = $False
                     $result = $True
+                    $waiting = $False
                 }
                 elseif (ParseAnswer $answer "553") {
                     # may only occur while we're uploading an in-memory image
                     $sending = $False
                     $result = $False
+                    $waiting = $False
+                }
+                elseif (ParseAnswer $answer "120") {
+                    # log busy messages too - but there shouldn't be sent an additional command at control channel so far
+                    Write-Debug "The device seems to be still busy yet (message '120' received from control channel) ..."
+                }
+                if ($waiting) {
+                    Start-Sleep -Milliseconds 1000
                 }
             }
         }
