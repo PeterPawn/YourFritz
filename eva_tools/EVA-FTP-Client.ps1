@@ -244,7 +244,8 @@ function UploadFlashFile {
 #######################################################################################
 function BootDeviceFromImage {
     Param([Parameter(Mandatory = $True, Position = 0, HelpMessage = 'the file containing the image to be loaded')][String]$filename,
-          [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'limit memory size to 128 MB for the uploaded image')][bool]$limitedMemory = $True
+          [Parameter(Mandatory = $False, Position = 1, HelpMessage = 'limit memory size for the uploaded image')][bool]$limitedMemory = $True,
+          [Parameter(Mandatory = $False, Position = 2, HelpMessage = 'memory size value to use in MByte, default value is 128')][int]$limitMemoryTo = 128
      )
 
     if ($DebugPreference -eq "Inquire") { $DebugPreference = "Continue" }
@@ -267,8 +268,8 @@ function BootDeviceFromImage {
         Throw $ex
     }
     if ($limitedMemory) {
-        # set memory size to 128 MB
-        $memsize = 1024 * 1024 * 128
+        # set memory size to defined limit
+        $memsize = 1024 * 1024 * $limitMemoryTo
     }
     else {
         $memsize = $memsize / 1024 * 1024
@@ -276,7 +277,7 @@ function BootDeviceFromImage {
     # compute the needed size values (as strings)
     Write-Debug $("Memory size found    : 0x{0:x8} ({1} MB)" -f $originalmemory,($originalmemory / 1024 / 1024))
     Write-Debug $("Memory size used     : 0x{0:x8} ({1} MB)" -f $memsize,($memsize / 1024 / 1024))
-    Write-Debug $("Image size found     : 0x{0:x8}" -f $filesize)
+    Write-Debug $("Image size found     : 0x{0:x8} ({1} MB)" -f $filesize,(($filesize + 512) / 1024 / 1024))
     $newsize = $memsize - $filesize
     $newmemsize = "0x{0:x8}" -f $newsize
     Write-Debug "Set memory size to   : $newmemsize"
@@ -307,13 +308,26 @@ function BootDeviceFromImage {
         $ex = New-Object System.IO.IOException "Error selecting media type."
         Throw $ex
     }
-    if (-not (WriteFile $filename "$startaddr $endaddr")) {
+    try
+    {
+        if (-not (WriteFile $filename "$startaddr $endaddr")) {
+            # try to reset environment settings
+            $memory = "0x{0:x8}" -f $originalmemory
+            SetEnvironmentValue "memsize" $memory
+            SetEnvironmentValue "kernel_args_tmp"
+            # throw error returned by WriteFile
+            $ex = New-Object System.IO.IOException "Error uploading image file, Writefile() returns 'False'."
+            Throw $ex
+        }
+    }
+    catch {
+        $local_ex = $_.Exception
         # try to reset environment settings
         $memory = "0x{0:x8}" -f $originalmemory
         SetEnvironmentValue "memsize" $memory
         SetEnvironmentValue "kernel_args_tmp"
-        # throw error from WriteFile
-        $ex = New-Object System.IO.IOException "Error uploading image file."
+        # throw new exception
+        $ex = New-Object System.IO.IOException "Exception thrown by WriteFile() function: '$local_ex.Message'."
         Throw $ex
     }
     return $True
@@ -439,10 +453,12 @@ function WriteFile {
         }
     }
     catch {
+	$ex = $_.Exception
         $result = $False
         if ($sending) {
             $stream.Close()
         }
+	Throw $ex
     }
     if ($file) {
         $file.Close()
