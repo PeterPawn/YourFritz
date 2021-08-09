@@ -4,17 +4,17 @@
 BASENAME := avm_kernel_config
 #
 # target binary
-# 
+#
 BINARIES := gen_$(BASENAME) extract_$(BASENAME)
 #
 # source files
 #
-HELPER_SRCS = $(BASENAME)_helpers.c 
+HELPER_SRCS = $(BASENAME)_helpers.c
 BIN_SRCS = gen_$(BASENAME).c extract_$(BASENAME).c
 #
 # header files
 #
-HELPER_HDRS = $(BASENAME)_helpers.h 
+HELPER_HDRS = $(BASENAME)_helpers.h
 BIN_HDRS = ./linux/include/uapi/linux/$(BASENAME).h $(BASENAME)_macros.h
 #
 # object files
@@ -50,7 +50,7 @@ $(BIN_OBJS) $(HELPER_OBJS): CFLAGS += -O2 -W -Wall
 # how to build objects from sources
 #
 %.o: %.c
-	$(CC) $(CFLAGS) -I$(LIBFDT_LOC) -I. -c $< -o $@
+	$(CC) $(CFLAGS) -I$(LIBFDT_LOC) -I. -I./linux/include -D__KERNEL__ -c $< -o $@
 #
 # targets to make
 #
@@ -65,7 +65,7 @@ $(BINARIES): $(LIBFDT_LIB) $(HELPER_OBJS) $(BIN_OBJS)
 #
 # make static library
 #
-$(LIBFDT_LIB): $(LIBFDT_OBJS) 
+$(LIBFDT_LIB): $(LIBFDT_OBJS)
 	-$(RM) $@ 2>/dev/null || true
 	$(AR) rcu $@ $?
 	$(RANLIB) $@
@@ -76,7 +76,7 @@ $(LIBFDT_OBJS): $(LIBFDT_SRC2) $(LIBFDT_INCS)
 $(HELPER_OBJS): $(HELPER_SRCS) $(HELPER_HDRS)
 $(BIN_OBJS): $(BIN_SRCS) $(BIN_HDRS) $(HELPER_HDRS)
 #
-# cleanup 	
+# cleanup
 #
 clean:
 	-$(RM) *.o $(BINARIES) $(LIBFDT_LOC)/*.{o,a,so} 2>/dev/null || true

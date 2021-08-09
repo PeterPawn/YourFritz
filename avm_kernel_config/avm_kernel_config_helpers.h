@@ -3,22 +3,23 @@
 #ifndef AVM_KERNEL_CONFIG_HELPERS_H
 #define AVM_KERNEL_CONFIG_HELPERS_H
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <errno.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/fcntl.h>
-#include <sys/mman.h>
-
 #ifdef FREETZ
 #include <linux/avm_kernel_config.h>
 #else // FREETZ
+// ensure the uapi version gets included first
+#include "linux/include/uapi/avm/enh/fw_info.h"
 #include "linux/include/uapi/linux/avm_kernel_config.h"
 #endif // FREETZ
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <inttypes.h>
+#include <sys/stat.h>
+#include <sys/fcntl.h>
+#include <sys/mman.h>
 
 struct memoryMappedFile
 {

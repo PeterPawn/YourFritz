@@ -22,7 +22,7 @@
 		.ifeq		\tag
 			.int	0
 			.align	4
-		.else		
+		.else
 			.int	.L_avm_\label
 		.endif
 	.endm
@@ -41,7 +41,7 @@
 		.zero		128 - (. - 3b)
 	.endm
 
-	.macro	AVM_MODULE_MEMORY index, module, size
+	.macro	AVM_MODULE_MEMORY index, module, core_size, symbol_size, symbol_text_size
 		.ifeq	\index
 			.int		0
 			.int		0
@@ -52,7 +52,9 @@
 			.align		2
 			.popsection
 			.int		.L_avm_module_memory_\index
-			.int		\size
+			.int		\core_size
+			.int		\symbol_size
+			.int		\symbol_text_size
 		.endif
 	.endm
 

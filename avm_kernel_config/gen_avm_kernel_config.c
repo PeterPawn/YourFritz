@@ -72,16 +72,18 @@ bool relocateConfigArea(struct _avm_kernel_config * *configArea, size_t configSi
 		swapEndianess(swapNeeded, (uint32_t *) &entry->config);
 		entry->config = (void *) ((uint32_t) entry->config - kernelOffset + configBase);
 
-		if ((int) entry->tag == avm_kernel_config_tags_modulememory)
-		{	
-			// only _kernel_modulmemory_config entries need relocation of members
-			struct _kernel_modulmemory_config *	module = (struct _kernel_modulmemory_config *) entry->config;
-			
+		if ((int) entry->tag == avm_kernel_config_tags_module_memory)
+		{
+			// only _avm_kernel_module_memory_config entries need relocation of members
+			struct _avm_kernel_module_memory_config *	module = (struct _avm_kernel_module_memory_config *) entry->config;
+
 			while (module->name != NULL)
-			{	
+			{
 				swapEndianess(swapNeeded, (uint32_t *) &module->name);
 				module->name = (char *) ((uint32_t) module->name - kernelOffset + configBase);
-				swapEndianess(swapNeeded, &module->size);
+				swapEndianess(swapNeeded, &module->core_size);
+				swapEndianess(swapNeeded, &module->symbol_size);
+				swapEndianess(swapNeeded, &module->symbol_text_size);
 
 				module++;
 			}
@@ -122,11 +124,11 @@ void processDeviceTrees(struct _avm_kernel_config * *configArea)
 #endif
 
 			register uint8_t *	source = (uint8_t *) entry->config;
-			while (dtbSize > 0) 
+			while (dtbSize > 0)
 			{
 				i = (dtbSize > 16 ? 16 : dtbSize);
 				dtbSize -= i;
-	
+
 				fprintf(stdout, "\t.byte\t");
 				while (i--) fprintf(stdout, "0x%02x%c", *(source++), (i ? ',' : '\n'));
 			}
@@ -149,7 +151,7 @@ void processVersionInfo(struct _avm_kernel_config * *configArea)
 		if (entry->tag == avm_kernel_config_tags_version_info)
 		{
 			struct _avm_kernel_version_info *	version = (struct _avm_kernel_version_info *) entry->config;
-		
+
 			fprintf(stdout, "\n\tAVM_VERSION_INFO\t\"%s\", \"%s\", \"%s\"\n", version->buildnumber, version->svnversion, version->firmwarestring);
 		}
 
@@ -168,15 +170,15 @@ void processModuleMemoryEntries(struct _avm_kernel_config * *configArea)
 	{
 		if (entry->config == NULL) return;
 
-		if (entry->tag == avm_kernel_config_tags_modulememory)
+		if (entry->tag == avm_kernel_config_tags_module_memory)
 		{
-			struct _kernel_modulmemory_config *	module = (struct _kernel_modulmemory_config *) entry->config;
+			struct _avm_kernel_module_memory_config *	module = (struct _avm_kernel_module_memory_config *) entry->config;
 			int									mod_no = 0;
-				
+
 			fprintf(stdout, "\n.L_avm_module_memory:\n");
 			while (module->name != NULL)
 			{
-				fprintf(stdout, "\tAVM_MODULE_MEMORY\t%u, \"%s\", %u\n", ++mod_no, module->name, module->size);
+				fprintf(stdout, "\tAVM_MODULE_MEMORY\t%u, \"%s\", %u, %u, %u\n", ++mod_no, module->name, module->core_size, module->symbol_size, module->symbol_text_size);
 				module++;
 			}
 			fprintf(stdout, "\tAVM_MODULE_MEMORY\t0\n");
@@ -196,7 +198,7 @@ bool hasModuleMemory(struct _avm_kernel_config * *configArea)
 	while (entry->tag <= avm_kernel_config_tags_last)
 	{
 		if (entry->config == NULL) return false;
-		if (entry->tag == avm_kernel_config_tags_modulememory) return true;
+		if (entry->tag == avm_kernel_config_tags_module_memory) return true;
 		entry++;
 	}
 
@@ -240,18 +242,18 @@ int processConfigArea(struct _avm_kernel_config * *configArea)
 	bool	outputModuleMemory = hasModuleMemory(configArea);
 	bool	outputVersionInfo = hasVersionInfo(configArea);
 	bool	outputDeviceTrees = false;
-	
+
 	fprintf(stdout, "#include \"avm_kernel_config_macros.h\"\n\n");
 
 	fprintf(stdout, "\tAVM_KERNEL_CONFIG_START\n\n");
 	fprintf(stdout, "\tAVM_KERNEL_CONFIG_PTR\n\n");
 	fprintf(stdout, ".L_avm_kernel_config_entries:\n");
 
-	if (outputModuleMemory) fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t%u, \"module_memory\"\n", avm_kernel_config_tags_modulememory);
+	if (outputModuleMemory) fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t%u, \"module_memory\"\n", avm_kernel_config_tags_module_memory);
 
 	if (outputVersionInfo) fprintf(stdout, "\tAVM_KERNEL_CONFIG_ENTRY\t%u, \"version_info\"\n", avm_kernel_config_tags_version_info);
 
-	// device tree for subrevision 0 is the fallback entry and may be expected 
+	// device tree for subrevision 0 is the fallback entry and may be expected
 	// as 'always present', if FDTs exist at all
 	for (int i = 0; i <= avm_kernel_config_tags_device_tree_subrev_last; i++)
 	{
@@ -288,14 +290,14 @@ int main(int argc, char * argv[])
 	{
 		struct _avm_kernel_config **	configArea = (struct _avm_kernel_config **) input.fileBuffer;
 		size_t							configSize = input.fileStat.st_size;
-		
+
 		if (relocateConfigArea(configArea, configSize))
 		{
 			returnCode = processConfigArea(configArea);
 		}
 		else
 		{
-			fprintf(stderr, "Unable to identify and relocate the specified config area dump file, may be it's empty.\n"); 
+			fprintf(stderr, "Unable to identify and relocate the specified config area dump file, may be it's empty.\n");
 			returnCode = 1;
 		}
 		closeMemoryMappedFile(&input);
