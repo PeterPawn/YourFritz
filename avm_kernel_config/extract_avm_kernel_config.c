@@ -3,7 +3,7 @@
 /***********************************************************************
  *                                                                     *
  *                                                                     *
- * Copyright (C) 2016-2017 P.Hämmerlein (http://www.yourfritz.de)      *
+ * Copyright (C) 2016-2021 P.Hämmerlein (http://www.yourfritz.de)      *
  *                                                                     *
  * This program is free software; you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -26,7 +26,7 @@
 void usage()
 {
 	fprintf(stderr, "extract_avm_kernel_config - extract (binary copy of) kernel config area from AVM's kernel\n\n");
-	fprintf(stderr, "(C) 2016-2017 P. Hämmerlein (http://www.yourfritz.de)\n\n");
+	fprintf(stderr, "(C) 2016-2021 P. Hämmerlein (http://www.yourfritz.de)\n\n");
 	fprintf(stderr, "Licensed under GPLv2, see LICENSE file from source repository.\n\n");
 	fprintf(stderr, "Usage:\n\n");
 	fprintf(stderr, "extract_avm_kernel_config [ -s <size in KByte> ] <unpacked_kernel> [<dtb_file>]\n");
@@ -55,7 +55,7 @@ struct _avm_kernel_config ** findConfigArea(void *dtbLocation, size_t size)
 {
 	struct _avm_kernel_config **	configArea = NULL;
 
-	// previous 4K boundary should be the start of the config area 
+	// previous 4K boundary should be the start of the config area
 	configArea = (struct _avm_kernel_config **) (((int) dtbLocation >> 12) << 12);
 
 	if (checkConfigArea(configArea, size)) return configArea;
@@ -76,7 +76,7 @@ void * findDeviceTreeImage(void *haystack, size_t haystackSize, void *needle, si
 	{
 		uint32_t *	sliding = haystack;
 		uint32_t *	lookFor = needle;
-		
+
 		while (toSearch > 0)
 		{
 			while (*sliding != *lookFor)
@@ -87,7 +87,7 @@ void * findDeviceTreeImage(void *haystack, size_t haystackSize, void *needle, si
 			}
 
 			if (toSearch > 0) // match found for first uint32
-			{	
+			{
 				matchedSoFar = true;
 				resetToSearch = --toSearch;
 				resetSliding = ++sliding;
@@ -139,7 +139,7 @@ void * findDeviceTreeImage(void *haystack, size_t haystackSize, void *needle, si
 					{
 						location = (void *) --resetSliding;
 						break;
-					} 
+					}
 				}
 			}
 		}
@@ -152,8 +152,8 @@ void * locateDeviceTreeSignature(void *kernelBuffer, size_t kernelSize)
 {
 	void *		location = NULL;
 	uint32_t	signature = 0xD00DFEED;
-	uint32_t *	ptr = (uint32_t *) kernelBuffer;	
-	
+	uint32_t *	ptr = (uint32_t *) kernelBuffer;
+
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 	// the DTB signature is store in 'big endian' => swap needed, if we're running on 'little endian' machine
 	swapEndianess(true, &signature);
@@ -269,11 +269,11 @@ int main(int argc, char * argv[])
 				fprintf(stderr, "Unable to locate the config area in the specified kernel image.\n");
 			}
 		}
-		
+
 		if (dtbLocation != NULL)
 		{
 			struct _avm_kernel_config * *configArea = findConfigArea(dtbLocation, size);
-			
+
 			if (configArea != NULL)
 			{
 				ssize_t	written = write(1, (void *) configArea, size);

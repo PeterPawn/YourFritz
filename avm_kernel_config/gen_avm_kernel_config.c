@@ -3,7 +3,7 @@
 /***********************************************************************
  *                                                                     *
  *                                                                     *
- * Copyright (C) 2016 P.Hämmerlein (http://www.yourfritz.de)           *
+ * Copyright (C) 2016-2021 P.Hämmerlein (http://www.yourfritz.de)      *
  *                                                                     *
  * This program is free software; you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -26,7 +26,7 @@ void usage()
 {
 
 	fprintf(stderr, "gen_avm_kernel_config - generate a kernel config source file\n\n");
-	fprintf(stderr, "(C) 2016 P. Hämmerlein (http://www.yourfritz.de)\n\n");
+	fprintf(stderr, "(C) 2016-2021 P. Hämmerlein (http://www.yourfritz.de)\n\n");
 	fprintf(stderr, "Licensed under GPLv2, see LICENSE file from source repository.\n\n");
 	fprintf(stderr, "Usage:\n\n");
 	fprintf(stderr, "gen_avm_kernel_config <binary_config_area_file>\n");

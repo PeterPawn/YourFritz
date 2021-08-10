@@ -45,6 +45,8 @@
 		.ifeq	\index
 			.int		0
 			.int		0
+			.int		0
+			.int		0
 		.else
 			.pushsection	"configareastrings", "a", %progbits
 .L_avm_module_memory_\index:

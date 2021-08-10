@@ -11,10 +11,10 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# Copyright (C) 2016 P.Hämmerlein (peterpawn@yourfritz.de)                                            #
+# Copyright (C) 2016-2021 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
 #                                                                                                     #
 # This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
-# General Public License as published by the Free Software Foundation; either version 2 of the        # 
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
 # License, or (at your option) any later version.                                                     #
 #                                                                                                     #
 # This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
@@ -83,7 +83,7 @@ comp_stream_offset=36
 __read_value()
 {
 	local file="$1" type=$2 offset=$3
-	
+
 	while [ $type -gt 0 ]; do
 		dd if=$file bs=1 skip=$(( offset + type - 1 )) count=1 2>/dev/null
 		type=$(( type - 1 ))
@@ -100,7 +100,7 @@ __get_value()
 {
 	local file="$1" type=$2 offset=$3 rd i=0 v=0 s
 	local s=$(( type * 8 ))
-	
+
 	rd=$(__read_value $file $type $offset | base64 | sed -e 's/+/_/g')
 	while [ ${#rd} -gt $i -a $s -gt 0 ]; do
 		b=$(( $(expr index "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/" "${rd:$i:1}") - 1 ))

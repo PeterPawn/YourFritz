@@ -3,7 +3,7 @@
 /***********************************************************************
  *                                                                     *
  *                                                                     *
- * Copyright (C) 2016 P.Hämmerlein (http://www.yourfritz.de)           *
+ * Copyright (C) 2016-2021 P.Hämmerlein (http://www.yourfritz.de)      *
  *                                                                     *
  * This program is free software; you can redistribute it and/or       *
  * modify it under the terms of the GNU General Public License         *
@@ -94,7 +94,7 @@ bool detectInputEndianess(struct _avm_kernel_config * *configArea, size_t config
 	//	- we'll stop at the second 'end of array' marker, assuming we've
 	//	  reached the end of 'struct _avm_kernel_config' array, the tag at
 	//	  this array entry should be equal to avm_kernel_config_tags_last
-	//	- limit search to first 16 KB (4096 * sizeof(uint34_t)), if the whole
+	//	- limit search to first 16 KB (4096 * sizeof(uint32_t)), if the whole
 	//	  area is empty
 
 	ptr = (uint32_t *) configArea;
@@ -106,29 +106,29 @@ bool detectInputEndianess(struct _avm_kernel_config * *configArea, size_t config
 			if (base == NULL) return false; // no pointer, no content
 			else
 			{
-				if (arrayStart != NULL) // last entry found 
+				if (arrayStart != NULL) // last entry found
 				{
 					arrayEnd = ptr + 1;
 					break;
 				}
 			}
-		}	
+		}
 		else
 		{
 			if (base == NULL) base = ptr;
 			else
 			{
 				if (arrayStart == NULL) arrayStart = ptr;
-			}	
+			}
 		}
 		ptr++;
 	}
-	
+
 	// if we didn't find one of our pointers, something wents wrong
 	if (base == NULL || arrayStart == NULL || arrayEnd == NULL) return false;
-	
+
 	// check avm_kernel_config_tags_last entry first
-	entry = (struct _avm_kernel_config *) arrayEnd - 1; 
+	entry = (struct _avm_kernel_config *) arrayEnd - 1;
 	tag = entry->tag;
 	if (tag == 0) return false;
 
@@ -152,7 +152,7 @@ bool detectInputEndianess(struct _avm_kernel_config * *configArea, size_t config
 	ptrValue = *base;
 	swapEndianess(assumeSwapped, &ptrValue);
 	offset = ptrValue & 0xFFFFF000;
-	
+
 	// first value has to point to the array
 	if ((ptrValue - offset) != ((uint32_t) arrayStart - (uint32_t) configArea))
 		return false;
@@ -163,7 +163,7 @@ bool detectInputEndianess(struct _avm_kernel_config * *configArea, size_t config
 	{
 		ptrValue = (uint32_t) entry->config;
 		swapEndianess(assumeSwapped, &ptrValue);
-		
+
 		if (ptrValue <= offset) return false; // points before, impossible
 		if (ptrValue - offset > configSize) return false; // points after
 		if (tag == avm_kernel_config_tags_last) break;
