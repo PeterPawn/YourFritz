@@ -6,7 +6,7 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# Copyright (C) 2016-2017 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
+# Copyright (C) 2016-2021 P.Hämmerlein (peterpawn@yourfritz.de)                                       #
 #                                                                                                     #
 # This program is free software; you can redistribute it and/or modify it under the terms of the GNU  #
 # General Public License as published by the Free Software Foundation; either version 2 of the        #
@@ -25,9 +25,8 @@
 # based model.                                                                                        #
 #                                                                                                     #
 # Therefore you need an image file from the vendor and we will use the kernel within it. At the same  #
-# time the contained filesystem image is checked to assure, that this model uses a wrapper partition  #
-# to store the SquashFS image file for the real root filesystem - in this case it's able to use an    #
-# ext2 image as root filesystem on boot-time.                                                         #
+# time the contained filesystem image is checked, which filesystem format was used by vendor and the  #
+# result is used to prepare the own filesystem for the start from RAM of device.                      #
 #                                                                                                     #
 # The name of the firmware image file has to be specified as first argument, the created bootable     #
 # image will be written to STDOUT and the caller is responsible for the proper redirection.           #
@@ -39,11 +38,13 @@
 #                                                                                                     #
 # It needs some additional script files, they will be looked up in the current directory only.        #
 #                                                                                                     #
-# The root filesystem for the bootable image is built on top of a 10 MByte image file, which will be  #
-# formatted with an ext2 structure. The only binary file, which is copied into this filesystem, is    #
-# a statically linked BusyBox binary from my GitHub repository (for the MIPS platform).               #
-# If you want to get a filesystem image with a different size, you can set the environment variable   #
-# 'TOOLBOX_IMAGE_SIZE' to the requested value (in MBytes) prior to calling this script.               #
+# Special note for VR9-based devices:                                                                 #
+# If no SquashFS image was used in vendor's firmware, the root filesystem for the bootable image is   #
+# built on top of a 10 MByte image file, which will be formatted with an ext2 structure. The only     #
+# binary file, which is copied into this filesystem, is a statically linked BusyBox binary from my    #
+# GitHub repository (for the MIPS platform). If you want to get a filesystem image with a different   #
+# size, you can set the environment variable 'TOOLBOX_IMAGE_SIZE' to the requested value (in MBytes)  #
+# prior to calling this script.                                                                       #
 #                                                                                                     #
 # There are only little prerequisites to be met to run this script on your Linux system. The most     #
 # important point: You have to run this script as "root".                                             #
