@@ -93,6 +93,56 @@ show_version()
 		return 0
 	fi
 }
+__check_required_command()
+(
+	IFS=:
+	set -- $1
+	for n in $@; do
+		command -v $n 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+__random()
+(
+	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
+	for h in md5sum sha1sum; do
+		if __check_required_command $h; then
+			if [ -c /dev/urandom ] && __check_required_command "dd"; then
+				$YF_SIGNIMAGE_DD if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+			fi
+			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
+				if [ -f $f ]; then
+					$h < $f | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				fi
+			done
+		fi
+	done
+	__check_required_command "date" && date +%s && exit 0
+	printf "%d" "$$"
+)
+__mktmp()
+(
+	if __check_required_command "mktemp"; then
+		n="$(mktemp $* 2>/dev/null)"
+	fi
+	if [ -z "$n" ]; then
+		t="${TMPDIR:-/tmp}"
+		[ "$1" = "-d" ] && d=1 || d=0
+		[ "$1" = "-p" ] && t="$2"
+		[ -z "$t" ] && t="/tmp"
+		n="$t/$(__random)"
+		if [ $d -eq 1 ]; then
+			[ -d "$n" ] && n="$t/$(__random)"
+			mkdir -p "$n" 2>/dev/null
+		else
+			while [ -e "$n" ]; do
+				n="$t/$(__random)"
+			done
+			touch "$n" 2>/dev/null
+		fi
+	fi
+	printf "$n"
+)
 ####################################################################################
 #                                                                                  #
 # usage screen, caller has to redirect output to STDERR if needed                  #
@@ -282,7 +332,7 @@ fi
 # prepare a temporary directory and cleanup on exit                                #
 #                                                                                  #
 ####################################################################################
-tmp=$(mktemp -d)
+tmp=$(__mktmp -d)
 [ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
 trap "rm -r \"$tmp\"" EXIT HUP
 ####################################################################################

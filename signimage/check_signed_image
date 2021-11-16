@@ -48,8 +48,8 @@ box_cert_name2="/var/tmp/websrv_ssl_cert.pem"
 ####################################################################################
 show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
 show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
-show_version() 
-{ 
+show_version()
+{
 	local v
 	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
@@ -60,6 +60,56 @@ show_version()
 		return 0
 	fi
 }
+__check_required_command()
+(
+	IFS=:
+	set -- $1
+	for n in $@; do
+		command -v $n 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+__random()
+(
+	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
+	for h in md5sum sha1sum; do
+		if __check_required_command $h; then
+			if [ -c /dev/urandom ] && __check_required_command "dd"; then
+				$YF_SIGNIMAGE_DD if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+			fi
+			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
+				if [ -f $f ]; then
+					$h < $f | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				fi
+			done
+		fi
+	done
+	__check_required_command "date" && date +%s && exit 0
+	printf "%d" "$$"
+)
+__mktmp()
+(
+	if __check_required_command "mktemp"; then
+		n="$(mktemp $* 2>/dev/null)"
+	fi
+	if [ -z "$n" ]; then
+		t="${TMPDIR:-/tmp}"
+		[ "$1" = "-d" ] && d=1 || d=0
+		[ "$1" = "-p" ] && t="$2"
+		[ -z "$t" ] && t="/tmp"
+		n="$t/$(__random)"
+		if [ $d -eq 1 ]; then
+			[ -d "$n" ] && n="$t/$(__random)"
+			mkdir -p "$n" 2>/dev/null
+		else
+			while [ -e "$n" ]; do
+				n="$t/$(__random)"
+			done
+			touch "$n" 2>/dev/null
+		fi
+	fi
+	printf "$n"
+)
 ####################################################################################
 #                                                                                  #
 # usage screen, caller has to redirect output to STDERR if needed                  #
@@ -187,7 +237,7 @@ read_box_key()
 		echo "" | "$YF_SIGNIMAGE_OPENSSL" x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2
 		rc=$?
 		if [ $rc -eq 0 ]; then
-			show_ok 
+			show_ok
 		else
 			show_error
 			return 35
@@ -200,12 +250,12 @@ read_box_key()
 				echo -ne "Trying to read public key from \x1B[1m$box_cert_name2\x1B[0m ... " 1>&2
 				"$YF_SIGNIMAGE_OPENSSL" x509 -in $box_cert_name2 -pubkey -noout >"$tmp/pubkey" 2>/dev/null
 				if [ $? -ne 0 ]; then
-					show_error 
+					show_error
 					rc=14
 				else
 					show_ok
 					rc=0
-				fi				
+				fi
 			else
 				show_ok
 				rc=0
@@ -214,7 +264,7 @@ read_box_key()
 				read_openssl_file "$tmp/pubkey" PEM "box certificate" "FRITZ!OS certificate"
 				rc=$?
 			fi
-		fi	
+		fi
 	fi
 	return $rc
 }
@@ -373,7 +423,7 @@ fi
 # prepare a temporary directory and cleanup on exit                                #
 #                                                                                  #
 ####################################################################################
-tmp=$(mktemp -d)
+tmp=$(__mktmp -d)
 if [ $? -eq 127 ] || [ ${#tmp} -eq 0 ]; then
 	tmp="/tmp/tmp.$(date +%s).$$"
 	mkdir -p "$tmp"
@@ -395,7 +445,7 @@ echo -en "Check \x1B[1mdgst\x1B[0m command ... " 1>&2
 echo "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
 else
 	show_error
 	exit 33
@@ -404,7 +454,7 @@ echo -en "Check \x1B[1mrsautl\x1B[0m command ... " 1>&2
 echo "" | "$YF_SIGNIMAGE_OPENSSL" rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
-	show_ok 
+	show_ok
 else
 	show_error
 	exit 34
@@ -425,7 +475,7 @@ fi
 # to find the offset of the last member with the signature name - the last one is  #
 # important, because the archive may contain more than one member with the same    #
 # name and the last one will overwrite all previously extracted files.             #
-#                                                                                  # 
+#                                                                                  #
 # Here we could try to find the member name in the file content, but this would be #
 # impossible with "normal" commands (I don't know any applet, which may find a     #
 # string in a binary file and return the offsets of these strings) and searching   #
@@ -521,7 +571,7 @@ while [ "$#" -gt 0 ]; do
 				exit $rc
 			fi
 			shift
-			;;	
+			;;
 		"-c")
 			if [ -z "$2" ]; then
 				echo -e "Missing filename after \x1B[1m-c\x1B[0m option." 1>&2
