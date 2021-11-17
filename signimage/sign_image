@@ -207,7 +207,11 @@ is_fritzos_environment()
 	[ -f "$CONFIG_ENVIRONMENT_PATH/environment" ] || return $rc
 	local HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
 	[ ${#HWRev} -eq 0 ] && return $rc
-	[ "$HWRev" != "$HWRevision" ] && return $rc
+	if [ "$HWRev" != "$HWRevision" ] && [ -z "$YF_SIGNIMAGE_IGNORE_HWREVISION" ]; then
+		return $rc
+	else
+		echo "HWRevision mismatch between shell and urlader environment ($HWRev vs. $HWRevision) ignored." 1>&2
+	fi
 	local prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" $CONFIG_ENVIRONMENT_PATH/environment)"
 	[ ${#prompt} -eq 0 ] && return $rc
 	[ "$prompt" != "$eva_prompt" ] && return $rc
