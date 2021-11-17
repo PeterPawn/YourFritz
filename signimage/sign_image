@@ -455,9 +455,18 @@ rm -f "$tmp/filler.bin"
 touch "$tmp/filler.bin"
 if [ -z "$YF_SIGNIMAGE_SKIP_WORKAROUNDS" ]; then
 	if [ $(( ( copy_blocks + 2 ) % 20 )) -eq 0 ]; then
-		echo -ne "Repeating first entry as filler ... " 1>&2
+		echo -ne "Repeating first entry once as filler ... " 1>&2
 		"$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/filler.bin" bs=512 count=1 status=none 2>/dev/null
 		show_ok
+	elif [ $(( ( copy_blocks + 3 ) % 20 )) -eq 0 ]; then
+		echo -ne "Repeating first entry two times as filler ... " 1>&2
+		( "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=1 status=none 2>/dev/null;
+		"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=1 status=none 2>/dev/null ) >"$tmp/filler.bin"
+		show_ok
+#
+#       # Maybe it's not needed anymore? But firmwarecfg stream seems to read with a block size of 4 KB,
+#       # according to output of strace
+#
 #	elif [ $(( copy_blocks % 8 )) -eq 5 ] || [ $(( copy_blocks % 8 )) -eq 6 ]; then
 #		# Our signature would nearly fill the last 4K block and another error would get triggered
 #		# (a tar file without proper EoA blocks is used by AVM, if in last 4K block only 1 or 0
