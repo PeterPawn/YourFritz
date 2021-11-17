@@ -1,0 +1,99 @@
+#! /bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# check for MD5 computation errors from "firmwarecfg", depending on size of data to
+# sign
+#
+# the script needs full-functioning signing and verification from the "signimage"
+# folder and the own public key as "~/firmware_signing.asc"
+#
+# specify the password for the private key as first parameter
+#
+# the script will create image files with one, two and 512 blocks with 4 KB of data
+# to sign and appends from 0 to 7 further blocks, to check every possible count of
+# remaining TAR blocks after the last complete 4 KB block
+#
+# each signed image is tested afterwards - once with the "check_signed_image" script
+# and once more with AVM's tr069fwupdate utility
+#
+# You need an OpenSSL CLI utility and the "hexdump" applet as additions to the
+# original firmware from AVM to run this script successfully.
+#
+check()
+{
+	check_signed_image $1 -a ~/firmware_signing.asc
+}
+sign()
+(
+	[ -z "$3" ] && export YF_SIGNIMAGE_SKIP_WORKAROUNDS=1 || export -n YF_SIGNIMAGE_SKIP_WORKAROUNDS
+	sign_image "$1" "$2"
+)
+pack()
+{
+	tar -c "$*"
+}
+show()
+{
+	size=$(stat -c %s "$1")
+	off=$(hexdump -C "$1" | grep "\./var/signature" | sed -n -e "s|^\([^ ]*\) .*\$|\1|p")
+	sizediff=1024
+	[ "$2" = "Signed" ] && sizediff=$(( sizediff + 1024 ))
+	printf "%s file: size=%d (0x%08x), data to sign=%d (0x%08x)" "$2" $size $size $(( size - sizediff )) $(( size - sizediff ))
+	[ -z $off ] || printf ", signature offset=%s (remainder: %u)" $off $(( ( ( 0x$off - 1024 ) % 4096 ) / 512 ))
+	printf ", TAR blocks remainder - 4K: \033[36m%u\033[0m, 10K: \033[36m%u\033[0m\n" $(( ( ( size - sizediff ) % 4096 ) / 512 )) $(( ( ( size - sizediff ) % 10240 ) / 512 ))
+}
+hash()
+{
+	size=$(stat -c %s "$1")
+	blocks=$(( size / 512 ))
+	md5=$( ( dd if="$1" bs=512 count=$(( blocks - 4 )) 2>/dev/null;dd if=/dev/zero bs=512 count=4 2>/dev/null ) | md5sum | sed -n -e "s|^\([a-f0-9]*\).*\$|\1|p")
+	printf "Hash value: %s\n" $md5
+}
+run()
+{
+	printf "\033[1m\033[31mi=%u j=%u %s\033[0m\n" "$1" "$2" "$([ -n "$3" ] && printf "with workaround while signing")"
+	rm -r /var/packet 2>/dev/null
+	dir="$TMPDIR/test_signature"
+	rm -r "$dir" 2>/dev/null
+	mkdir -p "$dir/var"
+	dd if=/dev/zero of="$dir/var/zeros.bin" bs=512 count=$(( ( $1 * 8 ) - 6 + $2 )) 2>/dev/null
+	cat >"$dir/var/install" <<EOF
+#! /bin/sh
+printf "\033[1m/var/install from signed image file\n======================\n" 1>&2
+printf "\033[1mfirmware_stream_result:\033[0m\n----------------------\n" 1>&2
+cat /var/tmp/firmware_stream_result 1>&2
+printf "\033[1mfwsign.log:\033[0m\n----------\n" 1>&2
+cat /var/tmp/fwsign.log 1>&2
+exit 0
+EOF
+	chmod a+x "$dir/var/install"
+	cd "$dir"
+	pack "./var/" > "$dir/$i.image"
+	show "$dir/$i.image" "Unsigned"
+	sign "$dir/$i.image" "$keypwd" "$3" > "$dir/$i.signed.image" 2>/dev/null
+	show "$dir/$i.signed.image" "Signed"
+	check "$dir/$i.signed.image" 2>/dev/null
+	yf_check=$?
+	hash "$dir/$i.signed.image" 2>/dev/null
+	tr069fwupdate packet "file://$(realpath "$dir")/$i.signed.image" 2>/dev/null
+	avm_check=$?
+	[ $avm_check -eq 0 ] && echo "AVM signature check: $avm_check, YourFritz signature check: $yf_check" || echo -e "\033[1m\033[31mAVM signature check: $avm_check\033[0m, YourFritz signature check: $yf_check \033[31m\033[1mwithout workarounds while signing\033[0m\n"
+	if [ $avm_check -ne 0 ]; then
+		printf "\033[1mfirmware_stream_result\033[0m\n======================\n"
+		cat /var/tmp/firmware_stream_result 2>/dev/null
+		printf "\033[1mfwsign.log\033[0m\n==========\n"
+		head -n 2 /var/tmp/fwsign.log 2>/dev/null
+	fi
+	cd /var
+	rm -r "$dir" 2>/dev/null
+	printf "\n------------------------------------------------\n\n"
+	[ "$avm_check" -ne 0 ] && [ -z "$3" ] && run $1 $2 1
+}
+keypwd="$1"
+mount -o bind ~/firmware_signing.asc /etc/avm_firmware_public_key1
+for i in 1 2 512; do
+	for j in $(seq 8); do
+		run $i $(( j - 1 ))
+	done
+done
+while umount /etc/avm_firmware_public_key1 2>/dev/null; do :; done
