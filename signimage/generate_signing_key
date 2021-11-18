@@ -9,13 +9,13 @@
 # This script needs a full-functioning OpenSSL binary ('genrsa' is embedded into      #
 # FRITZ!OS images, but 'rsa' and 'rsautl' are not available) and a shell version,     #
 # which may use "read -sp" for hidden terminal reads. If your shell does not          #
-# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the    
+# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the
 # password as argument during call.                                                   #
 #                                                                                     #
 # We assume enough entropy here ... please make sure there's enough randomness,       #
 # before you call this script and you should be profoundly  convinced, that your      #
 # "openssl" binary does not seed the PRNG with any fixed value.                       #
-#                                                                                     # 
+#                                                                                     #
 # You could read some values from /dev/random (not /dev/urandom, because this uses    #
 # unblocking access and may return poor values, if no entropy is available)  before   #
 # you call this script.                                                               #
@@ -68,6 +68,7 @@ if ! [ -z "$YF_SIGNIMAGE_OPENSSL" ]; then
 	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
 	__yf_signimage_openssl()
 	{
+		KEYPASSWORD="$KEYPASSWORD"
 		eval $__YF_SIGNIMAGE_OPENSSL $*
 	}
 	YF_SIGNIMAGE_OPENSSL="__yf_signimage_openssl"
@@ -210,8 +211,10 @@ fi
 #                                                                                     #
 #######################################################################################
 echo -en "Generating RSA key as \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-KEYPASSWORD="${KEYPASSWORD}" "$YF_SIGNIMAGE_OPENSSL" genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
+export KEYPASSWORD="$KEYPASSWORD"
+"$YF_SIGNIMAGE_OPENSSL" genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
 rc=$?
+export -n KEYPASSWORD
 if [ $rc -ne 0 -o ! -f "${name_prefix}.${private_extension}" ]; then
 	show_error
 	exit 1
@@ -224,8 +227,10 @@ fi
 #                                                                                     #
 #######################################################################################
 echo -en "Extracting public key to \x1B[1m${name_prefix}.${public_extension}\x1B[0m ... " 1>&2
-KEYPASSWORD="${KEYPASSWORD}" "$YF_SIGNIMAGE_OPENSSL" rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
+export KEYPASSWORD="$KEYPASSWORD"
+"$YF_SIGNIMAGE_OPENSSL" rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
 rc=$?
+export -n KEYPASSWORD
 if [ $rc -ne 0 -o ! -f "${name_prefix}.${public_extension}" ]; then
 	show_error
 	exit 1
@@ -236,7 +241,7 @@ fi
 #                                                                                     #
 # extract modulus and exponent to create the AVM formatted public key                 #
 # - the exponent was set by '-f4' and does not need to be read from file              #
-# - the modulus has to start without highest bit set (to ensure positive number)      # 
+# - the modulus has to start without highest bit set (to ensure positive number)      #
 #                                                                                     #
 #######################################################################################
 echo -en "Extracting public key in AVM format to \x1B[1m${name_prefix}.${avm_extension}\x1B[0m ... " 1>&2
