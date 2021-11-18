@@ -1,0 +1,91 @@
+#! /bin/sh
+yf_repo_base="https://raw.githubusercontent.com/PeterPawn"
+yf_repo="$yf_repo_base/YourFritz"
+yf_bin_repo="$yf_repo_base/yf_bin"
+yf_bin_repo_branch="$yf_bin_repo/master"
+yf_bin_repo_target="$yf_bin_repo_branch/target"
+yf_bin_platform="$(uname -m)"
+yf_bin_kernel="$(uname -r)"
+yf_yourfritz_branch="signimage"
+yf_signimage_directory="$yf_repo/$yf_yourfritz_branch/signimage"
+yf_signimage_files="avm_pubkey_to_pkcs8 check_signed_image generate_signing_key image_signing_files.inc sign_image show_signature_problem"
+yf_signimage_binaries="openssl"
+yf_red="$(printf "\033[31m\033[1m")"
+yf_yellow="$(printf "\033[33m\033[1m")"
+yf_green="$(printf "\033[32m\033[1m")"
+yf_blue="$(printf "\033[34m\033[1m")"
+yf_reset="$(printf "\033[0m")"
+download_cmd="httpsdl -n"
+dir="/var/signimage_test"
+yf_clean_path="$dir:/bin:/usr/bin:/sbin:/usr/sbin"
+openssl_conf="/var/custom_config/etc/ssl/openssl.cnf"
+keypassword="12345678"
+#
+# some helpers
+#
+msg()
+(
+	exec 1>&2
+	printf "%s" "$1"
+	shift
+	mask="$1"
+	shift
+	printf "$mask" "$@"
+	printf "%s" "$yf_reset" 
+)
+emsg() ( msg "$yf_red" "$@"; )
+info() ( msg "$yf_reset" "$@"; )
+download()
+(
+	export -n PATH
+	export -n LD_LIBRARY_PATH
+	export PATH=$yf_clean_path
+	$download_cmd "$*" 2>/dev/null
+)
+#
+# and action
+#
+rm -r "$dir" 2>/dev/null
+mkdir -p "$dir"
+cd "$dir"
+for b in $yf_signimage_binaries; do
+	url="$yf_bin_repo_target/$yf_bin_platform/$yf_bin_kernel/$b"
+	download "$url"
+	down_rc=$?
+	if [ "$down_rc" -ne 0 ]; then
+		emsg "Error downloading binary from %s, aborting.\n" "$url"
+		exit 1
+	fi
+	chmod a+x "./$b"
+	info "Loaded binary %s for current platform.\n" "$b"
+done
+for s in $yf_signimage_files; do
+	url="$yf_signimage_directory/$s"
+	download "$url"
+	down_rc=$?
+	if [ "$down_rc" -ne 0 ]; then
+		emsg "Error downloading script file from %s, aborting.\n" "$url"
+		exit 1
+	fi
+	chmod a+x "./$s"
+	info "Loaded script file %s from repository.\n" "$s"
+done
+if ! [ -f "$openssl_conf" ]; then
+	mkdir -p "${openssl_conf%/*}"
+	touch "$openssl_conf"
+fi
+export HOME="$dir"
+export TMPDIR="$dir"
+export name_prefix="$dir/firmware_signing"
+export -n LD_LIBRARY_PATH
+export PATH="$yf_clean_path"
+info "%s%s\n" "$yf_blue" "$(openssl version)"
+info "Preparing key pair ...\n"
+dd if=/dev/urandom of="$name_prefix.rnd" bs=16 count=16 2>/dev/null
+generate_signing_key "$keypassword"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	emsg "Error generating temporary signing key.\n"
+	exit 1
+fi
+"$dir/show_signature_problem" "$keypassword"
