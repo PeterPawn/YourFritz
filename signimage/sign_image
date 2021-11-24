@@ -35,7 +35,7 @@ signature_file="./var/signature"
 # include the common file definitions                                              #
 #                                                                                  #
 ####################################################################################
-source "$my_path/image_signing_files.inc"
+. "$my_path/image_signing_files.inc"
 ####################################################################################
 #                                                                                  #
 # get the path for needed external commands, if called in any toolchain            #
