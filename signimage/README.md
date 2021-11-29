@@ -27,10 +27,12 @@ exponent) into a well-formed PKCS8 structure in a PEM file, ready to be used by 
 verify the signature of a signed image, the script accepts a list of possible public keys (in various formats) and tries to
 decode the signature file, until the right key was found or the end of list is reached
 
-`signimage.conf`
+`yf_signimage.conf`
 
-contains some definitions for the location and file name conventions for key files involved in this process, this file will
-be included by the others to setup key file locations - read comments carefully, most times no permanent changes are needed
+contains some definitions for the location and file name conventions of personal key files involved in this process; this file
+will be included by the others to setup key file locations - read comments carefully, in most cases no permanent changes should
+be needed, even if it's called the 'configuration file' now ... in any case it should be possible to limit own changes to the
+settings within this file, so please do not change the other scripts until it's really inevitable
 
 ---
 
