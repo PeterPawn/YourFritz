@@ -5,7 +5,7 @@
 #                                                                                                     #
 # sign a TAR archive with a RSA key, like AVM's firmware is signed                                    #
 #                                                                                                     #
-#######################################################################################################
+###################################################################################################VER#
 #                                                                                                     #
 # yf_sign_image, version 1.0.1                                                                        #
 #                                                                                                     #
@@ -13,11 +13,11 @@
 # and/or from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from           #
 # https://github.com/PeterPawn/YourFritz.                                                             #
 #                                                                                                     #
-#######################################################################################################
+###################################################################################################CPY#
 #                                                                                                     #
 # Copyright (C) 2016-2021 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
 #                                                                                                     #
-#######################################################################################################
+###################################################################################################LIC#
 #                                                                                                     #
 # This script is licensed according to the following terms:                                           #
 #                                                                                                     #
@@ -43,33 +43,7 @@
 # rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
 # these parts of code, which are licensed under YourFritz conditions above.                           #
 #                                                                                                     #
-#######################################################################################################
-#                                                                                                     #
-# The key has to be generated with the right name (look at image_signing_files.inc for the name       #
-# components) and has to be reachable in the current working directory, if the "name_prefix"          #
-# component does not contain a complete path (absolute or relative).                                  #
-#                                                                                                     #
-# The archive to sign should not contain a './var/signature' member already, it would lead to several #
-# confusions with AVM's signature checks - according to my tests in 2016. The only exception is an    #
-# existing signature as last member of TAR archive - this one will be replaced by the new signature.  #
-#                                                                                                     #
-# The signed image is written to STDOUT (it is created "on the fly" and will never be stored by the   #
-# script itself to save space, if the process runs on the target device) and if STDOUT is a terminal  #
-# device, the script will deny to work. The caller is responsible to redirect output to a proper      #
-# destination.                                                                                        #
-#                                                                                                     #
-# The input file must use the pure GNU tar format (--format=gnu or --format=oldgnu, if GNU's tar      #
-# implementation is used) without any PAXHEADERS and/or longer EoA headers. If more than the expected #
-# two EoA headers (two blocks a 512 byte with all zeros) were found, the signed image gets truncated  #
-# to be standard-compliant.                                                                           #
-#                                                                                                     #
-# If the last member of input TAR archive is already a file named './var/signature', it gets replaced #
-# by the new signature, otherwise the signature will be added AFTER the last TAR member present.      #
-#                                                                                                     #
-# See the usage screen (presented, if option -h or --help was specified) for information, how to call #
-# the script.                                                                                         #
-#                                                                                                     #
-#######################################################################################################
+#################################################################################################EMBED#
 #                                                                                                     #
 # determine our script path to locate the include file                                                #
 #                                                                                                     #
@@ -85,7 +59,13 @@ signature_file="./var/signature"
 # include the common file definitions                                                                 #
 #                                                                                                     #
 #######################################################################################################
-. "$my_path/image_signing_files.inc"
+include_file="${YF_SIGNIMAGE_INCLUDE:-$my_path/image_signing_files.inc}"
+if ! [ -r "$include_file" ]; then
+	printf "\033[1;31mInclude file \033[1;37m%s\033[1;31m isn't readable.\033[0m\a\n" "$include_file" 1>&2
+	exit 127
+fi
+# shellcheck source=./image_signing_files.inc
+. "$include_file"
 #######################################################################################################
 #                                                                                                     #
 # get the names of needed external commands, if called from any cross-development toolchain           #
@@ -202,6 +182,33 @@ __read_password()
 	printf "\n" 1>&2
 	printf "%s\n" "$password"
 )
+__yf_get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d' | \
+	sed -e 's| *$||'
+}
+__yf_show_script_name()
+{
+	[ -n "$1" ] && printf -- '%s' "$1"
+	printf -- '%s' "${0#*/}"
+	[ -n "$1" ] && printf -- "\033[0m"
+}
+__yf_show_license()
+{
+	__yf_get_script_lines 'LIC'
+}
+__yf_show_version()
+{
+	printf "\n\033[1m%s\033[0m, %s\n" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+}
+__yf_show_copyright()
+{
+	__yf_get_script_lines 'CPY'
+}
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -209,28 +216,73 @@ __read_password()
 #######################################################################################################
 usage()
 (
-	printf "\033[1mSign a tar archive file as firmware image for FRITZ!OS devices.\033[0m\n\n"
+	__yf_show_version
+	__yf_show_copyright
+	__yf_show_license
+	printf "\nPurpose:\n\n\033[1;34mSign a TAR archive file as firmware image for FRITZ!OS devices.\033[0m\n\n"
 	printf "Usage:\n\n"
-	printf "%s \033[1mimagefile\033[0m [\033[1mpassword\033[0m]\n\n" "$0"
-	printf "\033[1mimagefile\033[0m is the archive to sign, there must be no \033[1mvar/signature\033[0m file\n"
-	printf "embedded yet.\n\n"
-	printf "The \033[1mpassword\033[0m will be read from the terminal, if it's not specified.\n"
-	printf "The signed image is written to STDOUT, you should redirect it to the proper target file location.\n\n"
-	printf "The default hash algorithm used is MD5, as it's used by the current\n"
-	printf "AVM implementation. If you know for sure, that you will only use non-\n"
-	printf "AVM scripts/components to sign and verify, you may specify a better\n"
-	printf "hash algorithm (remember that the openssl binary still has to support\n"
-	printf "it) with an environment variable USEHASH specifying the name of the\n"
-	printf "algorithm to use.\n"
-	printf "A special use case is the signing of a TAR file directly in a FRITZ!OS\n"
-	printf "environment, if such a signature is surely checked later only on the\n"
-	printf "same device. Then we may use the RSA key from \033[1mwebsrv_ssl_key.pem\033[0m\n"
-	printf "instead of an additional key and we don't need to specify its\n"
-	printf "password, because it may be read with \033[1mprivatekeypassword\033[0m. To switch\n"
-	printf "this script into this 'internal-\only mode', set the environment\n"
-	printf "variable SIGN_ON_BOX to '1' while calling it. Be aware, that a key\n"
-	printf "size other than 1024 bits would lead to the impossibility to verify\n"
-	printf "the signed file with AVM components.\n"
+	printf "\033[1;32m%s \033[0m" "$0"
+	printf "\033[1mimagefile\033[0m [\033[1mpassword\033[0m]\n\n"
+	printf "\033[1mimagefile\033[0m is the archive to sign, it has to follow some rules according its format (see below).\n\n"
+	printf "The \033[1mpassword\033[0m is the one of your private key, which will be used to encrypt your signature. This\n"
+	printf "password (if your private key was stored with encryption) will be read from terminal (without\n"
+	printf "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
+	printf "preset using an environment value called \033[1mYF_SIGNIMAGE_KEYPASSWORD\033[0m.\n\n"
+	printf "The signed image will be written to STDOUT, you're in charge to redirect it to the proper target\n"
+	printf "location. If STDOUT is connected to a terminal device, the script will be aborted.\n\n"
+	printf "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
+	printf "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
+	printf "a better hash algorithm (remember that \033[1mopenssl\033[0m binary still has to support it) with a variable\n"
+	printf "\033[1mYF_SIGNIMAGE_HASH\033[0m in the environment, which contains the name of algorithm to use.\n"
+	printf "It has to be one of:\n\n"
+	for algo in $supported_hashes; do
+		printf -- "- %s\n" "$algo"
+	done
+	printf "\n"
+	printf "A special use case is signing of a TAR file directly in a FRITZ!OS environment, if such a signed\n"
+	printf "file is surely verified later only on the same device. Then the RSA key from \033[1mwebsrv_ssl_key.pem\033[0m\n"
+	printf "may be used instead of an additional key and there's no need to specify a password for the key,\n"
+	printf "because it's available with \033[1mprivatekeypassword\033[0m from device (hardware) settings.\n\n"
+	printf "To switch this script into 'internal-only mode', set the environment variable \033[1mYF_SIGNIMAGE_ON_BOX\033[0m\n"
+	printf "to a value of '1' while calling. But be aware, that a key size other than 1024 bits would lead to\n"
+	printf "impossibility to verify the signature with AVM's components ... and newer FRITZ!OS versions use a\n"
+	printf "2048-bit RSA key to protect their TLS connections.\n\n"
+	printf "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
+	printf "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the \033[1m--format=gnu\033[0m\n"
+	printf "or \033[1m--format=oldgnu\033[0m option while creating the file.\n\n"
+	printf "Furthermore the first archived member has to be a directory entry with name \033[1m./var/\033[0m - the starting\n"
+	printf "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
+	printf "such an entry. AVM's components will filter out any names not starting with this path name and\n"
+	printf "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
+	printf "If the provided input image already contains a member called \033[1m./var/signature\033[0m, it has to be the\n"
+	printf "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
+	printf "will abort the signing process. If no signature file was found on input archive, a new one is\n"
+	printf "appended after the signed payload.\n\n"
+	printf "To make integration of this script into a foreign toolchain easier, the location of some needed\n"
+	printf "tools may be overwritten with environment values. Currently there are three utilities needed:\n"
+	printf "\033[1mtar\033[0m, \033[1mopenssl\033[0m and \033[1mdd\033[0m (the latter one is found in POSIX specifications).\n"
+	printf "Their locations may be specified with variables \033[1mYF_SIGNIMAGE_<toolname>\033[0m, where \033[1m<toolname>\033[0m\n"
+	printf "is the name of the utility in uppercase letters. If a value isn't present, the simple name\n"
+	printf "of this tool will be used to call it. You may use spaces within these values, if you ensure\n"
+	printf "proper quotes while calling (e.g. YF_SIGNIMAGE_TAR='busybox tar' to use the applet of your\n"
+	printf "BusyBox binary).\n\n"
+	printf "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
+	printf "read from an include file with the name \033[1mimage_signing_files.inc\033[0m. The file has to be stored in\n"
+	printf "the same directory as this script. Please read the comments in this file, if you want to change\n"
+	printf "the places, where other files will be searched. To change the location, where the include file\n"
+	printf "will be expected, you may use an environment value \033[1mYF_SIGNIMAGE_INCLUDE\033[0m with the (relative or\n"
+	printf "absolute) path name of it.\n\n"
+	printf "To keep backward compatibility with previous versions, the provided include file still takes the\n"
+	printf "environment variable \033[1mname_prefix\033[0m into account - but this name shouldn't be used any longer. Use\n"
+	printf "\033[1mYF_SIGNIMAGE_FILES\033[0m variable instead - it's presence is checked first and any settings here, will\n"
+	printf "overrule all others. If there's no variable with any of these names, due to historic reasons the\n"
+	printf "presence of \033[1mFREETZ_IMAGE_SIGNING_PREFIX\033[0m will be checked. An existing variable with this name will\n"
+	printf "be used next - otherwise a value of \033[1m\$HOME/image_signing\033[0m gets assigned in the last resort.\n\n"
+	printf "The file extensions from include file shouldn't be changed without strong knowledge regarding\n"
+	printf "usage of cryptographic tools. Please don't blame the author, if your own changes to these values\n"
+	printf "render the script(s) useless (beside you've to respect the license terms even, which are denying\n"
+	printf "responsibility of the author). The extension names were only moved to the include file to prevent\n"
+	printf "most rationales for own changes to the script files.\n\n"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -302,6 +354,14 @@ if [ -t 1 ]; then
 fi
 #######################################################################################################
 #                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+printf "\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n" 1>&2
+#######################################################################################################
+#                                                                                                     #
 # check OpenSSL presence and version                                                                  #
 #                                                                                                     #
 #######################################################################################################
@@ -329,8 +389,8 @@ fi
 # check the specified hash algorithm and verify, it's provided by the openssl binary                  #
 #                                                                                                     #
 #######################################################################################################
-if [ "${#USEHASH}" -gt 0 ]; then
-	check_algo="$(printf "%s\n" "$USEHASH" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/")"
+if [ "${#YF_SIGNIMAGE_HASH}" -gt 0 ]; then
+	check_algo="$(printf "%s\n" "$YF_SIGNIMAGE_HASH" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/")"
 	hash_algo=""
 	for algo in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
 		if [ "$algo" = "$check_algo" ]; then
@@ -339,7 +399,7 @@ if [ "${#USEHASH}" -gt 0 ]; then
 		fi
 	done
 	if [ "${#hash_algo}" -eq 0 ]; then
-		printf "\033[1;31mUnknown or unsupported (by this script) hash algorithm \033[1;37m%s\033[1;31m specified.\033[0m\a\n" "$USEHASH" 1>&2
+		printf "\033[1;31mUnknown or unsupported (by this script) hash algorithm \033[1;37m%s\033[1;31m specified.\033[0m\a\n" "$YF_SIGNIMAGE_HASH" 1>&2
 		exit 1
 	fi
 else
@@ -369,8 +429,8 @@ force_local="--force-local"
 #                                                                                                     #
 #######################################################################################################
 on_box=0
-if [ ${#SIGN_ON_BOX} -gt 0 ]; then
-	if [ "$SIGN_ON_BOX" = "1" ]; then
+if [ ${#YF_SIGNIMAGE_ON_BOX} -gt 0 ]; then
+	if [ "$YF_SIGNIMAGE_ON_BOX" = "1" ]; then
 		if ! is_fritzos_environment; then
 			printf "\033[1;31mThe special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.\033[0m\n" 1>&2
 			exit 1
@@ -458,7 +518,7 @@ while read line; do
 			printf "\033[1;31mThe input file contains a member '\033[1;37m%s\033[1;31m' already (in the wrong position) and will not be signed by this script.\033[0m\a\n" "$signature_file" 1>&2
 			exit 1
 		else
-			signature_blocks="$BLOCKS"
+			signature_blocks="$(( BLOCKS ))"
 		fi
 	else
 		copy_blocks="$(( copy_blocks + BLOCKS ))"
@@ -468,6 +528,9 @@ file_size="$(wc -c < "$image_file")"
 file_blocks=$(( file_size / 512 ))
 eoa_blocks=$(( file_blocks - copy_blocks - signature_blocks ))
 show_ok
+if [ $signature_blocks -gt 0 ]; then
+	printf "\033[1;33mThere's already a signature file in the provided image, it will be replaced by a new one.\033[0m\n" 1>&2
+fi
 if [ $eoa_blocks -gt 2 ]; then
 	printf "\033[1;33mToo much end of archive markers read from input file:\033[0m blocks expected=\033[1m%u\033[0m, blocks present=\033[1m%u\033[0m.\n\033[1;33mInput data will be truncated after last archive member.\033[0m\n" "2" "$eoa_blocks" 1>&2
 fi
@@ -477,19 +540,21 @@ fi
 #                                                                                                     #
 #######################################################################################################
 if [ $on_box -eq 0 ]; then
-	if [ -z "$2" ]; then
-		if ! [ -t 0 ]; then
-			usage 1>&2
-			exit 1
-		else
-			if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
-				KEYPASSWORD="$(__read_password "\033[1;34mEnter your password for the signing key: \033[0m")"
+	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${name_prefix}.${private_extension}" 2>/dev/null; then
+		if [ -z "$2" ]; then
+			if ! [ -t 0 ]; then
+				usage 1>&2
+				exit 1
 			else
-				KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
+				if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
+					KEYPASSWORD="$(__read_password "\033[1;34mEnter your password for the signing key: \033[0m")"
+				else
+					KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
+				fi
 			fi
+		else
+			KEYPASSWORD="$2"
 		fi
-	else
-		KEYPASSWORD="$2"
 	fi
 fi
 #######################################################################################################
@@ -508,13 +573,9 @@ if [ $on_box -eq 0 ]; then
 			show_error
 			exit 1
 		fi
-	else
-		# verify, whether key is really unprotected and was stored without password
-		# otherwise openssl would prompt itself for a password and our outputs on terminal get cluttered
-		if grep -q "^Proc-Type:.*ENCRYPTED\$" "${name_prefix}.${private_extension}" 2>/dev/null; then
-			printf "\033[1;31mThe private key file \033[1;37m%s.%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$name_prefix" "$private_extension" 1>&2
-			exit 1
-		fi
+	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${name_prefix}.${private_extension}" 2>/dev/null; then
+		printf "\033[1;31mThe private key file \033[1;37m%s.%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$name_prefix" "$private_extension" 1>&2
+		exit 1
 	fi
 fi
 #######################################################################################################
@@ -555,9 +616,9 @@ fi
 #######################################################################################################
 printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s.%s\033[0m ... " "$name_prefix" "$private_extension" 1>&2
 if "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/filler.bin" "$tmp/1K.bin" "$tmp/1K.bin" | \
-"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/$signature_file" -passin "pass:$KEYPASSWORD"; then
+"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
 	show_ok
-	sigsize="$(wc -c < "$tmp/$signature_file")"
+	sigsize="$(wc -c < "$tmp/signature")"
 else
 	show_error
 	exit 1
@@ -587,7 +648,7 @@ printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 
 # and append signature content and EoA blocks                                                         #
 #                                                                                                     #
 #######################################################################################################
-cat "$tmp/header" "$tmp/$signature_file"
+cat "$tmp/header" "$tmp/signature"
 "$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
 cat "$tmp/1K.bin"
 show_ok
