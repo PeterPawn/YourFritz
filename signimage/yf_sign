@@ -7,7 +7,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# yf_sign_image, version 1.0.1                                                                        #
+# yf_sign, version 1.0.1                                                                              #
 #                                                                                                     #
 # Some functions in this script were taken from the YourFritz Shell Script library (YF_SCRIPTLIB)     #
 # and/or from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from           #
@@ -59,12 +59,12 @@ signature_file="./var/signature"
 # include the configuration file                                                                      #
 #                                                                                                     #
 #######################################################################################################
-config_file="${YF_SIGNIMAGE_CONFIG:-$my_path/signimage.conf}"
+config_file="${YF_SIGNIMAGE_CONFIG:-$my_path/yf_signimage.conf}"
 if ! [ -r "$config_file" ]; then
 	printf "\033[1;31mConfiguration file \033[1;37m%s\033[1;31m isn't readable.\033[0m\a\n" "$config_file" 1>&2
 	exit 127
 fi
-# shellcheck source=./signimage.conf
+# shellcheck source=./yf_signimage.conf
 . "$config_file"
 filename_prefix="$YF_SIGNIMAGE_KEYS"
 private_extension="$YF_SIGNIMAGE_PRIVKEYEXT"
@@ -274,8 +274,8 @@ usage()
 	printf "proper quotes while calling (e.g. YF_SIGNIMAGE_TAR='busybox tar' to use the applet of your\n"
 	printf "BusyBox binary).\n\n"
 	printf "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
-	printf "read from an configuration file with name \033[1msignimage.conf\033[0m. The file has to be stored in\n"
-	printf "the same directory as this script. Please read the comments in this file, if you want to change\n"
+	printf "read from an configuration file with name \033[1myf_signimage.conf\033[0m. The file has to be stored\n"
+	printf "in the same directory as this script. Please read the comments in this file, if you want to change\n"
 	printf "the places, where other files will be searched. To change the location, where the configuration\n"
 	printf "file will be expected, you may use an environment value \033[1mYF_SIGNIMAGE_CONFIG\033[0m with the\n"
 	printf "(relative or absolute) path name of it.\n\n"
@@ -285,7 +285,7 @@ usage()
 	printf "first and any settings here, will overrule all others. If there's no variable with any of those\n"
 	printf "names, due to historic reasons the presence of \033[1mFREETZ_IMAGE_SIGNING_PREFIX\033[0m will be\n"
 	printf "checked. An existing variable with this name will be used next - otherwise a value of\n"
-	printf "\033[1m\$HOME/.signimage/image_signing\033[0m gets assigned in the last resort.\n\n"
+	printf "\033[1m\$HOME/.yf_signimage/image_signing\033[0m gets assigned in the last resort.\n\n"
 	printf "The file extensions from configuration file shouldn't be changed without strong knowledge about\n"
 	printf "using cryptographic tools. Please don't blame the author, if your own changes to these values\n"
 	printf "render the script(s) useless (beside you've to respect the license terms even, which are denying\n"

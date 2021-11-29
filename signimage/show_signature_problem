@@ -21,12 +21,12 @@
 #
 check()
 {
-	check_signed_image $1 -a ~/firmware_signing.asc
+	yf_check_signature $1 -a ~/firmware_signing.asc
 }
 sign()
 (
 	[ -z "$3" ] && export YF_SIGNIMAGE_SKIP_WORKAROUNDS=1 || export -n YF_SIGNIMAGE_SKIP_WORKAROUNDS
-	sign_image "$1" "$2"
+	yf_sign "$1" "$2"
 )
 pack()
 {

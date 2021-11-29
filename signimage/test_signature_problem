@@ -22,11 +22,11 @@
 #
 check()
 {
-	check_signed_image $1 -a ~/firmware_signing.asc
+	yf_check_signature $1 -a ~/firmware_signing.asc
 }
 sign()
 {
-	sign_image "$1" "$2"
+	yf_sign "$1" "$2"
 }
 pack()
 {

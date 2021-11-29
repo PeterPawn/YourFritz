@@ -8,12 +8,12 @@ with two empty placeholder blocks (a 512 byte) instead of this signature file.
 
 The sample scripts and their purposes:
 
-`generate_signing_key`
+`yf_genkey`
 
 create an own key pair to sign images - AVM uses 1024 bit RSA keys, this script may be used to create larger keys, which can't
 be verified with the AVM components
 
-`sign_image`
+`yf_sign`
 
 add a signature file to a specified TAR archive and stream the result to STDOUT
 
@@ -22,15 +22,15 @@ add a signature file to a specified TAR archive and stream the result to STDOUT
 convert a public key file in AVM reading (one line with modulus as hexadecimal character string and another one with the public
 exponent) into a well-formed PKCS8 structure in a PEM file, ready to be used by OpenSSL functions
 
-`check_signed_image`
+`yf_check_signature`
 
 verify the signature of a signed image, the script accepts a list of possible public keys (in various formats) and tries to
 decode the signature file, until the right key was found or the end of list is reached
 
-`image_signing_files.inc`
+`signimage.conf`
 
 contains some definitions for the location and file name conventions for key files involved in this process, this file will
-be included by the others to setup key file locations - has to be edited to reflect your own preferences
+be included by the others to setup key file locations - read comments carefully, most times no permanent changes are needed
 
 ---
 
