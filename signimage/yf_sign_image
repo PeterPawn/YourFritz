@@ -66,6 +66,7 @@ if ! [ -r "$include_file" ]; then
 fi
 # shellcheck source=./image_signing_files.inc
 . "$include_file"
+filename_prefix="$YF_SIGNIMAGE_FILES"
 #######################################################################################################
 #                                                                                                     #
 # get the names of needed external commands, if called from any cross-development toolchain           #
@@ -449,7 +450,7 @@ if [ ${#YF_SIGNIMAGE_ON_BOX} -gt 0 ]; then
 					printf "\033[1;31mError determining the password of RSA key from FRITZ!OS.\033[0m\a\n" 1>&2
 					exit 1
 				else
-					name_prefix="$box_key_name"
+					filename_prefix="$box_key_name"
 					private_extension="pem"
 					on_box=1
 				fi
@@ -545,7 +546,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 if [ $on_box -eq 0 ]; then
-	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${name_prefix}.${private_extension}" 2>/dev/null; then
+	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}.${private_extension}" 2>/dev/null; then
 		if [ -z "$2" ]; then
 			if ! [ -t 0 ]; then
 				usage 1>&2
@@ -570,7 +571,7 @@ fi
 if [ $on_box -eq 0 ]; then
 	if [ ${#KEYPASSWORD} -gt 0 ]; then
 		printf "Checking password for the private key file ... " 1>&2
-		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${name_prefix}.${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
+		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}.${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
 		rc=$?
 		if [ $rc -eq 0 ]; then
 			show_ok
@@ -578,8 +579,8 @@ if [ $on_box -eq 0 ]; then
 			show_error
 			exit 1
 		fi
-	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${name_prefix}.${private_extension}" 2>/dev/null; then
-		printf "\033[1;31mThe private key file \033[1;37m%s.%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$name_prefix" "$private_extension" 1>&2
+	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}.${private_extension}" 2>/dev/null; then
+		printf "\033[1;31mThe private key file \033[1;37m%s.%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
 		exit 1
 	fi
 fi
@@ -619,9 +620,9 @@ fi
 # - an additional 1K block of zeros serves as new EoA header                                          #
 #                                                                                                     #
 #######################################################################################################
-printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s.%s\033[0m ... " "$name_prefix" "$private_extension" 1>&2
+printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s.%s\033[0m ... " "$filename_prefix" "$private_extension" 1>&2
 if "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/filler.bin" "$tmp/1K.bin" "$tmp/1K.bin" | \
-"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${name_prefix}.${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
+"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${filename_prefix}.${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
 	show_ok
 	sigsize="$(wc -c < "$tmp/signature")"
 else
