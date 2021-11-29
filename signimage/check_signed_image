@@ -18,7 +18,7 @@
 #   6 - the specified file does not exist                                          #
 #   7 - no usable public key found                                                 #
 #   8 - the signature file contains no ASN.1 structure                             #
-#   9 - the signature file uses an unsupported hash algorithm                      #
+#   9 - the signature file uses an unsupported hash algorithm (not used anymore)   #
 #  10 - the hash algorithm used to sign isn't supported by the openssl binary      #
 #  11 - none of the specified public key sources was able to provide a key         #
 #  12 - a specified file contains invalid data                                     #
@@ -42,7 +42,6 @@ box_key_name="/var/flash/websrv_ssl_key.pem"
 box_cert_name1="/var/flash/websrv_ssl_cert.pem"
 box_cert_name2="/var/tmp/websrv_ssl_cert.pem"
 signature_file="./var/signature"
-supported_hashes="md5 sha1 sha224 sha256 sha384 sha512 whirlpool"
 ####################################################################################
 #                                                                                  #
 # some subfunctions                                                                #
@@ -743,26 +742,11 @@ while read line; do
 		algo=$(printf "%s\n" "$output" | sed -n -e "s|^.*OBJECT.*:\(.*\)\$|\1|p" 2>/dev/null)
 		if [ ${#algo} -gt 0 ]; then
 			printf "Checking support for the used hash algorithm \033[1m%s\033[0m ... " "$algo" 1>&2
-			valid_algo=0
-			for a in $supported_hashes; do
-				if [ "$a" = "$algo" ]; then
-					valid_algo=1
-					break
-				fi
-			done
-			if [ $valid_algo -eq 1 ]; then
-				printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$algo" 2>&1 2>/dev/null 1>&2
-				rc=$?
-				if [ $rc -eq 0 ]; then
-					show_ok
-					break
-				else
-					show_error
-					exit 10
-				fi
+			if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$algo" 2>&1 2>/dev/null 1>&2; then
+				show_ok
 			else
 				show_error
-				exit 9
+				exit 10
 			fi
 		else
 			show_error
