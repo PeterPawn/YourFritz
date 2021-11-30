@@ -237,7 +237,7 @@ usage()
 	printf "a better hash algorithm (remember that \033[1mopenssl\033[0m binary still has to support it) with a variable\n"
 	printf "\033[1mYF_SIGNIMAGE_HASH\033[0m in the environment, which contains the name of algorithm to use.\n"
 	printf "It has to be one of:\n\n"
-	for algo in $supported_hashes; do
+	for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
 		printf -- "- %s\n" "$algo"
 	done
 	printf "\n"
@@ -340,6 +340,14 @@ is_fritzos_environment()
 )
 #######################################################################################################
 #                                                                                                     #
+# prepare a temporary directory and cleanup on exit                                                   #
+#                                                                                                     #
+#######################################################################################################
+tmp=$(__mktmp -d)
+[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
+trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
+#######################################################################################################
+#                                                                                                     #
 # check parameters                                                                                    #
 #                                                                                                     #
 #######################################################################################################
@@ -351,6 +359,10 @@ elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 	exit 0
 else
 	image_file="$1"
+	if [ "$image_file" = "-" ]; then
+		image_file="$tmp/input_image"
+		cat >"$image_file" 2>/dev/null
+	fi
 fi
 if ! [ -f "$image_file" ]; then
 	printf "\033[1;31mThe specified image file \033[1;37m%s\033[1;31m does not exist.\033[0m\a\n" "$image_file" 1>&2
@@ -453,7 +465,7 @@ if [ ${#YF_SIGNIMAGE_ON_BOX} -gt 0 ]; then
 					exit 1
 				else
 					filename_prefix="$box_key_name"
-					private_extension="pem"
+					private_extension=".pem"
 					on_box=1
 				fi
 			fi
@@ -487,14 +499,6 @@ if ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=7 2>/dev/null | base64)
 	printf "\033[1;31mFirst member of archive file has to be a directory and has to use the name '\033[1;37m./var/\033[1;31m'.\033[0m\a\n" 1>&2
 	exit 1
 fi
-#######################################################################################################
-#                                                                                                     #
-# prepare a temporary directory and cleanup on exit                                                   #
-#                                                                                                     #
-#######################################################################################################
-tmp=$(__mktmp -d)
-[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
-trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
 #######################################################################################################
 #                                                                                                     #
 # check end of archive headers, GNU tar writes more than needed                                       #
@@ -548,17 +552,22 @@ fi
 #                                                                                                     #
 #######################################################################################################
 if [ $on_box -eq 0 ]; then
-	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}.${private_extension}" 2>/dev/null; then
+	if ! [ -f "${filename_prefix}${private_extension}" ]; then
+		printf "\033[1;31mThe private key file \033[1;37m%s%s\033[1;31m is not a regular file or is missing.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
+		exit 1
+	fi
+	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
 		if [ -z "$2" ]; then
-			if ! [ -t 0 ]; then
-				usage 1>&2
-				exit 1
-			else
-				if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
-					KEYPASSWORD="$(__read_password "\033[1;34mEnter your password for the signing key: \033[0m")"
+			if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
+				if ! [ -t 0 ]; then
+					usage 1>&2
+					printf "\033[1;31mNo password for private key was specified while calling and STDIN isn't your terminal.\033[0m\a\n" 1>&2
+					exit 1
 				else
-					KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
+					KEYPASSWORD="$(__read_password "\033[1;34mEnter your password for the signing key: \033[0m")"
 				fi
+			else
+				KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
 			fi
 		else
 			KEYPASSWORD="$2"
@@ -573,7 +582,7 @@ fi
 if [ $on_box -eq 0 ]; then
 	if [ ${#KEYPASSWORD} -gt 0 ]; then
 		printf "Checking password for the private key file ... " 1>&2
-		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}.${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
+		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
 		rc=$?
 		if [ $rc -eq 0 ]; then
 			show_ok
@@ -581,8 +590,8 @@ if [ $on_box -eq 0 ]; then
 			show_error
 			exit 1
 		fi
-	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}.${private_extension}" 2>/dev/null; then
-		printf "\033[1;31mThe private key file \033[1;37m%s.%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
+	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
+		printf "\033[1;31mThe private key file \033[1;37m%s%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
 		exit 1
 	fi
 fi
@@ -622,9 +631,9 @@ fi
 # - an additional 1K block of zeros serves as new EoA header                                          #
 #                                                                                                     #
 #######################################################################################################
-printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s.%s\033[0m ... " "$filename_prefix" "$private_extension" 1>&2
+printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s%s\033[0m ... " "$filename_prefix" "$private_extension" 1>&2
 if "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/filler.bin" "$tmp/1K.bin" "$tmp/1K.bin" | \
-"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${filename_prefix}.${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
+"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${filename_prefix}${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
 	show_ok
 	sigsize="$(wc -c < "$tmp/signature")"
 else
