@@ -70,7 +70,7 @@ filename_prefix="$YF_SIGNIMAGE_KEYS"
 private_extension="$YF_SIGNIMAGE_PRIVKEYEXT"
 #######################################################################################################
 #                                                                                                     #
-# get the names of needed external commands, if called from any cross-development toolchain           #
+# get the names of needed external commands, if called from any cross-device toolchain                #
 #                                                                                                     #
 #######################################################################################################
 if [ -n "$YF_SIGNIMAGE_TAR" ]; then
@@ -368,7 +368,7 @@ if ! [ -f "$image_file" ]; then
 	printf "\033[1;31mThe specified image file \033[1;37m%s\033[1;31m does not exist.\033[0m\a\n" "$image_file" 1>&2
 	exit 1
 fi
-if [ -t 1 ]; then
+if [ -t 1 ] && ! [ "$YF_SIGNIMAGE_SIGN_IN_PLACE" = "1" ]; then
 	printf "\033[1;31mThe output stream is a terminal device, please redirect output to a file.\033[0m\a\n" 1>&2
 	exit 1
 fi
@@ -642,14 +642,6 @@ else
 fi
 #######################################################################################################
 #                                                                                                     #
-# stream the shortened image file (without EoA) to STDOUT                                             #
-#                                                                                                     #
-#######################################################################################################
-printf "Copying resulting image to output ... " 1>&2
-"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none
-cat "$tmp/filler.bin"
-#######################################################################################################
-#                                                                                                     #
 # build our own signature member using the first member entry from image                              #
 #                                                                                                     #
 #######################################################################################################
@@ -662,16 +654,30 @@ chksum=$(checksum "$tmp/header")
 printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
 #######################################################################################################
 #                                                                                                     #
-# and append signature content and EoA blocks                                                         #
+# combine signature and EoA headers in a single file                                                  #
 #                                                                                                     #
 #######################################################################################################
-cat "$tmp/header" "$tmp/signature"
-"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
-cat "$tmp/1K.bin"
+cat "$tmp/filler.bin" >"$tmp/append"
+cat "$tmp/header" "$tmp/signature" >>"$tmp/append"
+"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null >>"$tmp/append"
+cat "$tmp/1K.bin" >>"$tmp/append"
+#######################################################################################################
+#                                                                                                     #
+# stream the shortened image file (without EoA) to STDOUT or overwrite input image after payload      #
+#                                                                                                     #
+#######################################################################################################
+if [ "$YF_SIGNIMAGE_SIGN_IN_PLACE" = "1" ]; then
+	printf "Signing input image in-place ... " 1>&2
+	"$YF_SIGNIMAGE_DD" if="$tmp/append" of="$image_file" bs=512 seek=$copy_blocks status=none
+else
+	printf "Copying signed image to STDOUT ... " 1>&2
+	"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none
+	cat "$tmp/append"
+fi
 show_ok
 #######################################################################################################
 #                                                                                                     #
-# all done, now STDOUT has seen all the needed data to be used as a signed image                      #
+# all done here                                                                                       #
 #                                                                                                     #
 #######################################################################################################
 exit 0
