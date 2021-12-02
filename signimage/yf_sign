@@ -54,6 +54,29 @@ my_path="$0"
 my_name="${0##*/}"
 box_key_name="/var/flash/websrv_ssl_key"
 signature_file="./var/signature"
+urlader_environment="/proc/sys/urlader/environment"
+maca_name="maca"
+#######################################################################################################
+#                                                                                                     #
+# exit code definitions                                                                               #
+#                                                                                                     #
+#######################################################################################################
+YF_SIGN_SUCCESS=0 # processing complete successfully
+YF_SIGN_INVALID_CALL=1 # parameter error while calling
+YF_SIGN_MISSING_IMAGE_FILE=1 # specified image file was not found
+YF_SIGN_IMAGE_FORMAT_ERROR=1 # specified image file uses a wrong format
+YF_SIGN_NO_OUTPUT_TO_TERMINAL=1 # signed image would be written to a terminal
+YF_SIGN_NO_FRITZOS_DEVICE=1 # options are only supported, if running on a FRITZ!OS device
+YF_SIGN_BOX_KEY_PASSWORD_ERROR=1 # error computing password for private key file from FRITZ!OS
+YF_SIGN_PRIVATE_KEY_MISSING=1 # the RSA private key file is missing
+YF_SIGN_WRONG_PASSWORD=1 # password for private key is wrong (or can't be read from terminal)
+YF_SIGN_DIGEST_ERROR=1 # error running 'dgst' command by openssl
+YF_SIGN_NO_OSSL_BINARY=32 # no usable openssl binary found
+YF_SIGN_NO_OSSL_DIGEST=33 # the openssl binary doesn't support the 'dgst' command
+YF_SIGN_NO_OSSL_RSA=34 # the openssl binary doesn't support the 'rsautl' command
+YF_SIGN_UNSUPPORTED_HASH=35 # the requested hash algorithm is not supported, see configuration file
+YF_SIGN_OSSL_UNSUPPORTED_HASH=36 # the openssl binary doesn't support the requested hash algorithm
+YF_SIGN_NO_CONFIG_FILE=127 # no configuration file was found
 #######################################################################################################
 #                                                                                                     #
 # include the configuration file                                                                      #
@@ -62,7 +85,7 @@ signature_file="./var/signature"
 config_file="${YF_SIGNIMAGE_CONFIG:-$my_path/yf_signimage.conf}"
 if ! [ -r "$config_file" ]; then
 	printf "\033[1;31mConfiguration file \033[1;37m%s\033[1;31m isn't readable.\033[0m\a\n" "$config_file" 1>&2
-	exit 127
+	exit $YF_SIGN_NO_CONFIG_FILE
 fi
 # shellcheck source=./yf_signimage.conf
 . "$config_file"
@@ -340,11 +363,35 @@ is_fritzos_environment()
 )
 #######################################################################################################
 #                                                                                                     #
+# compute password of private key file from /var/flash/websrv_ssl_key.pem                             #
+#                                                                                                     #
+# meanwhile the cat was let out of the bag - no needs to use privatekeypassword anymore, instead      #
+# we'll compute the hash ourself and translate it to the right string                                 #
+#                                                                                                     #
+#                                                                                                     #
+#######################################################################################################
+box_key_password()
+(
+	is_fritzos_environment || exit 1
+	maca="$(sed -n -e "$(printf "s|^%s[ \t]*\(.*\)|\1|p" "$maca_name")" "$urlader_environment")"
+	if command -v md5sum 2>/dev/null 1>&2; then
+		hash="$(printf "%s" "$maca" | md5sum)"
+	else
+		hash="$(printf "%s" "$maca" | "$YF_SIGNIMAGE_OPENSSL" dgst -md5 -r)"
+	fi
+	md5_bytes="$(printf "%s\n" "$hash" | sed -e "s|^\([0-9a-fA-F]\{16\}\).*|\1|" -e "s|..|& |g")"
+	for b in $md5_bytes; do
+		printf "%c" "$(expr 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$' : ".\{$(( 0x$b % 64 ))\}\(.\).*")"
+	done
+	printf "\n"
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
 # prepare a temporary directory and cleanup on exit                                                   #
 #                                                                                                     #
 #######################################################################################################
 tmp=$(__mktmp -d)
-[ $? -eq 127 ] && tmp="/tmp/tmp.$(date +%s).$$" && mkdir -p "$tmp"
 trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
 #######################################################################################################
 #                                                                                                     #
@@ -353,10 +400,10 @@ trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
 #######################################################################################################
 if [ -z "$1" ]; then
 	usage 1>&2
-	exit 1
+	exit $YF_SIGN_INVALID_CALL
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 	usage
-	exit 0
+	exit $YF_SIGN_SUCCESS
 else
 	image_file="$1"
 	if [ "$image_file" = "-" ]; then
@@ -366,11 +413,11 @@ else
 fi
 if ! [ -f "$image_file" ]; then
 	printf "\033[1;31mThe specified image file \033[1;37m%s\033[1;31m does not exist.\033[0m\a\n" "$image_file" 1>&2
-	exit 1
+	exit $YF_SIGN_MISSING_IMAGE_FILE
 fi
 if [ -t 1 ] && ! [ "$YF_SIGNIMAGE_SIGN_IN_PLACE" = "1" ]; then
 	printf "\033[1;31mThe output stream is a terminal device, please redirect output to a file.\033[0m\a\n" 1>&2
-	exit 1
+	exit $YF_SIGN_NO_OUTPUT_TO_TERMINAL
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -385,7 +432,7 @@ printf "\nLicensed to you according to GPLv2 or a later version, with some addit
 # check OpenSSL presence and version                                                                  #
 #                                                                                                     #
 #######################################################################################################
-show_version || exit 1
+show_version || exit $YF_SIGN_NO_OSSL_BINARY
 printf "Check \033[1mdgst\033[0m command ... " 1>&2
 printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2
 rc=$?
@@ -393,7 +440,7 @@ if [ $rc -eq 0 ]; then
 	show_ok
 else
 	show_error
-	exit 1
+	exit $YF_SIGN_NO_OSSL_DIGEST
 fi
 printf "Check \033[1mrsa\033[0m command ... " 1>&2
 printf "" | "$YF_SIGNIMAGE_OPENSSL" rsa 2>&1 | grep -q '^unable to load' 2>/dev/null 1>&2
@@ -402,7 +449,7 @@ if [ $rc -eq 0 ]; then
 	show_ok
 else
 	show_error
-	exit 1
+	exit $YF_SIGN_NO_OSSL_RSA
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -412,7 +459,7 @@ fi
 if [ "${#YF_SIGNIMAGE_HASH}" -gt 0 ]; then
 	check_algo="$(printf "%s\n" "$YF_SIGNIMAGE_HASH" | sed -e "y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/")"
 	hash_algo=""
-	for algo in md5 sha1 sha224 sha256 sha384 sha512 whirlpool; do
+	for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
 		if [ "$algo" = "$check_algo" ]; then
 			hash_algo=$algo
 			break
@@ -420,19 +467,19 @@ if [ "${#YF_SIGNIMAGE_HASH}" -gt 0 ]; then
 	done
 	if [ "${#hash_algo}" -eq 0 ]; then
 		printf "\033[1;31mUnknown or unsupported (by this script) hash algorithm \033[1;37m%s\033[1;31m specified.\033[0m\a\n" "$YF_SIGNIMAGE_HASH" 1>&2
-		exit 1
+		exit $YF_SIGN_UNSUPPORTED_HASH
 	fi
 else
-	hash_algo="md5"
+	hash_algo="$YF_SIGNIMAGE_DEFAULT_HASH"
 fi
 printf "Verify hash algorithm \033[1m%s\033[0m is supported ... " "$hash_algo" 1>&2
-printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo 2>&1 2>/dev/null 1>&2
+printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$hash_algo" 2>&1 2>/dev/null 1>&2
 rc=$?
 if [ $rc -eq 0 ]; then
 	show_ok
 else
 	show_error
-	exit 1
+	exit $YF_SIGN_OSSL_UNSUPPORTED_HASH
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -453,21 +500,16 @@ if [ ${#YF_SIGNIMAGE_ON_BOX} -gt 0 ]; then
 	if [ "$YF_SIGNIMAGE_ON_BOX" = "1" ]; then
 		if ! is_fritzos_environment; then
 			printf "\033[1;31mThe special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.\033[0m\n" 1>&2
-			exit 1
+			exit $YF_SIGN_NO_FRITZOS_DEVICE
 		else
-			if ! __check_required_command "privatekeypassword"; then
-				printf "\033[1;31mThe \033[1;37mprivatekeypassword\033[1;31m executable is missing.\033[0m\a\n" 1>&2
-				exit 1
+			KEYPASSWORD="$(box_key_password)"
+			if [ ${#KEYPASSWORD} -eq 0 ]; then
+				printf "\033[1;31mError determining the password of RSA key from FRITZ!OS.\033[0m\a\n" 1>&2
+				exit $YF_SIGN_BOX_KEY_PASSWORD_ERROR
 			else
-				KEYPASSWORD="$(privatekeypassword 2>/dev/null)"
-				if [ ${#KEYPASSWORD} -eq 0 ]; then
-					printf "\033[1;31mError determining the password of RSA key from FRITZ!OS.\033[0m\a\n" 1>&2
-					exit 1
-				else
-					filename_prefix="$box_key_name"
-					private_extension=".pem"
-					on_box=1
-				fi
+				filename_prefix="$box_key_name"
+				private_extension=".pem"
+				on_box=1
 			fi
 		fi
 	fi
@@ -481,12 +523,12 @@ printf "Checking input file format ... " 1>&2
 if ! "$YF_SIGNIMAGE_DD" if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null; then
 	show_error
 	printf "\033[1;31mInput file doesn't look like a TAR archive.\033[0m\a\n" 1>&2
-	exit 1
+	exit $YF_SIGN_IMAGE_FORMAT_ERROR
 fi
 if "$YF_SIGNIMAGE_DD" if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null; then
 	show_error
 	printf "\033[1;31mInput file contains extended headers (PaxHeaders) and may not be signed this way.\033[0m\a\n" 1>&2
-	exit 1
+	exit $YF_SIGN_IMAGE_FORMAT_ERROR
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -497,7 +539,7 @@ if ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=7 2>/dev/null | base64)
    ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=1 skip=156 2>/dev/null)" = "5" ]; then
 	show_error
 	printf "\033[1;31mFirst member of archive file has to be a directory and has to use the name '\033[1;37m./var/\033[1;31m'.\033[0m\a\n" 1>&2
-	exit 1
+	exit $YF_SIGN_IMAGE_FORMAT_ERROR
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -528,7 +570,7 @@ while read line; do
 		if [ "$i" -ne "$members" ]; then
 			show_error
 			printf "\033[1;31mThe input file contains a member '\033[1;37m%s\033[1;31m' already (in the wrong position) and will not be signed by this script.\033[0m\a\n" "$signature_file" 1>&2
-			exit 1
+			exit $YF_SIGN_IMAGE_FORMAT_ERROR
 		else
 			signature_blocks="$(( BLOCKS ))"
 		fi
@@ -554,7 +596,7 @@ fi
 if [ $on_box -eq 0 ]; then
 	if ! [ -f "${filename_prefix}${private_extension}" ]; then
 		printf "\033[1;31mThe private key file \033[1;37m%s%s\033[1;31m is not a regular file or is missing.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
-		exit 1
+		exit $YF_SIGN_PRIVATE_KEY_MISSING
 	fi
 	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
 		if [ -z "$2" ]; then
@@ -562,7 +604,7 @@ if [ $on_box -eq 0 ]; then
 				if ! [ -t 0 ]; then
 					usage 1>&2
 					printf "\033[1;31mNo password for private key was specified while calling and STDIN isn't your terminal.\033[0m\a\n" 1>&2
-					exit 1
+					exit $YF_SIGN_WRONG_PASSWORD
 				else
 					KEYPASSWORD="$(__read_password "\033[1;34mEnter your password for the signing key: \033[0m")"
 				fi
@@ -588,11 +630,11 @@ if [ $on_box -eq 0 ]; then
 			show_ok
 		else
 			show_error
-			exit 1
+			exit $YF_SIGN_WRONG_PASSWORD
 		fi
 	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
 		printf "\033[1;31mThe private key file \033[1;37m%s%s\033[1;31m seems to be encrypted, you have to specify the password and not an empty string.\033[0m\a\n" "$filename_prefix" "$private_extension" 1>&2
-		exit 1
+		exit $YF_SIGN_WRONG_PASSWORD
 	fi
 fi
 #######################################################################################################
@@ -633,12 +675,12 @@ fi
 #######################################################################################################
 printf "Signing the image hash (\033[1m$hash_algo\033[0m) with RSA key from \033[1m%s%s\033[0m ... " "$filename_prefix" "$private_extension" 1>&2
 if "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/filler.bin" "$tmp/1K.bin" "$tmp/1K.bin" | \
-"$YF_SIGNIMAGE_OPENSSL" dgst -$hash_algo -sign "${filename_prefix}${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
+"$YF_SIGNIMAGE_OPENSSL" dgst -"$hash_algo" -sign "${filename_prefix}${private_extension}" -out "$tmp/signature" -passin "pass:$KEYPASSWORD"; then
 	show_ok
 	sigsize="$(wc -c < "$tmp/signature")"
 else
 	show_error
-	exit 1
+	exit $YF_SIGN_DIGEST_ERROR
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -657,10 +699,12 @@ printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/header" bs=1 seek=148 
 # combine signature and EoA headers in a single file                                                  #
 #                                                                                                     #
 #######################################################################################################
-cat "$tmp/filler.bin" >"$tmp/append"
-cat "$tmp/header" "$tmp/signature" >>"$tmp/append"
-"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null >>"$tmp/append"
-cat "$tmp/1K.bin" >>"$tmp/append"
+{
+	cat "$tmp/filler.bin"
+	cat "$tmp/header" "$tmp/signature"
+	"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
+	cat "$tmp/1K.bin"
+} >"$tmp/append"
 #######################################################################################################
 #                                                                                                     #
 # stream the shortened image file (without EoA) to STDOUT or overwrite input image after payload      #
@@ -680,7 +724,7 @@ show_ok
 # all done here                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-exit 0
+exit $YF_SIGN_SUCCESS
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
