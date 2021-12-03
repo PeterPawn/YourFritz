@@ -109,16 +109,6 @@ fi
 # get the names of needed external commands, if called from any cross-device toolchain                #
 #                                                                                                     #
 #######################################################################################################
-if [ -n "$YF_SIGNIMAGE_TAR" ]; then
-	__YF_SIGNIMAGE_TAR="$YF_SIGNIMAGE_TAR"
-	__yf_signimage_tar()
-	{
-		"$__YF_SIGNIMAGE_TAR" "$@"
-	}
-	YF_SIGNIMAGE_TAR="__yf_signimage_tar"
-else
-	YF_SIGNIMAGE_TAR="tar"
-fi
 if [ -n "$YF_SIGNIMAGE_DD" ]; then
 	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
 	__yf_signimage_dd()
@@ -553,35 +543,54 @@ read_box_key()
 # TAR file handling functions                                                                         #
 #                                                                                                     #
 #######################################################################################################
-#                                                                                                     #
-# use 'force-local' option with GNU TAR, if the image name contains a colon                           #
-#                                                                                                     #
-#######################################################################################################
-tar_check_force_local()
-(
-	[ -n "$(expr "$1" : ".*\(:\).*")" ] && \
-	"$YF_SIGNIMAGE_TAR" --help 2>&1 | grep -q 'force-local' 2>/dev/null && \
-	printf -- "--force-local\n"
-)
 tar_create_table_of_contents()
 (
-	offset=0
-	# shellcheck disable=SC2086,SC2162,SC2046
-	"$YF_SIGNIMAGE_TAR" -t -v -f "$1" $(tar_check_force_local) | \
-	sed -n -e "s|^[^ ]* *[^ ]* *\([0-9]*\) *[^ ]* *[^ ]* *\(.*\)\$|SIZE=\1 MEMBER=\2|p" | \
-	while read line; do
-		eval "$line"
-		file_offset=$offset
-		file_start=$(( file_offset + 512 ))
-		file_end=$(( file_start + SIZE ))
-		offset=$(( ( ( file_end + 511 ) / 512 ) * 512 ))
-		printf "HEADER=%u START=%u END=%u SIZE=%u BLOCKS=%u MEMBER=\"%s\"\n" "$file_offset" "$file_start" "$file_end" "$SIZE" "$(( ( offset - file_offset ) / 512 ))" "$MEMBER"
+	block_no=0
+	max_block=$(( $(wc -c < "$1") / 512 ))
+	magic="$(__mktmp -p "$tmp")"
+	empty="$(__mktmp -p "$tmp")"
+	printf "ustar" >"$magic"
+	dd if=/dev/zero bs=512 count=1 status=none >"$empty"
+	while [ "$block_no" -lt "$max_block" ]; do
+		if dd if="$1" bs=512 skip="$block_no" count=1 status=none | dd bs=1 skip=257 count=5 status=none | cmp -s "$magic" -; then
+			name="$(dd if="$1" bs=512 skip="$block_no" count=1 status=none | dd bs=1 skip=0 count=100 status=none | tr -d '\000')"
+			[ "${#name}" -gt 99 ] && exit 3 # name too long
+			size="$(dd if="$1" bs=512 skip="$block_no" count=1 status=none | dd bs=1 skip=124 count=12 status=none | tr -d '\000')"
+			size=$(( 0$size ))
+			type="$(dd if="$1" bs=512 skip="$block_no" count=1 status=none | dd bs=1 skip=156 count=1 status=none | tr -d '\000')"
+			[ ${#type} -eq 0 ] && type=0
+			{ ! [ "$type" = "0" ] && ! [ "$type" = "5" ]; } && exit 2 # invalid type of entry
+			printf "HEADER=%u START=%u END=%u SIZE=%u BLOCKS=%u TYPE=%s MEMBER=\"%s\"\n" "$(( block_no * 512 ))" "$(( ( block_no + 1 ) * 512 ))" "$(( ( ( block_no + 1 ) * 512 ) + size ))" "$size" "$(( ( size + 511 ) / 512 ))" "$type" "$name"
+			block_no=$(( block_no + 1 + ( ( size + 511 ) / 512 ) ))
+		else
+			! dd if="$1" bs=512 skip="$block_no" count=1 status=none | cmp -s "$empty" - && exit 1
+			[ $block_no -lt 1 ] && exit 1
+			block_no=$(( block_no + 1 ))
+		fi
 	done
 )
 tar_get_member_data()
 (
-	# shellcheck disable=SC2046
-	"$YF_SIGNIMAGE_TAR" -x -f "$1" -O $(tar_check_force_local "$1") "$2" 2>/dev/null
+	if [ -z "$3" ]; then
+		toc="$(__mktmp -p "$tmp")"
+		tar_create_table_of_contents "$1" >"$toc"
+	else
+		toc="$3"
+	fi
+	# shellcheck disable=SC2162
+	while read line; do
+		eval "$line"
+		if [ "$2" = "$MEMBER" ]; then
+			if [ "$BLOCKS" -gt 1 ]; then
+				dd if="$1" bs=512 skip=$(( START / 512 )) count=$(( BLOCKS - 1 )) status=none
+			fi
+			# shellcheck disable=SC2153
+			dd if="$1" bs=512 skip=$(( ( START / 512 ) + BLOCKS - 1 )) count=1 status=none | \
+			dd bs=1 count=$(( SIZE % 512 )) status=none
+			exit 0
+		fi
+	done <"$toc"
+	exit 1
 )
 #######################################################################################################
 #                                                                                                     #
