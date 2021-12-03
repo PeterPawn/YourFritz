@@ -289,46 +289,37 @@ __yf_show_copyright()
 # usage screen, caller has to redirect output to STDERR if needed                                     #
 #                                                                                                     #
 #######################################################################################################
+ruler() { printf '00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111111111111111\n';
+          printf '00000000011111111112222222222333333333344444444445555555555666666666677777777778888888888999999999900000000001111111111\n';
+          printf '1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789|1234+6789\n'; }
 usage()
 (
-	printf    "\033[1mCheck, whether signature of the specified image file is valid.\033[0m\n\n"
+	__yf_show_version
+	__yf_show_copyright
+	__yf_show_license
+	printf    "\nPurpose:\n\n\033[1mCheck, whether signature of an image file is valid.\033[0m\n\n"
 	printf    "Usage:\n\n"
-	printf    "%s \033[1mimagefile\033[0m \033[1;34mpublic_keys\033[0m\n\n" "$0"
-	printf    "\033[1mimagefile\033[0m is the archive to check and the list of public keys to consider\n"
-	printf    "for decryption (the \033[1;34mpublic_keys\033[0m part above) may be built from the following\n"
-	printf    "sources:\n\n"
-	printf -- "-f \033[1mfilename\033[0m - add the file names in the specified file\n"
-	printf -- "-b          - add the key files from the current OS to the list, this option\n"
-	printf    "              makes only sense, if the script is executed on a FRITZ!OS-based\n"
-	printf    "              device or in a proper emulation; an existing plugin signing key\n"
-	printf    "              is also affected by this option\n"
-	printf -- "-c \033[1mfilename\033[0m - add raw lines from the specified file to the list,\n"
-	printf    "              each line needs a MOD and EXP value (if the used exponent\n"
-	printf    "              isn't the default 0x010001), SRC (optional) as a pseudo\n"
-	printf    "              filename and DESC (optional, too) as a description to be\n"
-	printf    "              displayed for this key (unused yet)\n"
-	printf -- "-a \033[1mfilename\033[0m - add the specified file (AVM text format) to the list\n"
-	printf -- "-p \033[1mfilename\033[0m - add the specified file (PEM format) to the list\n"
-	printf -- "-d \033[1mfilename\033[0m - add the specified file (DER format) to the list\n"
-	printf -- "-s          - check, that the image file was signed with the RSA key from\n"
-	printf    "              the box where we're running on (cannot be combined with other\n"
-	printf    "              key sources)\n\n"
-	printf    "The first key from the specified sources (which are probed in the\n"
-	printf    "given order) able to decode the signature file will be used for\n"
-	printf    "signature verification.\n\n"
-	printf    "Remark:\n"
-	printf    "If you have an image file not signed by AVM, it may use better hash\n"
-	printf    "algorithms from a limited set (md5, sha1, sha224, sha256, sha512,\n"
-	printf    "whirlpool), as long as the openssl binary supports this algorithm.\n"
-	printf    "The algorithm used to create the signature (by the signer) is detected\n"
-	printf    "while decoding the signature file in a first step (its format will be\n"
-	printf    "checked too in this step).\n\n"
-	printf    "\033[1;31mWARNING:\033[0m\n"
-	printf    "Because the lines from a 'raw file' (used with option 'c') are read\n"
-	printf    "and simply 'eval'uated as commands (leading to assignments for the\n"
-	printf    "values on each line), NEVER use this option with an input file from\n"
-	printf    "an untrusted source or check the content thoroughly, before you use\n"
-	printf    "it with this script.\n"
+	printf    "\033[1;32m%s \033[0m" "$0"
+	printf    "\033[1mimagefile\033[0m \033[1;34mpublic_keys\033[0m\n\n"
+	printf    "\033[1mimagefile\033[0m is the archive to check (use a dash (-) for STDIN, the file will be saved to a temporary\n"
+	printf    "location while the script is running) and the list of public keys to consider for decryption (the\n"
+	printf    "\033[1;34mpublic_keys\033[0m part above) may be built from the following sources:\n\n"
+	printf -- "-f \033[1mfilename\033[0m - add keys from files named in the specified file (one file per line), each file has to\n"
+	printf    "              contain a key in AVM's format\n\n"
+	printf -- "-b          - add the key files from current OS to the list, this option makes only sense, if the\n"
+	printf    "              script is running on a FRITZ!OS-based device or in a proper emulation; an existing\n"
+	printf    "              plugin signing key will be taken into account by this option, too\n\n"
+	printf -- "-c \033[1mfilename\033[0m - add lines from specified file to the list, lines have to use the 'condensed' format\n"
+	printf    "              (see below) and to provide at least a MOD and EXP value and (if the used exponent\n"
+	printf    "              isn't the default 0x010001), SRC (optional) as a pseudo filename and DESC (optional,\n"
+	printf    "              too) as a description to be displayed for this key (the DESC value is unused yet)\n\n"
+	printf -- "-a \033[1mfilename\033[0m - add key from specified file (AVM's text format) to the list\n\n"
+	printf -- "-p \033[1mfilename\033[0m - add key from specified file (PEM format) to the list\n\n"
+	printf -- "-d \033[1mfilename\033[0m - add key from specified file (DER format) to the list\n\n"
+	printf -- "-s          - verify that image file was signed with RSA key from local FRITZ!OS device (script is\n"
+	printf    "              running on) - can't be combined with other key sources\n\n"
+	printf    "The first key from specified sources (which are probed in the specified order) able to decode the\n"
+	printf    "signature file will be used for signature verification.\n\n"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -635,6 +626,14 @@ if ! [ -f "$image_file" ]; then
 fi
 #######################################################################################################
 #                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+printf "\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n" 1>&2
+#######################################################################################################
+#                                                                                                     #
 # check OpenSSL presence and version                                                                  #
 #                                                                                                     #
 #######################################################################################################
@@ -770,7 +769,10 @@ while [ "$#" -gt 0 ]; do
 				unset EXP
 				unset SRC
 				unset DESC
-				eval "$line"
+				MOD="$(printf "%s\n" "$line" | sed -n -e "s|.*MOD=\([0-9a-fA-F]*\).*|\1|p")"
+				EXP="$(printf "%s\n" "$line" | sed -n -e "s|.*EXP=\([0-9a-fA-F]*\).*|\1|p")"
+				SRC="$(printf "%s\n" "$line" | sed -n -e "s|.*SRC=\"\([^\"]*\)\".*|\1|p")"
+				DESC="$(printf "%s\n" "$line" | sed -n -e "s|.*DESC=\"\([^\"]*\)\".*|\1|p")"
 				if [ -z "$MOD" ]; then
 					printf "\033[1;31mMissing \033[1;37mMOD\033[1;31m value (modulus) on line %u of condensed file \033[1;37m%s\033[1;31m.\033[0m\a\n" "$i" "$2" 1>&2
 					exit $YF_CHECK_SIGNATURE_INVALID_DATA
@@ -874,7 +876,6 @@ fi
 #######################################################################################################
 [ "$(wc -l <"$tmp/$public_keys_list")" -gt 1 ] && printf "Trying to determine the correct key now ...\n" 1>&2
 key_found=0
-cat "$tmp/$public_keys_list" 1>&2
 # shellcheck disable=SC2162
 while read line; do
 	eval "$line"
