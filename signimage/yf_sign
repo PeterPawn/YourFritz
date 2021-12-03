@@ -54,8 +54,9 @@ my_path="$0"
 my_name="${0##*/}"
 box_key_name="/var/flash/websrv_ssl_key"
 signature_file="./var/signature"
-urlader_environment="/proc/sys/urlader/environment"
+urlader_environment_file="environment"
 maca_name="maca"
+eva_prompt="Eva_AVM"
 #######################################################################################################
 #                                                                                                     #
 # exit code definitions                                                                               #
@@ -335,19 +336,18 @@ checksum()
 )
 #######################################################################################################
 #                                                                                                     #
-# try to identify FRITZ!OS as runtime environment (not too sophisticated, but it                      #
-# should be able to make this distinction)                                                            #
+# try to identify FRITZ!OS as runtime environment (not too sophisticated, but it should be able to    #
+# make this distinction)                                                                              #
 #                                                                                                     #
 #######################################################################################################
 is_fritzos_environment()
 (
-	eva_prompt="Eva_AVM"
 	# shellcheck disable=SC2154
 	[ ${#HWRevision} -eq 0 ] && exit 1
 	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && exit 1
 	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || exit 1
-	[ -f "$CONFIG_ENVIRONMENT_PATH/environment" ] || exit 1
-	HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/environment")"
+	[ -f "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file" ] || exit 1
+	HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	[ ${#HWRev} -eq 0 ] && exit 1
 	if [ "$HWRev" != "$HWRevision" ]; then
 		if [ -z "$YF_SIGNIMAGE_IGNORE_HWREVISION" ]; then
@@ -356,7 +356,7 @@ is_fritzos_environment()
 		fi
 		printf "\033[1;37mHWRevision\033[1;33m mismatch between shell and urlader environment (\033[1;37m%s\033[1;33m vs. \033[1;37m%s\033[1;33m) ignored.\033[0m\n" "$HWRev" "$HWRevision" 1>&2
 	fi
-	prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/environment")"
+	prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	[ ${#prompt} -eq 0 ] && exit 1
 	[ "$prompt" != "$eva_prompt" ] && exit 1
 	exit 0
@@ -368,12 +368,11 @@ is_fritzos_environment()
 # meanwhile the cat was let out of the bag - no needs to use privatekeypassword anymore, instead      #
 # we'll compute the hash ourself and translate it to the right string                                 #
 #                                                                                                     #
-#                                                                                                     #
 #######################################################################################################
 box_key_password()
 (
 	is_fritzos_environment || exit 1
-	maca="$(sed -n -e "$(printf "s|^%s[ \t]*\(.*\)|\1|p" "$maca_name")" "$urlader_environment")"
+	maca="$(sed -n -e "$(printf "s|^%s[ \t]*\(.*\)|\1|p" "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	if command -v md5sum 2>/dev/null 1>&2; then
 		hash="$(printf "%s" "$maca" | md5sum)"
 	else
