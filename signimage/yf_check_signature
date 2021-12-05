@@ -226,7 +226,7 @@ __yf_get_language()
 			[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
 		done
 	fi
-	printf -- '%s' "$___yf_lang"
+	printf -- '%s' "${___yf_lang:-en}"
 	unset ___yf_lng
 	unset ___yf_lang
 	unset ___yf_check
@@ -596,60 +596,122 @@ eval "$(__yf_msg 'en' 'ERR_modulus_read_error'		'${__yf_ansi_yellow__}Der Modulu
 #######################################################################################################
 usage()
 (
-	__yf_show_version
-	__yf_show_copyright
-	__yf_show_license
-	# shellcheck disable=SC2059
-	printf    "\nPurpose:\n\n${__yf_ansi_bold__}Check, whether signature of an image file is valid.${__yf_ansi_reset__}\n\n"
-	# shellcheck disable=SC2059
-	printf    "Usage:\n\n"
-	# shellcheck disable=SC2059
-	printf    "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
-	# shellcheck disable=SC2059
-	printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ${__yf_ansi_blue__}public_keys${__yf_ansi_reset__}\n\n"
-	# shellcheck disable=SC2059
-	printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} is the archive to check (use a dash (-) for STDIN, the file will be saved to a temporary\n"
-	# shellcheck disable=SC2059
-
-	printf    "location while the script is running) and the list of public keys to consider for decryption (the\n"
-	# shellcheck disable=SC2059
-	printf    "${__yf_ansi_blue__}public_keys${__yf_ansi_reset__} part above) may be built from the following sources:\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-f ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add keys from files named in the specified file (one file per line), each file has to\n"
-	# shellcheck disable=SC2059
-	printf    "              contain a key in AVM's format\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-b          - add the key files from current OS to the list, this option makes only sense, if the\n"
-	# shellcheck disable=SC2059
-	printf    "              script is running on a FRITZ!OS-based device or in a proper emulation; an existing\n"
-	# shellcheck disable=SC2059
-	printf    "              plugin signing key will be taken into account by this option, too\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-c ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add lines from specified file to the list, lines have to use the 'condensed' format\n"
-	# shellcheck disable=SC2059
-	printf    "              (see below) and to provide at least a MOD and EXP value and (if the used exponent\n"
-	# shellcheck disable=SC2059
-	printf    "              isn't the default 0x010001), SRC (optional) as a pseudo filename and DESC (optional,\n"
-	# shellcheck disable=SC2059
-	printf    "              too) as a description to be displayed for this key (the DESC value is unused yet)\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-a ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (AVM's text format) to the list\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-e ${__yf_ansi_bold__}variable${__yf_ansi_reset__} - add modulus from specified environment variable (hexadecimal string) with a fixed\n"
-	# shellcheck disable=SC2059
-	printf    "              exponent of 0x010001\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-p ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (PEM format) to the list\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-d ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (DER format) to the list\n\n"
-	# shellcheck disable=SC2059
-	printf -- "-s          - verify that image file was signed with RSA key from local FRITZ!OS device (script is\n"
-	# shellcheck disable=SC2059
-	printf    "              running on) - can't be combined with other key sources\n\n"
-	# shellcheck disable=SC2059
-	printf    "The first key from specified sources (which are probed in the specified order) able to decode the\n"
-	# shellcheck disable=SC2059
-	printf    "signature file will be used for signature verification.\n\n"
+	if [ "$__yf_language__" = "de" ]; then
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		printf    "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		printf    "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		# shellcheck disable=SC2059
+		printf    "\nZweck:\n\n${__yf_ansi_bold__}Prüfen, ob die Signatur in einem TAR-Image (nach AVM-Manier) gültig ist.${__yf_ansi_reset__}\n\n"
+		printf    "Aufruf:\n\n"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}\n\n"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ist die zu prüfende Image-Datei, bei Angabe eines Bindestrichs (-) wird der Inhalt der\n"
+		printf    "Standardeingabe (STDIN) in eine temporäre Datei geschrieben und im weiteren Verlauf dann diese\n"
+		printf    "verwendet.\n\n"
+		# shellcheck disable=SC2059
+		printf    "Nach dem Namen der Image-Datei kann mittels folgender Optionen festgelegt werden (als ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}),\n"
+		printf    "welche öffentlichen RSA-Schlüssel eine gültige Signatur erstellt haben könnten:\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-a ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen öffentlichen Schlüssel im AVM-Format, wobei es sich\n"
+		printf    "              um eine Textdatei handelt, welche in der ersten Zeile den Modulus-Wert als hexadezi-\n"
+		printf    "              male Zeichenkette enthält und in der zweiten Zeile den verwendeten Exponenten\n"
+		printf    "              (üblicherweise 65537, ebenfalls als hexadezimale Zeichenkette: 010001)\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-f ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält pro Zeile den Namen einer Datei, die (in demselben Format,\n"
+		printf    "              welches auch AVM verwendet, s.o.) einen potentiellen öffentlichen Schlüssel enthält\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-c ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält pro Zeile die Angaben für einen öffentlichen Schlüssel,\n"
+		printf    "              wobei die Daten jeweils aus einem Name-/Wert-Paar bestehen, mit folgenden Namen:\n\n"
+		printf    "              MOD  - der Modulus des Schlüssels (diese Angabe MUSS vorhanden sein in der Zeile)\n"
+		printf    "              EXP  - der verwendete Exponent (fehlt die Angabe, wird wieder 65537 angenommen)\n"
+		printf    "              SRC  - wird als Name der Datei angezeigt, wenn der Schlüssel verarbeitet wird, der\n"
+		printf    "                     Wert MUSS in doppelte Anführungszeichen (\") eingeschlossen sein\n"
+		printf    "              DESC - kann zusätzliche Informationen zu diesem Schlüssel enthalten, z.B. woher er\n"
+		printf    "                     stammt; die Angabe wird derzeit noch nicht verwendet, der Wert MUSS aber auch\n"
+		printf    "                     in doppelte Anführungszeichen (\") eingeschlossen sein, wenn er vorhanden ist\n\n"
+		printf    "              Die Werte für SRC und DESC dürfen selbst kein doppeltes Anführungszeichen enthalten,\n"
+		printf    "              es gibt auch keine Möglichkeit, ein solches zu 'maskieren' im Wert.\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-e ${__yf_ansi_bold__}variable${__yf_ansi_reset__} - die angegebene ${__yf_ansi_bold__}variable${__yf_ansi_reset__} im Shell-Environment enthält den Modulus eines öffentlichen\n"
+		printf    "              Schlüssels, der Exponent wird fix als 65537 angenommen\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-p ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen PKCS#1-kodierten öffentlichen Schlüssel im PEM-\n"
+		printf    "              Format (Base64-kodiertes DER-Format)\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-d ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen PKCS#1-kodierten öffentlichen Schlüssel im DER-\n"
+		printf    "              Format\n\n"
+		printf    "Wird dieses Skript auf einem Gerät mit FRITZ!OS von AVM ausgeführt, stehen auch noch diese beiden\n"
+		printf    "Optionen zur Auswahl:\n\n"
+		printf -- "-b          - alle öffentlichen Schlüssel aus dem laufenden FRITZ!OS werden der Liste potentieller\n"
+		# shellcheck disable=SC2059
+		printf    "              Schlüssel hinzugefügt, die Dateien befinden sich im Verzeichnis ${__yf_ansi_bold__}/etc${__yf_ansi_reset__} und haben die\n"
+		# shellcheck disable=SC2059
+		printf    "              Namen ${__yf_ansi_bold__}avm_firmware_public_key[1-9]${__yf_ansi_reset__} bzw. ${__yf_ansi_bold__}plugin_global_key.pem${__yf_ansi_reset__}\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-s          - es wird ausschließlich der öffentliche Schlüssel akzeptiert, der zu dem privaten\n"
+		# shellcheck disable=SC2059
+		printf    "              Schlüssel des Gerätes (in ${__yf_ansi_bold__}/var/flash/websrv_ssl_key.pem${__yf_ansi_reset__}) gehört, dieser wird ggf.\n"
+		# shellcheck disable=SC2059
+		printf    "              auch noch in der Datei ${__yf_ansi_bold__}/var/flash/websrv_ssl_cert.pem${__yf_ansi_reset__} bzw. danach noch in der\n"
+		# shellcheck disable=SC2059
+		printf    "              ${__yf_ansi_bold__}/var/tmp/websrv_ssl_cert.pem${__yf_ansi_reset__} gesucht, wenn er zuvor nicht gefunden wurde (für das\n"
+		# shellcheck disable=SC2059
+		printf    "              Auslesen des Wertes aus einem der beiden Zertifikate muß das vorhandene ${__yf_ansi_bold__}OpenSSL${__yf_ansi_reset__}-\n"
+		# shellcheck disable=SC2059
+		printf    "              Programm zusätzlich das Kommando ${__yf_ansi_bold__}x509${__yf_ansi_reset__} unterstützen); die Option ${__yf_ansi_bold__}-s${__yf_ansi_reset__} kann nicht mit\n"
+		printf    "              anderen Optionen kombiniert werden\n\n"
+		printf    "Der erste öffentliche Schlüssel, mit dem sich die Signatur-Datei in der angegebenen Image-Datei\n"
+		printf    "entschlüsseln läßt (sie werden in der Reihenfolge der Angaben beim Aufruf geprüft), wird danach\n"
+		printf    "benutzt, um den Hash-Wert in der Signatur mit dem berechneten Hash-Wert über den restlichen Inhalt\n"
+		printf    "der Image-Datei zu vergleichen.\n\n"
+	else
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		# shellcheck disable=SC2059
+		printf    "\nPurpose:\n\n${__yf_ansi_bold__}Check, whether signature of an image file is valid.${__yf_ansi_reset__}\n\n"
+		printf    "Usage:\n\n"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}\n\n"
+		# shellcheck disable=SC2059
+		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} is the archive to check, if specified as a dash (-), STDIN stream will be saved to a\n"
+		printf    "temporary location while the script is running.\n\n"
+		# shellcheck disable=SC2059
+		printf    "The list of public keys to consider for decryption (the ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__} part above) may be built from\n"
+		printf    "the following sources:\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-a ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (containing a key in AVM's text format) to the list, the\n"
+		printf    "              file has to contain two lines with hexadecimal strings, where the first line\n"
+		printf    "              represents the modulus value and the second one the exponent\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-f ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add keys from files named in the specified file (one file per line), each file has to\n"
+		printf    "              contain a key in AVM's format (see above)\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-c ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add lines from specified file to the list, lines have to use a text format with\n"
+		printf    "              key/value pairs to provide at least a MOD and EXP value (if the used exponent isn't\n"
+		printf    "              the default 65537), SRC (optional) as a pseudo filename and DESC (optional, too) as a\n"
+		printf    "              description to be displayed for this key (the DESC value is unused yet)\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-e ${__yf_ansi_bold__}variable${__yf_ansi_reset__} - add modulus from specified environment variable (hexadecimal string) with a fixed\n"
+		printf    "              exponent of 0x010001\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-p ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (PEM format) to the list\n\n"
+		# shellcheck disable=SC2059
+		printf -- "-d ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (DER format) to the list\n\n"
+		printf    "If the script is running from a FRITZ!OS-based device, the following options are available, too:\n\n"
+		printf -- "-b          - add key files from current OS to the list\n\n"
+		printf -- "-s          - verify that image file was signed with RSA key from local FRITZ!OS device - this\n"
+		printf    "              option can't be combined with other options\n\n"
+		printf    "The first key from specified sources (which are probed in the specified order) able to decode the\n"
+		printf    "signature file will be used for signature verification.\n\n"
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -950,8 +1012,8 @@ tar_get_member_data()
 #                                                                                                     #
 #######################################################################################################
 tmp=$(__mktmp -d)
-trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
-if [ -n "$DEBUG" ]; then
+trap 'rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
+if [ -n "$DEBUG_MESSAGES" ]; then # show all defined messages and exit
 	set | grep "^__YF_L10N" 1>&2
 	exit 0
 fi
