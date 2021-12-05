@@ -166,7 +166,7 @@ show_version()
 ##                                                                                                   ##
 #######################################################################################################
 #######################################################################################################
-__check_required_command()
+__yf_check_required_command()
 (
 	IFS=:
 	set -- "$1"
@@ -285,12 +285,12 @@ __yf_msg()
 	__yf_declare_message "$@"
 }
 
-__random()
+__yf_random()
 (
 	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
 	for h in md5sum sha1sum; do
-		if __check_required_command $h; then
-			if [ -c /dev/urandom ] && __check_required_command "dd"; then
+		if __yf_check_required_command $h; then
+			if [ -c /dev/urandom ] && __yf_check_required_command "dd"; then
 				$YF_SIGNIMAGE_DD if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
 			fi
 			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
@@ -300,12 +300,12 @@ __random()
 			done
 		fi
 	done
-	__check_required_command "date" && date +%s && exit 0
+	__yf_check_required_command "date" && date +%s && exit 0
 	printf "%d" "$$"
 )
-__mktmp()
+__yf_mktmp()
 (
-	if __check_required_command "mktemp"; then
+	if __yf_check_required_command "mktemp"; then
 		n="$(mktemp "$@" 2>/dev/null)"
 	fi
 	if [ -z "$n" ]; then
@@ -313,22 +313,22 @@ __mktmp()
 		[ "$1" = "-d" ] && d=1 || d=0
 		[ "$1" = "-p" ] && t="$2"
 		[ -z "$t" ] && t="/tmp"
-		n="$t/$(__random)"
+		n="$t/$(__yf_random)"
 		if [ $d -eq 1 ]; then
-			[ -d "$n" ] && n="$t/$(__random)"
+			[ -d "$n" ] && n="$t/$(__yf_random)"
 			mkdir -p "$n" 2>/dev/null
 		else
 			while [ -e "$n" ]; do
-				n="$t/$(__random)"
+				n="$t/$(__yf_random)"
 			done
 			touch "$n" 2>/dev/null
 		fi
 	fi
 	printf "%s\n" "$n"
 )
-__hex2bin()
+__yf_hex2bin()
 (
-	__hex2bin_read_octal()
+	__yf_hex2bin_read_octal()
 	{
 		i=1
 		h=1
@@ -373,7 +373,7 @@ __hex2bin()
 	}
 
 	command -v cmp 2>/dev/null 1>&2 || return 1
-	command cmp -l -- /dev/zero - 2>/dev/null | __hex2bin_read_octal
+	command cmp -l -- /dev/zero - 2>/dev/null | __yf_hex2bin_read_octal
 	return $?
 )
 __yf_get_script_lines()
@@ -961,8 +961,8 @@ tar_create_table_of_contents()
 (
 	block_no=0
 	max_block=$(( $(wc -c < "$1") / 512 ))
-	magic="$(__mktmp -p "$tmp")"
-	empty="$(__mktmp -p "$tmp")"
+	magic="$(__yf_mktmp -p "$tmp")"
+	empty="$(__yf_mktmp -p "$tmp")"
 	printf "ustar" >"$magic"
 	dd if=/dev/zero bs=512 count=1 status=none >"$empty"
 	while [ "$block_no" -lt "$max_block" ]; do
@@ -986,7 +986,7 @@ tar_create_table_of_contents()
 tar_get_member_data()
 (
 	if [ -z "$3" ]; then
-		toc="$(__mktmp -p "$tmp")"
+		toc="$(__yf_mktmp -p "$tmp")"
 		tar_create_table_of_contents "$1" >"$toc"
 	else
 		toc="$3"
@@ -1011,7 +1011,7 @@ tar_get_member_data()
 # prepare a temporary directory and cleanup on exit                                                   #
 #                                                                                                     #
 #######################################################################################################
-tmp=$(__mktmp -d)
+tmp=$(__yf_mktmp -d)
 trap 'rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
 if [ -n "$DEBUG_MESSAGES" ]; then # show all defined messages and exit
 	set | grep "^__YF_L10N" 1>&2
