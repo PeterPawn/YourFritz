@@ -57,6 +57,7 @@ signature_file="./var/signature"
 urlader_environment_file="environment"
 maca_name="maca"
 eva_prompt="Eva_AVM"
+YF_UI_LANGUAGES="en de"
 #######################################################################################################
 #                                                                                                     #
 # exit code definitions                                                                               #
@@ -132,19 +133,52 @@ fi
 # some subfunctions                                                                                   #
 #                                                                                                     #
 #######################################################################################################
-show_error() ( printf "\033[1;31mFAILED\033[0m\a\n" 1>&2; )
-show_ok() ( printf "\033[1;32mOK\033[0m\n" 1>&2; )
+show_error()
+(
+	# shellcheck disable=SC2059
+	printf "$(__yf_get_localized ERR_show_error)" 1>&2
+)
+
+show_ok()
+(
+	# shellcheck disable=SC2059
+	printf "$(__yf_get_localized INF_show_ok)" 1>&2
+)
 show_version()
 (
-	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
+	version=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		printf "\033[1;31mMissing \033[1;37mopenssl\033[1;31m binary, set \033[1;37mYF_SIGNIMAGE_OPENSSL\033[1;31m variable to its path name.\033[0m\a\n" 1>&2
+		# shellcheck disable=SC2059
+		printf "$(__yf_get_localized ERR_missing_openssl)" 1>&2
 		exit 1
 	else
-		printf "Found \033[1;34m%s\033[0m\n" "$v" 1>&2
+		# shellcheck disable=SC2059
+		printf "$(__yf_get_localized INF_ossl_version)" "$version" 1>&2
 		exit 0
 	fi
 )
+__read_password()
+(
+	# parameter strings may contain ANSI sequences to format terminal output
+	# shellcheck disable=SC2059
+	printf "$@" 1>&2
+	tty_settings="$(stty -g)"
+	stty -echo
+	# shellcheck disable=SC2162
+	read password
+	stty "$tty_settings" 2>/dev/null 1>&2
+	printf "\n" 1>&2
+	printf "%s\n" "$password"
+)
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##   Y o u r F r i t z   s h e l l   s c r i p t    l i b r ar y   a n d   Y o u r F r i t z   U I   ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
 __check_required_command()
 (
 	IFS=:
@@ -154,7 +188,117 @@ __check_required_command()
 	done
 	exit 1
 )
-__random()
+
+__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+__yf_ansi_underline__="$(__yf_ansi_sgr 4)"
+__yf_ansi_black__="$(__yf_ansi_sgr 30)"
+__yf_ansi_red__="$(__yf_ansi_sgr 31)"
+__yf_ansi_green__="$(__yf_ansi_sgr 32)"
+__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+__yf_ansi_blue__="$(__yf_ansi_sgr 34)"
+__yf_ansi_magenta__="$(__yf_ansi_sgr 35)"
+__yf_ansi_cyan__="$(__yf_ansi_sgr 36)"
+__yf_ansi_white__="$(__yf_ansi_sgr 37)"
+__yf_ansi_gray__="$(__yf_ansi_sgr 90)"
+__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+__yf_ansi_bright_yellow__="$(__yf_ansi_sgr 93)"
+__yf_ansi_bright_blue__="$(__yf_ansi_sgr 94)"
+__yf_ansi_bright_magenta__="$(__yf_ansi_sgr 95)"
+__yf_ansi_bright_cyan__="$(__yf_ansi_sgr 96)"
+__yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
+__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+__yf_bold() { printf -- "%s" "$__yf_ansi_bold__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_undl() { printf -- "%s" "$__yf_ansi_underline__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+
+__yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
+__yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
+
+__yf_languages__="${YF_UI_LANGUAGES:-en}"
+__yf_get_language()
+(
+	__yf_get_language_code()
+	{
+		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+	}
+
+	___yf_lang="$1"
+	shift
+
+	if [ -n "$Language" ]; then
+		___yf_check="$(__yf_get_language_code "$Language")"
+	elif [ -n "$LC_ALL" ]; then
+		___yf_check="$(__yf_get_language_code "$LC_ALL")"
+	else
+		[ -z "$LANG" ] || ___yf_check="$(__yf_get_language_code "$LANG")"
+	fi
+	if [ -n "$___yf_check" ]; then
+		[ "$___yf_lang" = "$___yf_check" ] || \
+		for ___yf_lng in "$@"; do
+			[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
+		done
+	fi
+	printf -- '%s' "${___yf_lang:-en}"
+	unset ___yf_lng
+	unset ___yf_lang
+	unset ___yf_check
+)
+__yf_language__="$(eval __yf_get_language "$__yf_languages__")"
+__yf_internal_get_localized()
+(
+	eval ___yf_msg="\${__YF_L10N_INT_$1_${__yf_language__}}"
+	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+	eval ___yf_msg="\${__YF_L10N_INT_$1_${___yf_lang}}"
+	eval printf -- '%s' "\"$___yf_msg\""
+	unset ___yf_msg
+	unset ___yf_lang
+)
+__yf_get_localized()
+(
+	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
+	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+	eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
+	[ -z "$___yf_msg" ] && printf -- "\"Message definition '%s' is missing for '%s'.\"" "$1" "$__yf_language__" 1>&2 && return
+	printf -- '%s' "$___yf_msg"
+	unset ___yf_msg
+	unset ___yf_lang
+)
+__yf_declare_internal_message()
+{
+	___yf_msg_lang="$1"
+	___yf_msg_code="$2"
+	shift 2
+	printf -- '__YF_L10N_INT_%s_%s=\"%s\"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_int_msg()
+{
+	__yf_declare_internal_message "$@"
+}
+
+__yf_declare_message()
+{
+	___yf_msg_lang="$1"
+	if [ "${#___yf_msg_lang}" -ne 2 ]; then
+		___yf_msg_lang='en'
+		___yf_msg_code="$1"
+		shift
+	else
+		___yf_msg_code="$2"
+		shift 2
+	fi
+	printf -- '__YF_L10N_%s_%s="%s"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_msg()
+{
+	__yf_declare_message "$@"
+}
+
+__yf_random()
 (
 	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
 	for h in md5sum sha1sum; do
@@ -172,7 +316,7 @@ __random()
 	__check_required_command "date" && date +%s && exit 0
 	printf "%d" "$$"
 )
-__mktmp()
+__yf_mktmp()
 (
 	if __check_required_command "mktemp"; then
 		n="$(mktemp "$@" 2>/dev/null)"
@@ -182,31 +326,18 @@ __mktmp()
 		[ "$1" = "-d" ] && d=1 || d=0
 		[ "$1" = "-p" ] && t="$2"
 		[ -z "$t" ] && t="/tmp"
-		n="$t/$(__random)"
+		n="$t/$(__yf_random)"
 		if [ $d -eq 1 ]; then
-			[ -d "$n" ] && n="$t/$(__random)"
+			[ -d "$n" ] && n="$t/$(__yf_random)"
 			mkdir -p "$n" 2>/dev/null
 		else
 			while [ -e "$n" ]; do
-				n="$t/$(__random)"
+				n="$t/$(__yf_random)"
 			done
 			touch "$n" 2>/dev/null
 		fi
 	fi
 	printf "%s\n" "$n"
-)
-__read_password()
-(
-	# parameter strings may contain ANSI sequences to format terminal output
-	# shellcheck disable=SC2059
-	printf "$@" 1>&2
-	tty_settings="$(stty -g)"
-	stty -echo
-	# shellcheck disable=SC2162
-	read password
-	stty "$tty_settings" 2>/dev/null 1>&2
-	printf "\n" 1>&2
-	printf "%s\n" "$password"
 )
 __yf_get_script_lines()
 {
@@ -221,7 +352,7 @@ __yf_show_script_name()
 {
 	[ -n "$1" ] && printf -- '%s' "$1"
 	printf -- '%s' "${0#*/}"
-	[ -n "$1" ] && printf -- "\033[0m"
+	[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
 }
 __yf_show_license()
 {
@@ -229,12 +360,53 @@ __yf_show_license()
 }
 __yf_show_version()
 {
-	printf "\n\033[1m%s\033[0m, %s\n" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, %s\n" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
 }
 __yf_show_copyright()
 {
 	__yf_get_script_lines 'CPY'
 }
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##  D o n ' t   c h a n g e   a n y t h i n g   a b o v e   t h i s   p o i n t.                     ##
+##                                                                                                   ##
+##  ( u p   t o   t h e   f i r s t   m a r k )                                                      ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+#######################################################################################################
+#                                                                                                     #
+# messages - english                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_license'					'\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\a\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
+
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__}\n')"
+
+#######################################################################################################
+#                                                                                                     #
+# messages - german                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_license'					'\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\a\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
+
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__}\n')"
+
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -242,81 +414,89 @@ __yf_show_copyright()
 #######################################################################################################
 usage()
 (
-	__yf_show_version
-	__yf_show_copyright
-	__yf_show_license
-	printf "\nPurpose:\n\n\033[1;34mSign a TAR archive file as firmware image for FRITZ!OS devices.\033[0m\n\n"
-	printf "Usage:\n\n"
-	printf "\033[1;32m%s \033[0m" "$0"
-	printf "\033[1mimagefile\033[0m [\033[1mpassword\033[0m]\n\n"
-	printf "\033[1mimagefile\033[0m is the archive to sign, it has to follow some rules according its format (see below).\n"
-	printf "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
-	printf "location, while the script is running.\n\n"
-	printf "The \033[1mpassword\033[0m is the one of your private key, which will be used to encrypt your signature. This\n"
-	printf "password (if your private key was stored with encryption) will be read from terminal (without\n"
-	printf "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
-	printf "preset using an environment value called \033[1mYF_SIGNIMAGE_KEYPASSWORD\033[0m.\n\n"
-	printf "The signed image will be written to STDOUT, you're in charge to redirect it to the proper target\n"
-	printf "location. If STDOUT is connected to a terminal device, the script will be aborted.\n\n"
-	printf "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
-	printf "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
-	printf "a better hash algorithm (remember that \033[1mopenssl\033[0m binary still has to support it) with a variable\n"
-	printf "\033[1mYF_SIGNIMAGE_HASH\033[0m in the environment, which contains the name of algorithm to use.\n"
-	printf "It has to be one of:\n\n"
-	for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
-		printf -- "- %s\n" "$algo"
-	done
-	printf "\n"
-	printf "A special use case is signing of a TAR file directly in a FRITZ!OS environment, if such a signed\n"
-	printf "file is surely verified later only on the same device. Then the RSA key from \033[1mwebsrv_ssl_key.pem\033[0m\n"
-	printf "may be used instead of an additional key and there's no need to specify a password for the key,\n"
-	printf "because it's available with \033[1mprivatekeypassword\033[0m from device (hardware) settings.\n\n"
-	printf "To switch this script into 'internal-only mode', set the environment variable \033[1mYF_SIGNIMAGE_ON_BOX\033[0m\n"
-	printf "to a value of '1' while calling. But be aware, that a key size other than 1024 bits would lead to\n"
-	printf "impossibility to verify the signature with AVM's components ... and newer FRITZ!OS versions use a\n"
-	printf "2048-bit RSA key to protect their TLS connections.\n\n"
-	printf "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
-	printf "urlader and shell environment are different (due to an 'alien' firmware running, while the value\n"
-	printf "from bootloader isn't changeable), the script will cease to detect the host system as a FRITZ!OS\n"
-	printf "device. In this case you may provide any non-empty value with a variable named\n"
-	printf "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
-	printf "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
-	printf "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the \033[1m--format=gnu\033[0m\n"
-	printf "or \033[1m--format=oldgnu\033[0m option while creating the file.\n\n"
-	printf "Furthermore the first archived member has to be a directory entry with name \033[1m./var/\033[0m - the starting\n"
-	printf "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
-	printf "such an entry. AVM's components will filter out any names not starting with this path name and\n"
-	printf "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
-	printf "If the provided input image already contains a member called \033[1m./var/signature\033[0m, it has to be the\n"
-	printf "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
-	printf "will abort the signing process. If no signature file was found on input archive, a new one is\n"
-	printf "appended after the signed payload.\n\n"
-	printf "To make integration of this script into a foreign toolchain easier, the location of some needed\n"
-	printf "tools may be overwritten with environment values. Currently there are three utilities needed:\n"
-	printf "\033[1mtar\033[0m, \033[1mopenssl\033[0m and \033[1mdd\033[0m (the latter one is found in POSIX specifications).\n"
-	printf "Their locations may be specified with variables \033[1mYF_SIGNIMAGE_<toolname>\033[0m, where \033[1m<toolname>\033[0m\n"
-	printf "is the name of the utility in uppercase letters. If a value isn't present, the simple name\n"
-	printf "of this tool will be used to call it. You may use spaces within these values, if you ensure\n"
-	printf "proper quotes while calling (e.g. YF_SIGNIMAGE_TAR='busybox tar' to use the applet of your\n"
-	printf "BusyBox binary).\n\n"
-	printf "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
-	printf "read from an configuration file with name \033[1myf_signimage.conf\033[0m. The file has to be stored\n"
-	printf "in the same directory as this script. Please read the comments in this file, if you want to change\n"
-	printf "the places, where other files will be searched. To change the location, where the configuration\n"
-	printf "file will be expected, you may use an environment value \033[1mYF_SIGNIMAGE_CONFIG\033[0m with the\n"
-	printf "(relative or absolute) path name of it.\n\n"
-	printf "To keep backward compatibility with previous versions, the provided configuration template still\n"
-	printf "takes the environment variable \033[1mname_prefix\033[0m into account - but this name shouldn't be\n"
-	printf "used any longer. Use \033[1mYF_SIGNIMAGE_KEYS\033[0m variable instead - it's presence is checked\n"
-	printf "first and any settings here, will overrule all others. If there's no variable with any of those\n"
-	printf "names, due to historic reasons the presence of \033[1mFREETZ_IMAGE_SIGNING_PREFIX\033[0m will be\n"
-	printf "checked. An existing variable with this name will be used next - otherwise a value of\n"
-	printf "\033[1m\$HOME/.yf_signimage/image_signing\033[0m gets assigned in the last resort.\n\n"
-	printf "The file extensions from configuration file shouldn't be changed without strong knowledge about\n"
-	printf "using cryptographic tools. Please don't blame the author, if your own changes to these values\n"
-	printf "render the script(s) useless (beside you've to respect the license terms even, which are denying\n"
-	printf "responsibility of the author). The extension names were only moved to the configuration file to\n"
-	printf "prevent most rationales for own changes to the script files.\n\n"
+	if [ "$__yf_language__" = "de" ]; then
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		printf    "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		printf    "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+	else
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		printf "\nPurpose:\n\n\033[1;34mSign a TAR archive file as firmware image for FRITZ!OS devices.\033[0m\n\n"
+		printf "Usage:\n\n"
+		printf "\033[1;32m%s \033[0m" "$0"
+		printf "\033[1mimagefile\033[0m [\033[1mpassword\033[0m]\n\n"
+		printf "\033[1mimagefile\033[0m is the archive to sign, it has to follow some rules according its format (see below).\n"
+		printf "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
+		printf "location, while the script is running.\n\n"
+		printf "The \033[1mpassword\033[0m is the one of your private key, which will be used to encrypt your signature. This\n"
+		printf "password (if your private key was stored with encryption) will be read from terminal (without\n"
+		printf "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
+		printf "preset using an environment value called \033[1mYF_SIGNIMAGE_KEYPASSWORD\033[0m.\n\n"
+		printf "The signed image will be written to STDOUT, you're in charge to redirect it to the proper target\n"
+		printf "location. If STDOUT is connected to a terminal device, the script will be aborted.\n\n"
+		printf "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
+		printf "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
+		printf "a better hash algorithm (remember that \033[1mopenssl\033[0m binary still has to support it) with a variable\n"
+		printf "\033[1mYF_SIGNIMAGE_HASH\033[0m in the environment, which contains the name of algorithm to use.\n"
+		printf "It has to be one of:\n\n"
+		for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
+			printf -- "- %s\n" "$algo"
+		done
+		printf "\n"
+		printf "A special use case is signing of a TAR file directly in a FRITZ!OS environment, if such a signed\n"
+		printf "file is surely verified later only on the same device. Then the RSA key from \033[1mwebsrv_ssl_key.pem\033[0m\n"
+		printf "may be used instead of an additional key and there's no need to specify a password for the key,\n"
+		printf "because it's available with \033[1mprivatekeypassword\033[0m from device (hardware) settings.\n\n"
+		printf "To switch this script into 'internal-only mode', set the environment variable \033[1mYF_SIGNIMAGE_ON_BOX\033[0m\n"
+		printf "to a value of '1' while calling. But be aware, that a key size other than 1024 bits would lead to\n"
+		printf "impossibility to verify the signature with AVM's components ... and newer FRITZ!OS versions use a\n"
+		printf "2048-bit RSA key to protect their TLS connections.\n\n"
+		printf "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
+		printf "urlader and shell environment are different (due to an 'alien' firmware running, while the value\n"
+		printf "from bootloader isn't changeable), the script will cease to detect the host system as a FRITZ!OS\n"
+		printf "device. In this case you may provide any non-empty value with a variable named\n"
+		printf "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
+		printf "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
+		printf "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the \033[1m--format=gnu\033[0m\n"
+		printf "or \033[1m--format=oldgnu\033[0m option while creating the file.\n\n"
+		printf "Furthermore the first archived member has to be a directory entry with name \033[1m./var/\033[0m - the starting\n"
+		printf "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
+		printf "such an entry. AVM's components will filter out any names not starting with this path name and\n"
+		printf "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
+		printf "If the provided input image already contains a member called \033[1m./var/signature\033[0m, it has to be the\n"
+		printf "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
+		printf "will abort the signing process. If no signature file was found on input archive, a new one is\n"
+		printf "appended after the signed payload.\n\n"
+		printf "To make integration of this script into a foreign toolchain easier, the location of some needed\n"
+		printf "tools may be overwritten with environment values. Currently there are three utilities needed:\n"
+		printf "\033[1mtar\033[0m, \033[1mopenssl\033[0m and \033[1mdd\033[0m (the latter one is found in POSIX specifications).\n"
+		printf "Their locations may be specified with variables \033[1mYF_SIGNIMAGE_<toolname>\033[0m, where \033[1m<toolname>\033[0m\n"
+		printf "is the name of the utility in uppercase letters. If a value isn't present, the simple name\n"
+		printf "of this tool will be used to call it. You may use spaces within these values, if you ensure\n"
+		printf "proper quotes while calling (e.g. YF_SIGNIMAGE_TAR='busybox tar' to use the applet of your\n"
+		printf "BusyBox binary).\n\n"
+		printf "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
+		printf "read from an configuration file with name \033[1myf_signimage.conf\033[0m. The file has to be stored\n"
+		printf "in the same directory as this script. Please read the comments in this file, if you want to change\n"
+		printf "the places, where other files will be searched. To change the location, where the configuration\n"
+		printf "file will be expected, you may use an environment value \033[1mYF_SIGNIMAGE_CONFIG\033[0m with the\n"
+		printf "(relative or absolute) path name of it.\n\n"
+		printf "To keep backward compatibility with previous versions, the provided configuration template still\n"
+		printf "takes the environment variable \033[1mname_prefix\033[0m into account - but this name shouldn't be\n"
+		printf "used any longer. Use \033[1mYF_SIGNIMAGE_KEYS\033[0m variable instead - it's presence is checked\n"
+		printf "first and any settings here, will overrule all others. If there's no variable with any of those\n"
+		printf "names, due to historic reasons the presence of \033[1mFREETZ_IMAGE_SIGNING_PREFIX\033[0m will be\n"
+		printf "checked. An existing variable with this name will be used next - otherwise a value of\n"
+		printf "\033[1m\$HOME/.yf_signimage/image_signing\033[0m gets assigned in the last resort.\n\n"
+		printf "The file extensions from configuration file shouldn't be changed without strong knowledge about\n"
+		printf "using cryptographic tools. Please don't blame the author, if your own changes to these values\n"
+		printf "render the script(s) useless (beside you've to respect the license terms even, which are denying\n"
+		printf "responsibility of the author). The extension names were only moved to the configuration file to\n"
+		printf "prevent most rationales for own changes to the script files.\n\n"
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -392,8 +572,8 @@ box_key_password()
 # prepare a temporary directory and cleanup on exit                                                   #
 #                                                                                                     #
 #######################################################################################################
-tmp=$(__mktmp -d)
-trap 'rm -r \"$tmp\" 2>/dev/null 1>&2' EXIT HUP
+tmp=$(__yf_mktmp -d)
+trap 'rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
 #######################################################################################################
 #                                                                                                     #
 # check parameters                                                                                    #
@@ -412,6 +592,20 @@ else
 		cat >"$image_file" 2>/dev/null
 	fi
 fi
+#######################################################################################################
+#                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+# shellcheck disable=SC2059
+printf "$(__yf_get_localized INF_license)" 1>&2
+#######################################################################################################
+#                                                                                                     #
+# check input file and output target                                                                  #
+#                                                                                                     #
+#######################################################################################################
 if ! [ -f "$image_file" ]; then
 	printf "\033[1;31mThe specified image file \033[1;37m%s\033[1;31m does not exist.\033[0m\a\n" "$image_file" 1>&2
 	exit $YF_SIGN_MISSING_IMAGE_FILE
@@ -420,14 +614,6 @@ if [ -t 1 ] && ! [ "$YF_SIGNIMAGE_SIGN_IN_PLACE" = "1" ]; then
 	printf "\033[1;31mThe output stream is a terminal device, please redirect output to a file.\033[0m\a\n" 1>&2
 	exit $YF_SIGN_NO_OUTPUT_TO_TERMINAL
 fi
-#######################################################################################################
-#                                                                                                     #
-# some output due to license terms                                                                    #
-#                                                                                                     #
-#######################################################################################################
-__yf_show_version 1>&2
-__yf_show_copyright 1>&2
-printf "\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n" 1>&2
 #######################################################################################################
 #                                                                                                     #
 # check OpenSSL presence and version                                                                  #
