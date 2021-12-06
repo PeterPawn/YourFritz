@@ -246,7 +246,7 @@ __yf_get_localized()
 	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
 	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
 	eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
-	[ -z "$___yf_msg" ] && printf -- "\"Message definition '%s' is missing for '%s'.\"" "$1" "$__yf_language__" 1>&2 && return
+	[ -z "$___yf_msg" ] && printf -- "Message definition '%s' is missing for '%s'.\n" "$1" "$__yf_language__" 1>&2 && return
 	printf -- '%s' "$___yf_msg"
 	unset ___yf_msg
 	unset ___yf_lang
@@ -430,13 +430,9 @@ eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_bl
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_read_box_privkey'		'Trying to read public key from FRITZ!OS private key file (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_check_x509'				'Check ${__yf_ansi_bold__}x509${__yf_ansi_reset__} command ... ')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_read_box_cert'			'Trying to read public key from ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_check_digest'			'Check ${__yf_ansi_bold__}dgst${__yf_ansi_reset__} command ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_check_rsautl'			'Check ${__yf_ansi_bold__}rsautl${__yf_ansi_reset__} command ... ')"
+eval "$(__yf_msg 'en' 'INF_check_command'			'Check ${__yf_ansi_bold__}%s${__yf_ansi_reset__} command ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_verify_success'			'${__yf_ansi_green__}Verification succeeded.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -517,13 +513,9 @@ eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_brigh
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_read_box_privkey'		'Versuche den öffentlichen Schlüssel aus der privaten Schlüsseldatei im FRITZ!OS zu extrahieren (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_check_x509'				'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}x509${__yf_ansi_reset__}-Kommandos ... ')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_read_box_cert'			'Versuche den öffentlichen Schlüssel aus dem Zertifikat in ${__yf_ansi_bold__}%s${__yf_ansi_reset__} im FRITZ!OS zu extrahieren ... ')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_check_digest'			'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}dgst${__yf_ansi_reset__}-Kommandos ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_check_rsautl'			'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}rsautl${__yf_ansi_reset__}-Kommandos ... ')"
+eval "$(__yf_msg 'de' 'INF_check_command'			'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}%s${__yf_ansi_reset__}-Kommandos ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_verify_success'			'${__yf_ansi_green__}Die Signaturprüfung war erfolgreich.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -928,7 +920,7 @@ read_box_key()
 	show_error
 	# try to use the certificate to get the public key
 	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_check_x509)" 1>&2
+	printf "$(__yf_get_localized INF_check_command)" "x509" 1>&2
 	if printf "" | "$YF_SIGNIMAGE_OPENSSL" x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2; then
 		show_ok
 	else
@@ -1063,7 +1055,7 @@ if [ -n "$cnf" ]; then # configuration file missing
 	export OPENSSL_CONF="$tmp/openssl.cnf"
 fi
 # shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_check_digest)" 1>&2
+printf "$(__yf_get_localized INF_check_command)" "dgst" 1>&2
 if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2; then
 	show_ok
 else
@@ -1071,7 +1063,7 @@ else
 	exit $YF_CHECK_SIGNATURE_NO_OSSL_DIGEST
 fi
 # shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_check_rsautl)" 1>&2
+printf "$(__yf_get_localized INF_check_command)" "rsautl" 1>&2
 if printf "" | "$YF_SIGNIMAGE_OPENSSL" rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2; then
 	show_ok
 else
