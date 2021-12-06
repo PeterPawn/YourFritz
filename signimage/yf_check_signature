@@ -130,35 +130,7 @@ if [ -n "$YF_SIGNIMAGE_OPENSSL" ]; then
 else
 	YF_SIGNIMAGE_OPENSSL="openssl"
 fi
-#######################################################################################################
-#                                                                                                     #
-# some subfunctions                                                                                   #
-#                                                                                                     #
-#######################################################################################################
-show_error()
-(
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_show_error)" 1>&2
-)
 
-show_ok()
-(
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_show_ok)" 1>&2
-)
-show_version()
-(
-	version=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
-	if [ $? -eq 127 ]; then
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized ERR_missing_openssl)" 1>&2
-		exit 1
-	else
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized INF_ossl_version)" "$version" 1>&2
-		exit 0
-	fi
-)
 #######################################################################################################
 #######################################################################################################
 ##                                                                                                   ##
@@ -426,13 +398,15 @@ eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_r
 eval "$(__yf_msg 'en' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__}\n')"
+eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_read_box_privkey'		'Trying to read public key from FRITZ!OS private key file (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_read_box_cert'			'Trying to read public key from ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_check_command'			'Check ${__yf_ansi_bold__}%s${__yf_ansi_reset__} command ... ')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_check_digest'			'Verify digest algorithm ${__yf_ansi_bold__}%s${__yf_ansi_reset__} is supported ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_verify_success'			'${__yf_ansi_green__}Verification succeeded.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -496,6 +470,8 @@ eval "$(__yf_msg 'en' 'ERR_file_missing_error'		'${__yf_ansi_yellow__}File ${__y
 eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}MOD${__yf_ansi_red__} value (modulus) on line ${__yf_ansi_white__}%u${__yf_ansi_red__} of condensed file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_modulus_read_error'		'${__yf_ansi_yellow__}Unable to read modulus value from file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, file skipped.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}This version of OpenSSL (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) is unsupported.${__yf_ansi_reset__}\a\n')"
 #######################################################################################################
 #                                                                                                     #
 # messages - german                                                                                   #
@@ -509,13 +485,15 @@ eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_r
 eval "$(__yf_msg 'de' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__}\n')"
+eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_read_box_privkey'		'Versuche den öffentlichen Schlüssel aus der privaten Schlüsseldatei im FRITZ!OS zu extrahieren (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_read_box_cert'			'Versuche den öffentlichen Schlüssel aus dem Zertifikat in ${__yf_ansi_bold__}%s${__yf_ansi_reset__} im FRITZ!OS zu extrahieren ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_check_command'			'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}%s${__yf_ansi_reset__}-Kommandos ... ')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_check_digest'			'Prüfe, ob der Digest-Algorithmus ${__yf_ansi_bold__}%s${__yf_ansi_reset__} unterstützt ist ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_verify_success'			'${__yf_ansi_green__}Die Signaturprüfung war erfolgreich.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -581,6 +559,8 @@ eval "$(__yf_msg 'de' 'ERR_file_missing_error'		'${__yf_ansi_yellow__}Die Datei 
 eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Der Wert für ${__yf_ansi_white__}MOD${__yf_ansi_red__} (den Modulus des öffentlichen Schlüssels) fehlt in Zeile ${__yf_ansi_white__}%u${__yf_ansi_red__} der zusammengefassten Datei ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_modulus_read_error'		'${__yf_ansi_yellow__}Der Modulus-Wert konnte nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} gelesen werden, die Datei wurde ignoriert.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\a\n')"
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -703,6 +683,93 @@ usage()
 		printf    "              option can't be combined with other options\n\n"
 		printf    "The first key from specified sources (which are probed in the specified order) able to decode the\n"
 		printf    "signature file will be used for signature verification.\n\n"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# some subfunctions                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+show_error()
+(
+	# shellcheck disable=SC2059
+	printf "$(__yf_get_localized ERR_show_error)" 1>&2
+)
+
+show_ok()
+(
+	# shellcheck disable=SC2059
+	printf "$(__yf_get_localized INF_show_ok)" 1>&2
+)
+show_version()
+(
+	version=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
+	if [ $? -eq 127 ]; then
+		# shellcheck disable=SC2059
+		printf "$(__yf_get_localized ERR_missing_openssl)" 1>&2
+		exit 1
+	else
+		# shellcheck disable=SC2059
+		printf "$(__yf_get_localized INF_ossl_version)" "$version" 1>&2
+		vn="$(expr "$version" : "OpenSSL \([^ ]*\).*")"
+		v_major="$(expr "$vn" : "\([^\.]*\).*")"
+		v_minor="$(expr "$vn" : "[^\.]*\.\([^\.]*\).*")"
+		v_patch="$(expr "$vn" : "[^\.]*\.[^\.]\.\(.*\)")"
+		if [ "$(( v_major ))" -lt 1 ]; then
+			show_error
+			printf "$(__yf_get_localized ERR_openssl_unsupported)" "$v_major" "$v_minor" "$v_patch" 1>&2
+			exit 1
+		fi
+		show_ok
+		printf "v_major=%s v_minor=%s" "$v_major" "$v_minor"
+		cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
+		if [ -n "$cnf" ]; then # OpenSSL configuration file missing
+			touch "$tmp/openssl.cnf"
+			printf "; export OPENSSL_CONF=\"%s\"" "$tmp/openssl.cnf"
+		fi
+		printf "\n"
+	fi
+)
+openssl_check_command()
+(
+	printf "$(__yf_get_localized INF_check_command)" "$3" 1>&2
+	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
+		if printf "" | "$YF_SIGNIMAGE_OPENSSL" "$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	else # newer versions provide the 'list' command and there's no need anymore to look for error messages or expected output
+		if "$YF_SIGNIMAGE_OPENSSL" list -1 -commands | grep -q "^$3\$" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	fi
+)
+openssl_check_digest()
+(
+	printf "$(__yf_get_localized INF_check_digest)" "$3" 1>&2
+	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
+		if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	else # newer versions provide the 'list' command and there's no need anymore to look for error messages or expected output
+		if "$YF_SIGNIMAGE_OPENSSL" list -1 -digest-commands | grep -q "^$3\$" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
 	fi
 )
 #######################################################################################################
@@ -846,7 +913,7 @@ modulus_to_der()
 	o_seq="$t_seq$(asn1_len "$o_alg")$o_alg"
 	der="$t_seq$(asn1_len "$o_seq$bits")"
 	res="$der$o_seq$bits"
-	printf "%s" "$res" | __hex2bin
+	printf "%s" "$res" | __yf_hex2bin
 	return $?
 )
 #######################################################################################################
@@ -1048,28 +1115,10 @@ printf "$(__yf_get_localized INF_license)" 1>&2
 # check OpenSSL presence and version                                                                  #
 #                                                                                                     #
 #######################################################################################################
-show_version || exit $YF_CHECK_SIGNATURE_NO_OSSL_BINARY
-cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
-if [ -n "$cnf" ]; then # configuration file missing
-	touch "$tmp/openssl.cnf"
-	export OPENSSL_CONF="$tmp/openssl.cnf"
-fi
-# shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_check_command)" "dgst" 1>&2
-if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst 2>&1 | grep -q '^(stdin)=' 2>/dev/null 1>&2; then
-	show_ok
-else
-	show_error
-	exit $YF_CHECK_SIGNATURE_NO_OSSL_DIGEST
-fi
-# shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_check_command)" "rsautl" 1>&2
-if printf "" | "$YF_SIGNIMAGE_OPENSSL" rsautl 2>&1 | grep -q '^no keyfile specified' 2>/dev/null 1>&2; then
-	show_ok
-else
-	show_error
-	exit $YF_CHECK_SIGNATURE_NO_OSSL_RSAUTIL
-fi
+v_number="$(show_version)" || exit $YF_SIGN_NO_OSSL_BINARY
+eval "$v_number"
+openssl_check_command "$v_major" "$v_minor" "dgst" "^(stdin)=" || exit $YF_CHECK_SIGNATURE_NO_OSSL_DIGEST
+openssl_check_command "$v_major" "$v_minor" "rsautl" "to load Private Key" || exit $YF_CHECK_SIGNATURE_NO_OSSL_RSAUTIL
 #######################################################################################################
 #                                                                                                     #
 # build table of contents from provided image file                                                    #
