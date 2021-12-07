@@ -57,6 +57,8 @@ sig_file_content="signature"
 sig_file_name="./var/signature"
 urlader_environment_file="environment"
 maca_name="maca"
+hwrev_name="HWRevision"
+prompt_name="prompt"
 eva_prompt="Eva_AVM"
 public_keys_list="public_keys_to_consider"
 tmp_pubkey="pubkey"
@@ -78,11 +80,13 @@ YF_CHECK_SIGNATURE_WRONG_SIGNATURE_SIZE=5 # the signature file has a wrong/unexp
 YF_CHECK_SIGNATURE_FILE_NOT_FOUND=6 # a specified file does not exist
 YF_CHECK_SIGNATURE_WRONG_PUBLIC_KEY=7 # none of the public keys could be used to decrypt signature file
 YF_CHECK_SIGNATURE_INVALID_SIGNATURE_DATA=8 # invalid digest data found in signature file
+YF_CHECK_SIGNATURE_INVALID_CALL=9 # input file from STDIN, but it's a terminal
 YF_CHECK_SIGNATURE_UNSUPPORTED_HASH=10 # unsuppored hash algorithm was used to create the digest
 YF_CHECK_SIGNATURE_NO_KEYS_DEFINED=11 # no public keys available for verification (may occur with -f option, if none of the lines has been accepted)
 YF_CHECK_SIGNATURE_INVALID_DATA=12 # a specified public key file contains invalid data
 YF_CHECK_SIGNATURE_NO_BUILTIN_KEYS=13 # no builtin keys available, it's not a FRITZ!OS device we're running on
 YF_CHECK_SIGNATURE_NO_BOX_KEY=14 # unable to read box RSA key/certificate from /var/flash
+YF_CHECK_SIGNATURE_MISSING_KEY_OPTIONS=15 # no options for key sources specified
 YF_CHECK_SIGNATURE_NO_OSSL_BINARY=32 # no usable openssl binary found
 YF_CHECK_SIGNATURE_NO_OSSL_DIGEST=33 # the openssl binary doesn't support the 'dgst' command
 YF_CHECK_SIGNATURE_NO_OSSL_RSAUTIL=34 # the openssl binary doesn't support the 'rsautl' command
@@ -109,19 +113,9 @@ if [ -r "$config_file" ]; then
 fi
 #######################################################################################################
 #                                                                                                     #
-# get the names of needed external commands, if called from any cross-device toolchain                #
+# get the name of needed external command, if called from a cross-device toolchain                    #
 #                                                                                                     #
 #######################################################################################################
-if [ -n "$YF_SIGNIMAGE_DD" ]; then
-	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
-	__yf_signimage_dd()
-	{
-		"$__YF_SIGNIMAGE_DD" "$@"
-	}
-	YF_SIGNIMAGE_DD="__yf_signimage_dd"
-else
-	YF_SIGNIMAGE_DD="dd"
-fi
 if [ -n "$YF_SIGNIMAGE_OPENSSL" ]; then
 	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
 	__yf_signimage_openssl()
@@ -140,6 +134,7 @@ fi
 ##                                                                                                   ##
 #######################################################################################################
 #######################################################################################################
+
 __yf_check_required_command()
 (
 	IFS=:
@@ -184,8 +179,7 @@ __yf_get_language()
 		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
 	}
 
-	___yf_lang="$1"
-	shift
+	___yf_lang="$1" && shift
 
 	if [ -n "$Language" ]; then
 		___yf_check="$(__yf_get_language_code "$Language")"
@@ -206,15 +200,7 @@ __yf_get_language()
 	unset ___yf_check
 )
 __yf_language__="$(eval __yf_get_language "$__yf_languages__")"
-__yf_internal_get_localized()
-(
-	eval ___yf_msg="\${__YF_L10N_INT_$1_${__yf_language__}}"
-	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
-	eval ___yf_msg="\${__YF_L10N_INT_$1_${___yf_lang}}"
-	eval printf -- '%s' "\"$___yf_msg\""
-	unset ___yf_msg
-	unset ___yf_lang
-)
+
 __yf_get_localized()
 (
 	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
@@ -225,20 +211,6 @@ __yf_get_localized()
 	unset ___yf_msg
 	unset ___yf_lang
 )
-__yf_declare_internal_message()
-{
-	___yf_msg_lang="$1"
-	___yf_msg_code="$2"
-	shift 2
-	printf -- '__YF_L10N_INT_%s_%s=\"%s\"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
-	unset ___yf_msg_lang
-	unset ___yf_msg_code
-}
-__yf_int_msg()
-{
-	__yf_declare_internal_message "$@"
-}
-
 __yf_declare_message()
 {
 	___yf_msg_lang="$1"
@@ -258,7 +230,57 @@ __yf_msg()
 {
 	__yf_declare_message "$@"
 }
+#######################################################################################################
+#                                                                                                     #
+# functions to display messages to user                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_nl_out() { printf -- '\n'; }
+__yf_nl_err() { __yf_nl_out 1>&2; }
+__yf_errmsg()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}\a" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_emsg()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_info_output()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_info()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_info_output "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_help()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@"
+	unset ___yf_mask
+}
 
+#######################################################################################################
+#                                                                                                     #
+# temporary directory creation                                                                        #
+#                                                                                                     #
+#######################################################################################################
 __yf_random()
 (
 	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
@@ -371,12 +393,16 @@ __yf_show_license()
 }
 __yf_show_version()
 {
-	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, %s\n" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	[ "$__yf_language__" = "de" ] && v_display="$(printf "%s\n" "$v_display" | sed -e "s|version|Version|g")"
+	printf "%s\n" "$v_display"
 }
 __yf_show_copyright()
 {
 	__yf_get_script_lines 'CPY'
 }
+
 #######################################################################################################
 #######################################################################################################
 ##                                                                                                   ##
@@ -392,15 +418,17 @@ __yf_show_copyright()
 # messages - english                                                                                  #
 #                                                                                                     #
 #######################################################################################################
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_license'					'\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
+eval "$(__yf_msg 'en' 'INF_copy_stdin'				'Copying image data from STDIN ... ')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_data_count_stdin'		'${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} bytes copied${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_read_box_privkey'		'Trying to read public key from FRITZ!OS private key file (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
@@ -415,53 +443,49 @@ eval "$(__yf_msg 'en' 'INF_verify_success'			'${__yf_ansi_green__}Verification s
 eval "$(__yf_msg 'en' 'INF_public_key_check'		'Checking the public key from ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_check_supported_hash'	'Checking support for the used hash algorithm ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_probing_keys'			'Trying to determine the correct key now ...\n')"
 
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_openssl'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}openssl${__yf_ansi_red__} binary, set ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__} variable to its path name.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_openssl'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}openssl${__yf_ansi_red__} binary, set ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__} variable to its path name.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_RSA_key'					'${__yf_ansi_red__}Unable to read RSA key (%s) from input file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_RSA_key'					'${__yf_ansi_red__}Unable to read RSA key (%s) from input file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_unexpected_EXP'			'${__yf_ansi_red__}Unexpected output while reading exponent from public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_unexpected_exp'			'${__yf_ansi_red__}Unexpected output while reading exponent from public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_file_for_option' '${__yf_ansi_red__}Missing filename after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_file_for_option'	'${__yf_ansi_red__}Missing filename after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_file_with_list'  '${__yf_ansi_red__}The specified public key files list ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_file_with_list'	'${__yf_ansi_red__}The specified public key files list ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}The option ${__yf_ansi_white__}%s${__yf_ansi_red__} may only be used on a FRITZ!OS device.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_pubkey_file_missing'		'${__yf_ansi_red__}The specified public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) does not exist.${__yf_ansi_reset__}\a\n')"
-# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_pubkey_file_missing'		'${__yf_ansi_red__}The specified public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) does not exist.${__yf_ansi_reset__}\n')"
 eval "$(__yf_msg 'en' 'PART_condensed'				'condensed format')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'PART_avmformat'				'AVM''s format')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'PART_pkcs1'					'%s format')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_too_much_options'		'${__yf_ansi_red__}The option ${__yf_ansi_white__}%s${__yf_ansi_red__} may only be used without any other keys.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_too_much_keys'			'${__yf_ansi_red__}The option ${__yf_ansi_white__}%s${__yf_ansi_red__} may only be used without any other keys.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_variable_name'	'${__yf_ansi_red__}Missing variable name after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_variable_name'	'${__yf_ansi_red__}Missing variable name after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_no_public_keys'			'${__yf_ansi_red__}None of the specified public keys could be loaded.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_no_public_keys'			'${__yf_ansi_red__}None of the specified public keys could be loaded.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_wrong_public_keys'		'${__yf_ansi_red__}No usable public key was found.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_verify_failed'			'${__yf_ansi_red__}Signature verification failed.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_image_missing'			'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_image_file_missing'		'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_no_signature_found'		'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains no signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_no_signature_found'		'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains no signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_invalid_signature_file'	'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains an invalid signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_invalid_signature_file'	'${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains an invalid signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_env_value'		'${__yf_ansi_yellow__}The specified environment variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} is missing or has an empty value.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_env_value'		'${__yf_ansi_yellow__}The specified environment variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} is missing or has an empty value.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_unknown_option'			'${__yf_ansi_red__}Unknown option ${__yf_ansi_white__}%s${__yf_ansi_red__} specified on command line.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_unknown_option'			'${__yf_ansi_red__}Unknown option ${__yf_ansi_white__}%s${__yf_ansi_red__} specified on command line.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_invalid_modulus'			'${__yf_ansi_yellow__}Invalid modulus value on line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_too_much_arguments'		'${__yf_ansi_red__}Extra data specified after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_too_much_arguments'		'${__yf_ansi_red__}Extra data specified after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_invalid_exponent'		'${__yf_ansi_yellow__}Invalid exponent value on line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -469,25 +493,35 @@ eval "$(__yf_msg 'en' 'ERR_file_read_error'			'${__yf_ansi_yellow__}Unable to re
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_file_missing_error'		'${__yf_ansi_yellow__}File ${__yf_ansi_white__}%s${__yf_ansi_yellow__} from line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of ${__yf_ansi_white__}%s${__yf_ansi_yellow__} does not exist, line skipped.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}MOD${__yf_ansi_red__} value (modulus) on line ${__yf_ansi_white__}%u${__yf_ansi_red__} of condensed file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}MOD${__yf_ansi_red__} value (modulus) on line ${__yf_ansi_white__}%u${__yf_ansi_red__} of condensed file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_modulus_read_error'		'${__yf_ansi_yellow__}Unable to read modulus value from file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, file skipped.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}This version of OpenSSL (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) is unsupported.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}This version of OpenSSL (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) is unsupported.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_stdin_from_terminal'		'${__yf_ansi_red__}Image file shall be read from STDIN, but it is a terminal device.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_missing_image_name'		'${__yf_ansi_red__}Missing image file name argument.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_missing_key_sources'		'${__yf_ansi_red__}Missing key source options on command line.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_invalid_image_data'		'${__yf_ansi_red__}Invalid image data found on STDIN.${__yf_ansi_reset__}\n')"
 #######################################################################################################
 #                                                                                                     #
 # messages - german                                                                                   #
 #                                                                                                     #
 #######################################################################################################
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_license'					'\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
+eval "$(__yf_msg 'de' 'INF_copy_stdin'				'Kopiere Image-Daten von STDIN in temporäre Datei ... ')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_data_count_stdin'		'${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} Bytes kopiert${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_read_box_privkey'		'Versuche den öffentlichen Schlüssel aus der privaten Schlüsseldatei im FRITZ!OS zu extrahieren (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ... ')"
 # shellcheck disable=SC2016
@@ -502,55 +536,49 @@ eval "$(__yf_msg 'de' 'INF_verify_success'			'${__yf_ansi_green__}Die Signaturpr
 eval "$(__yf_msg 'de' 'INF_public_key_check'		'Prüfung des öffentlichen Schlüssels von ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_check_supported_hash'	'Prüfung der Unterstützung des verwendeten Hash-Algorithmus ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ... ')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_probing_keys'			'Suche nach dem passenden öffentlichen Schlüssel ...\n')"
 
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_openssl'			'${__yf_ansi_red__}Es fehlt die Datei für ${__yf_ansi_white__}openssl${__yf_ansi_red__}, bitte die ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__}-Einstellung auf den Pfad zu diesem Kommando setzen.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_missing_openssl'			'${__yf_ansi_red__}Es fehlt die Datei für ${__yf_ansi_white__}openssl${__yf_ansi_red__}, bitte die ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__}-Einstellung auf den Pfad zu diesem Kommando setzen.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_RSA_key'					'${__yf_ansi_red__}Der RSA-Schlüssel (%s) kann nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} gelesen werden.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_RSA_key'					'${__yf_ansi_red__}Der RSA-Schlüssel (%s) kann nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} gelesen werden.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_unexpected_EXP'			'${__yf_ansi_red__}Unerwartetes Ergebnis beim Versuch, den Exponenten des öffentlichen Schlüssels aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) zu lesen.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_unexpected_exp'			'${__yf_ansi_red__}Unerwartetes Ergebnis beim Versuch, den Exponenten des öffentlichen Schlüssels aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) zu lesen.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_file_for_option' '${__yf_ansi_red__}Die Angabe eines Dateinamens nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__} fehlt.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_missing_file_for_option'	'${__yf_ansi_red__}Die Angabe eines Dateinamens nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__} fehlt.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_file_with_list'  '${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} für die Liste mit Namen von Schlüsseldateien existiert nicht.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_missing_file_with_list'	'${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} für die Liste mit Namen von Schlüsseldateien existiert nicht.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}Die Option ${__yf_ansi_white__}-b${__yf_ansi_red__} kann nur auf einem Gerät mit FRITZ!OS von AVM genutzt werden.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_pubkey_file_missing'		'${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} mit öffentlichen Schlüsseln (%s) existiert nicht.${__yf_ansi_reset__}\a\n')"
-# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_pubkey_file_missing'		'${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} mit öffentlichen Schlüsseln (%s) existiert nicht.${__yf_ansi_reset__}\n')"
 eval "$(__yf_msg 'de' 'PART_condensed'				'komprimiertes Format')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'PART_avmformat'				'AVM-(Text-)Format')"
-# shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'PART_pkcs1'					'%s-Format')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_too_much_options'		'${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} kann nicht mit weiteren Optionen/Schlüsseln kombiniert werden.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_too_much_keys'			'${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} kann nicht mit weiteren Optionen/Schlüsseln kombiniert werden.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_read_RSA_box_key'		'${__yf_ansi_red__}Der RSA-Schlüssel der FRITZ!OS konnte nicht gelesen werden.${__yf_ansi_reset__}\n')"
+eval "$(__yf_msg 'de' 'ERR_missing_variable_name'	'${__yf_ansi_red__}Der Name der Environment-Variablen fehlt nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_variable_name'	'${__yf_ansi_red__}Der Name der Environment-Variablen fehlt nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_no_public_keys'			'${__yf_ansi_red__}Es ist kein öffentlicher Schlüssel für die Prüfung der Signatur verfügbar.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_no_public_keys'			'${__yf_ansi_red__}Es ist kein öffentlicher Schlüssel für die Prüfung der Signatur verfügbar.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_wrong_public_keys'		'${__yf_ansi_red__}Es konnte kein passender öffentlicher Schlüssel gefunden werden.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_verify_failed'			'${__yf_ansi_red__}Die Signaturprüfung ist fehlgeschlagen.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_image_missing'			'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} existiert nicht.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_image_file_missing'		'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} existiert nicht.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_no_signature_found'		'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält keine Signatur (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_no_signature_found'		'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält keine Signatur (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_invalid_signature_file'	'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält eine Signatur-Datei mit ungültigem Aufbau (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_invalid_signature_file'	'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält eine Signatur-Datei mit ungültigem Aufbau (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_env_value'		'${__yf_ansi_yellow__}Die angegebene Environment-Variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} ist nicht gesetzt oder der Wert ist leer (Länge 0).${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_missing_env_value'		'${__yf_ansi_yellow__}Die angegebene Environment-Variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} ist nicht gesetzt oder der Wert ist leer (Länge 0).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_unknown_option'			'${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} is unbekannt.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_unknown_option'			'${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} is unbekannt.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_invalid_modulus'			'${__yf_ansi_yellow__}Ungültige Daten für den Wert des Modulus in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_too_much_arguments'		'${__yf_ansi_red__}Zusätzliche Argumente angegeben nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_too_much_arguments'		'${__yf_ansi_red__}Zusätzliche Argumente angegeben nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_invalid_exponent'		'${__yf_ansi_yellow__}Ungültige Daten für den Wert des Exponenten in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -558,11 +586,19 @@ eval "$(__yf_msg 'de' 'ERR_file_read_error'			'${__yf_ansi_yellow__}Der Modulus-
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_file_missing_error'		'${__yf_ansi_yellow__}Die Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, die in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} hinzugefügt werden sollte, wurde nicht gefunden - die Zeile wurde ignoriert.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Der Wert für ${__yf_ansi_white__}MOD${__yf_ansi_red__} (den Modulus des öffentlichen Schlüssels) fehlt in Zeile ${__yf_ansi_white__}%u${__yf_ansi_red__} der zusammengefassten Datei ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'en' 'ERR_missing_modulus'			'${__yf_ansi_red__}Der Wert für ${__yf_ansi_white__}MOD${__yf_ansi_red__} (den Modulus des öffentlichen Schlüssels) fehlt in Zeile ${__yf_ansi_white__}%u${__yf_ansi_red__} der zusammengefassten Datei ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_modulus_read_error'		'${__yf_ansi_yellow__}Der Modulus-Wert konnte nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} gelesen werden, die Datei wurde ignoriert.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\a\n')"
+eval "$(__yf_msg 'de' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_stdin_from_terminal'		'${__yf_ansi_red__}Die Image-Datei soll von STDIN gelesen werden, dort ist aber das Terminal verbunden.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_missing_image_name'		'${__yf_ansi_red__}Es wurde keine Image-Datei angegeben beim Aufruf.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_missing_key_sources'		'${__yf_ansi_red__}Beim Aufruf wurden keine Optionen für Quellen öffentlicher Schlüssel angegeben.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_invalid_image_data'		'${__yf_ansi_red__}Ungültige Daten in der Image-Datei, die von STDIN gelesen wurde.${__yf_ansi_reset__}\n')"
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -694,36 +730,31 @@ usage()
 #######################################################################################################
 show_error()
 (
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_show_error)" 1>&2
+	__yf_emsg "ERR_show_error"
 )
-
 show_ok()
 (
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_show_ok)" 1>&2
+	__yf_info "INF_show_ok"
 )
 show_version()
 (
 	version=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
 	if [ $? -eq 127 ]; then
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized ERR_missing_openssl)" 1>&2
+		__yf_emsg "ERR_missing_openssl"
 		exit 1
 	else
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized INF_ossl_version)" "$version" 1>&2
+		__yf_info "INF_ossl_version" "$version"
 		vn="$(expr "$version" : "OpenSSL \([^ ]*\).*")"
-		v_major="$(expr "$vn" : "\([^\.]*\).*")"
-		v_minor="$(expr "$vn" : "[^\.]*\.\([^\.]*\).*")"
-		v_patch="$(expr "$vn" : "[^\.]*\.[^\.]\.\(.*\)")"
-		if [ "$(( v_major ))" -lt 1 ]; then
+		v_l_major="$(expr "$vn" : "\([^\.]*\).*")"
+		v_l_minor="$(expr "$vn" : "[^\.]*\.\([^\.]*\).*")"
+		v_l_patch="$(expr "$vn" : "[^\.]*\.[^\.]\.\(.*\)")"
+		if [ "$(( v_l_major ))" -lt 1 ]; then
 			show_error
-			printf "$(__yf_get_localized ERR_openssl_unsupported)" "$v_major" "$v_minor" "$v_patch" 1>&2
+			__yf_emsg "ERR_openssl_unsupported" "$v_l_major" "$v_l_minor" "$v_l_patch"
 			exit 1
 		fi
 		show_ok
-		printf "v_major=%s v_minor=%s" "$v_major" "$v_minor"
+		printf "v_major=%s v_minor=%s" "$v_l_major" "$v_l_minor"
 		cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
 		if [ -n "$cnf" ]; then # OpenSSL configuration file missing
 			touch "$tmp/$openssl_conf_name"
@@ -734,7 +765,7 @@ show_version()
 )
 openssl_check_command()
 (
-	printf "$(__yf_get_localized INF_check_command)" "$3" 1>&2
+	__yf_info "INF_check_command" "$3"
 	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
 		if printf "" | "$YF_SIGNIMAGE_OPENSSL" "$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
 			show_ok
@@ -755,7 +786,7 @@ openssl_check_command()
 )
 openssl_check_digest()
 (
-	printf "$(__yf_get_localized INF_check_digest)" "$3" 1>&2
+	__yf_info "INF_check_digest" "$3"
 	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
 		if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
 			show_ok
@@ -782,16 +813,14 @@ openssl_check_digest()
 #######################################################################################################
 is_fritzos_environment()
 (
-	# shellcheck disable=SC2154
-	[ ${#HWRevision} -eq 0 ] && exit 1
+	hwrev_shell="$(eval "printf '%s\n' \$$hwrev_name")"
+	[ ${#hwrev_shell} -eq 0 ] && exit 1
 	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && exit 1
 	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || exit 1
 	[ -f "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file" ] || exit 1
-	HWRev="$(sed -n -e "s|^HWRevision\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
-	[ ${#HWRev} -eq 0 ] && exit 1
-	prompt="$(sed -n -e "s|^prompt\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
-	[ ${#prompt} -eq 0 ] && exit 1
-	[ "$prompt" != "$eva_prompt" ] && exit 1
+	prompt_loader="$(sed -n -e "s|^$prompt_name\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	[ ${#prompt_loader} -eq 0 ] && exit 1
+	[ "$prompt_loader" != "$eva_prompt" ] && exit 1
 	exit 0
 )
 #######################################################################################################
@@ -805,7 +834,7 @@ is_fritzos_environment()
 box_key_password()
 (
 	is_fritzos_environment || exit 1
-	maca="$(sed -n -e "$(printf "s|^%s[ \t]*\(.*\)|\1|p" "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	maca="$(sed -n -e "$(printf 's|^%s\\t\\(.*\\)|\\1|p' "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	if command -v md5sum 2>/dev/null 1>&2; then
 		hash="$(printf "%s" "$maca" | md5sum)"
 	else
@@ -929,23 +958,17 @@ modulus_to_der()
 #######################################################################################################
 pubkey_pkcs1_to_text()
 (
-	read_error()
-	(
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized ERR_RSA_key)" "$format" "$file" 1>&2
-	)
-
 	file="$1"
 	format="$2"
 	desc="${3:-$format key}"
 	src="${4:-$file}"
 	if ! line="$("$YF_SIGNIMAGE_OPENSSL" rsa -in "$file" -pubin -inform "$format" -modulus -noout 2>/dev/null)"; then
-		read_error
+		__yf_emsg "ERR_RSA_key" "$format" "$file"
 		exit 1
 	else
 		MOD="$(printf "%s\n" "$line" | sed -n -e "s|^Modulus=\(.*\)|\1|p" | sed -e "y/ABCDEF/abcdef/")"
 		if [ ${#MOD} -eq 0 ]; then
-			read_error
+			__yf_emsg "ERR_RSA_key" "$format" "$file"
 			exit 1
 		fi
 		expr "$MOD" : "\([89a-f]\).*" 2>/dev/null 1>&2 && MOD="00$MOD"
@@ -954,8 +977,7 @@ pubkey_pkcs1_to_text()
 			EXP=$("$YF_SIGNIMAGE_OPENSSL" rsa -in "$file" -pubin -inform "$format" -text -noout | \
 			sed -n -e "s|^Exponent: [0-9]* (\(0x[0-9a-fA-F]*\))\$|\1|p")
 			if [ ${#EXP} -eq 0 ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_unexpected_exp)" "$file" "$format" 1>&2
+				__yf_emsg "ERR_unexpected_exp" "$file" "$format"
 				exit 1
 			fi
 			EXP="$(printf "%016x" "$(( EXP ))")"
@@ -980,28 +1002,24 @@ pubkey_pkcs1_to_text()
 #######################################################################################################
 read_box_key()
 (
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_read_box_privkey)" "$box_key_name" 1>&2
+	__yf_info "INF_read_box_privkey" "$box_key_name"
 	if "$YF_SIGNIMAGE_OPENSSL" rsa -in $box_key_name -pubout -passin pass:"$(box_key_password)" -out "$tmp/$tmp_pubkey" 2>/dev/null; then
 		pubkey_pkcs1_to_text "$tmp/$tmp_pubkey" PEM "box key" "FRITZ!OS RSA key" && show_ok && exit 0
 		show_error
 	fi
 	show_error
 	# try to use the certificate to get the public key
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_check_command)" "x509" 1>&2
+	__yf_info "INF_check_command" "x509"
 	if printf "" | "$YF_SIGNIMAGE_OPENSSL" x509 2>&1 | grep -q '^unable to load certificate' 2>/dev/null 1>&2; then
 		show_ok
 	else
 		show_error
 		exit $YF_CHECK_SIGNATURE_NO_OSSL_X509
 	fi
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_read_box_cert)" "$box_cert_name1" 1>&2
+	__yf_info "INF_read_box_cert" "$box_cert_name1"
 	if ! "$YF_SIGNIMAGE_OPENSSL" x509 -in "$box_cert_name1" -pubkey -noout >"$tmp/$tmp_pubkey" 2>/dev/null; then
 		show_error
-		# shellcheck disable=SC2059
-		printf "$(__yf_get_localized INF_read_box_cert)" "$box_cert_name2" 1>&2
+		__yf_info "INF_read_box_cert" "$box_cert_name2"
 		if ! "$YF_SIGNIMAGE_OPENSSL" x509 -in "$box_cert_name2" -pubkey -noout >"$tmp/$tmp_pubkey" 2>/dev/null; then
 			show_error
 			exit 1
@@ -1073,35 +1091,19 @@ tar_get_member_data()
 #                                                                                                     #
 #######################################################################################################
 tmp=$(__yf_mktmp -d)
-trap 'rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
+trap '[ -d "$tmp" ] && rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
 if [ -n "$DEBUG_MESSAGES" ]; then # show all defined messages and exit
 	set | grep "^__YF_L10N" 1>&2
 	exit 0
 fi
 #######################################################################################################
 #                                                                                                     #
-# check arguments and specified image file                                                            #
+# check arguments for specified options                                                               #
 #                                                                                                     #
 #######################################################################################################
-if [ -z "$1" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-	usage 1>&2
-	[ -z "$1" ] && exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS || exit $YF_CHECK_SIGNATURE_SUCCESS
-else
-	image_file="$1"
-	if [ "$image_file" = "-" ]; then
-		image_file="$tmp/$image_file_name"
-		cat >"$image_file" 2>/dev/null
-	fi
-	shift
-	if [ -z "$1" ]; then
-		usage 1>&2
-		exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
-	fi
-fi
-if ! [ -f "$image_file" ]; then
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_image_missing)" "$image_file" 1>&2
-	exit $YF_CHECK_SIGNATURE_IMAGE_FILE_MISSING
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage
+	exit $YF_CHECK_SIGNATURE_SUCCESS
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -1110,15 +1112,52 @@ fi
 #######################################################################################################
 __yf_show_version 1>&2
 __yf_show_copyright 1>&2
-# shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_license)" 1>&2
+__yf_info "INF_license"
+#######################################################################################################
+#                                                                                                     #
+# check input file                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ -z "$1" ]; then
+	usage 1>&2
+	__yf_emsg "ERR_missing_image_name"
+	exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
+fi
+image_file="$1"
+if [ "$image_file" = "-" ]; then
+	if [ -t 0 ]; then
+		__yf_emsg "ERR_stdin_from_terminal"
+		exit $YF_CHECK_SIGNATURE_INVALID_CALL
+	fi
+	image_file="$tmp/$image_file_name"
+	__yf_emsg "INF_copy_stdin"
+	image_size="$(tee "$image_file" | wc -c 2>/dev/null)"
+	if [ "$image_size" -le 512 ]; then
+		show_error
+		__yf_emsg "ERR_invalid_image_data"
+		exit $YF_CHECK_SIGNATURE_INVALID_DATA
+	else
+		__yf_info "INF_data_count_stdin" "$image_size"
+	fi
+fi
+if ! [ -f "$image_file" ]; then
+	__yf_emsg "ERR_image_file_missing" "$image_file"
+	exit $YF_CHECK_SIGNATURE_IMAGE_FILE_MISSING
+fi
+shift
+if [ -z "$1" ]; then
+	usage 1>&2
+	__yf_emsg "ERR_missing_key_sources"
+	exit $YF_CHECK_SIGNATURE_MISSING_KEY_OPTIONS
+fi
 #######################################################################################################
 #                                                                                                     #
 # check OpenSSL presence and version                                                                  #
 #                                                                                                     #
 #######################################################################################################
-v_number="$(show_version)" || exit $YF_SIGN_NO_OSSL_BINARY
+v_number="$(show_version)" || exit $YF_CHECK_SIGNATURE_NO_OSSL_BINARY
 eval "$v_number"
+# shellcheck disable=SC2154
 openssl_check_command "$v_major" "$v_minor" "dgst" "^(stdin)=" || exit $YF_CHECK_SIGNATURE_NO_OSSL_DIGEST
 openssl_check_command "$v_major" "$v_minor" "rsautl" "to load Private Key" || exit $YF_CHECK_SIGNATURE_NO_OSSL_RSAUTIL
 #######################################################################################################
@@ -1135,8 +1174,7 @@ tar_create_table_of_contents "$image_file" >"$tmp/$tar_toc"
 #######################################################################################################
 last_sig=0
 i=0
-# shellcheck disable=SC2162
-while read line; do
+while read -r line; do
 	i=$(( i + 1 ))
 	eval "$line"
 	if [ "$MEMBER" = "$sig_file_name" ]; then
@@ -1144,22 +1182,18 @@ while read line; do
 	fi
 done <"$tmp/$tar_toc"
 if [ $last_sig -eq 0 ]; then
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_no_signature_found)" "$image_file" "$sig_file_name" 1>&2
+	__yf_emsg "ERR_no_signature_found" "$image_file" "$sig_file_name"
 	exit $YF_CHECK_SIGNATURE_MISSING_SIGNATURE
 fi
 eval "$(sed -n -e "${last_sig}p" "$tmp/$tar_toc")"
 if [ "$SIZE" -eq 0 ] || [ "$SIZE" -gt 512 ]; then
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_invalid_signature_file)" "$image_file" "$sig_file_name" 1>&2
+	__yf_emsg "ERR_invalid_signature_file" "$image_file" "$sig_file_name"
 	exit $YF_CHECK_SIGNATURE_WRONG_SIGNATURE_SIZE
 fi
-# shellcheck disable=SC2086
 tar_get_member_data "$image_file" "$sig_file_name" "$tmp/$tar_toc" >"$tmp/$sig_file_content"
 fs="$(wc -c < "$tmp/$sig_file_content")"
 if [ "$fs" -ne 128 ] && [ "$fs" -ne 256 ] && [ "$fs" -ne 512 ]; then # signature size for 1024-, 2048- and 4096-bit keys
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_invalid_signature_file)" "$image_file" "$sig_file_name" 1>&2
+	__yf_emsg "ERR_invalid_signature_file" "$image_file" "$sig_file_name"
 	exit $YF_CHECK_SIGNATURE_WRONG_SIGNATURE_SIZE
 fi
 seek_image=$(( HEADER / 512 ))
@@ -1171,20 +1205,48 @@ seek_image=$(( HEADER / 512 ))
 touch "$tmp/$public_keys_list"
 while [ "$#" -gt 0 ]; do
 	case "$1" in
+		"-a")
+			if [ -z "$2" ]; then
+				__yf_emsg "ERR_missing_file_for_option" "-a"
+				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
+			fi
+			if ! [ -f "$2" ]; then
+				__yf_emsg "ERR_pubkey_file_missing" "$2" "$(__yf_get_localized PART_avmformat)"
+				exit $YF_CHECK_SIGNATURE_FILE_NOT_FOUND
+			fi
+			fn="$2"
+			unset MOD
+			unset EXP
+			MOD="$(sed -n -e "1p" "$2")"
+			EXP="$(sed -n -e "2p" "$2")"
+			if [ ${#MOD} -gt 0 ]; then
+				[ ${#EXP} -eq 0 ] && exp=010001
+				if ! check_modulus "$MOD"; then
+					__yf_emsg "ERR_invalid_modulus" "1" "$fn"
+					exit $YF_CHECK_SIGNATURE_INVALID_DATA
+				fi
+				if ! is_hexadecimal "$EXP"; then
+					__yf_emsg "ERR_invalid_exponent" "2" "$fn"
+					exit $YF_CHECK_SIGNATURE_INVALID_DATA
+				fi
+				printf "DESC=\"text file from command line\" SRC=\"%s\" MOD=%s EXP=%s\n" "$2" "$MOD" "$EXP" >>"$tmp/$public_keys_list"
+			else
+				__yf_emsg "ERR_modulus_read_error" "$fn"
+			fi
+			shift 2
+			;;
 		"-f")
 			if [ -z "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_file_for_option)" "-f" 1>&2
+				__yf_emsg "ERR_missing_file_for_option" "-f"
 				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
 			fi
 			if ! [ -f "$2" ] && ! [ -L "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_file_with_list)" "$2" 1>&2
+				__yf_emsg "ERR_missing_file_with_list" "$2"
 				exit $YF_CHECK_SIGNATURE_FILE_NOT_FOUND
 			fi
 			i=0
-			# shellcheck disable=SC2162
-			while read filename; do
+			fn="$2"
+			while read -r filename; do
 				i=$(( i + 1 ))
 				if [ -f "$filename" ]; then
 					unset MOD
@@ -1193,53 +1255,39 @@ while [ "$#" -gt 0 ]; do
 					unset DESC
 					MOD=$(sed -n -e "1p" "$filename")
 					if [ ${#MOD} -eq 0 ]; then
-						# shellcheck disable=SC2059
-						printf "$(__yf_get_localized ERR_file_read_error)" "$filename" "$i" "$2" 1>&2
+						__yf_info "ERR_file_read_error" "$filename" "$i" "$fn"
 						continue
 					fi
 					EXP=$(sed -n -e "2p" "$filename")
 					[ ${#EXP} -eq 0 ] && EXP=010001
-					DESC="$(printf "line %u of %s\n" "$i" "$2")"
+					DESC="$(printf "line %u of %s\n" "$i" "$fn")"
 					if ! check_modulus "$MOD"; then
-						# shellcheck disable=SC2059
-						printf "$(__yf_get_localized ERR_invalid_modulus)" "$i" "$2" 1>&2
+						__yf_info "ERR_invalid_modulus" "$i" "$fn"
 						continue
 					fi
 					if ! is_hexadecimal "$EXP"; then
-						# shellcheck disable=SC2059
-						printf "$(__yf_get_localized ERR_invalid_exponent)" "$i" "$2" 1>&2
+						__yf_info "ERR_invalid_exponent" "$i" "$fn"
 						continue
 					fi
 					printf "DESC=\"%s\" SRC=\"%s\" MOD=%s EXP=%s\n" "$DESC" "$filename" "$MOD" "$EXP" >>"$tmp/$public_keys_list"
 				else
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_file_missing_error)" "$filename" "$i" "$2" 1>&2
+					__yf_emsg "ERR_file_missing_error" "$filename" "$i" "$fn"
 				fi
 			done <"$2"
 			shift 2
 			;;
-		"-b")
-			if ! builtin_keys >>"$tmp/$public_keys_list"; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_no_fritzos_device)" "-b" 1>&2
-				exit $YF_CHECK_SIGNATURE_NO_BUILTIN_KEYS
-			fi
-			shift
-			;;
 		"-c")
 			if [ -z "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_file_for_option)" "-c" 1>&2
+				__yf_emsg "ERR_missing_file_for_option" "-c"
 				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
 			fi
 			if ! [ -f "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_pubkey_file_missing)" "$2" "$(__yf_get_localized PART_condensed)" 1>&2
+				__yf_emsg "ERR_pubkey_file_missing" "$2" "$(__yf_get_localized PART_condensed)"
 				exit $YF_CHECK_SIGNATURE_FILE_NOT_FOUND
 			fi
 			i=0
-			# shellcheck disable=SC2162
-			while read line; do
+			fn="$2"
+			while read -r line; do
 				i=$(( i + 1 ))
 				unset MOD
 				unset EXP
@@ -1250,110 +1298,44 @@ while [ "$#" -gt 0 ]; do
 				SRC="$(printf "%s\n" "$line" | sed -n -e "s|.*SRC=\"\([^\"]*\)\".*|\1|p")"
 				DESC="$(printf "%s\n" "$line" | sed -n -e "s|.*DESC=\"\([^\"]*\)\".*|\1|p")"
 				if [ -z "$MOD" ]; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_missing_modulus)" "$i" "$2" 1>&2
+					__yf_emsg "ERR_missing_modulus" "$i" "$fn"
 					exit $YF_CHECK_SIGNATURE_INVALID_DATA
 				elif [ -z "$EXP" ]; then
 					EXP="010001"
 				fi
 				if [ -z "$DESC" ]; then
-					# shellcheck disable=SC2031
-					[ -n "$SRC" ] && DESC="$(printf "line %u of %2\n" "$i" "$2")" || DESC="$(printf "line %u\n" "$i")"
+					[ -n "$SRC" ] && DESC="$(printf "line %u of %2\n" "$i" "$fn")" || DESC="$(printf "line %u\n" "$i")"
 				fi
-				# shellcheck disable=SC2031
-				[ -n "$SRC" ] && SRC="$(printf "%s\n" "$2")"
+				[ -n "$SRC" ] && SRC="$(printf "%s\n" "$fn")"
 				if ! check_modulus "$MOD"; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_invalid_modulus)" "$i" "$2" 1>&2
+					__yf_info "ERR_invalid_modulus" "$i" "$fn"
 					continue
 				fi
 				if ! is_hexadecimal "$EXP"; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_invalid_exponent)" "$i" "$2" 1>&2
+					__yf_info "ERR_invalid_exponent" "$i" "$fn"
 					continue
 				fi
 				printf "DESC=\"%s\" SRC=\"%s\" MOD=%s EXP=%s\n" "$DESC" "$SRC" "$MOD" "$EXP" >>"$tmp/$public_keys_list"
 			done <"$2"
 			shift 2
 			;;
-		"-a")
-			if [ -z "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_file_for_option)" "-a" 1>&2
-				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
-			fi
-			if ! [ -f "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_pubkey_file_missing)" "$2" "$(__yf_get_localized PART_avmformat)" 1>&2
-				exit $YF_CHECK_SIGNATURE_FILE_NOT_FOUND
-			fi
-			unset MOD
-			unset EXP
-			MOD="$(sed -n -e "1p" "$2")"
-			EXP="$(sed -n -e "2p" "$2")"
-			if [ ${#MOD} -gt 0 ]; then
-				[ ${#EXP} -eq 0 ] && exp=010001
-				if ! check_modulus "$MOD"; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_invalid_modulus)" "1" "$2" 1>&2
-					exit $YF_CHECK_SIGNATURE_INVALID_DATA
-				fi
-				if ! is_hexadecimal "$EXP"; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_invalid_exponent)" "2" "$2" 1>&2
-					exit $YF_CHECK_SIGNATURE_INVALID_DATA
-				fi
-				printf "DESC=\"text file from command line\" SRC=\"%s\" MOD=%s EXP=%s\n" "$2" "$MOD" "$EXP" >>"$tmp/$public_keys_list"
-			else
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_modulus_read_error)" "$2" 1>&2
-			fi
-			shift 2
-			;;
 		"-p"|"-d")
 			if [ -z "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_file_for_option)" "$1" 1>&2
+				__yf_emsg "ERR_missing_file_for_option" "$1"
 				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
 			fi
 			[ "$1" = "-p" ] && format="PEM" || format="DER"
 			if ! [ -f "$2" ]; then
 				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_pubkey_file_missing)" "$2" "$(printf "$(__yf_get_localized PART_pkcs1)" "$format")" 1>&2
+				__yf_emsg "ERR_pubkey_file_missing" "$2" "$(printf "$(__yf_get_localized PART_pkcs1)" "$format")"
 				exit $YF_CHECK_SIGNATURE_FILE_NOT_FOUND
 			fi
 			pubkey_pkcs1_to_text "$2" "$format" >>"$tmp/$public_keys_list" || exit $YF_CHECK_SIGNATURE_INVALID_DATA
 			shift 2
 			;;
-		"-s")
-			if [ -n "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_too_much_arguments)" "$1" 1>&2
-				exit $YF_CHECK_SIGNATURE_NO_BOX_KEY
-			fi
-			if ! is_fritzos_environment; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_no_fritzos_device)" "-s" 1>&2
-				exit $YF_CHECK_SIGNATURE_NO_BOX_KEY
-			fi
-			if [ -s "$tmp/$public_keys_list" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_too_much_keys)" "-s" 1>&2
-				exit $YF_CHECK_SIGNATURE_INVALID_OPTION
-			fi
-			if ! read_box_key >>"$tmp/$public_keys_list"; then
-				rc=$?
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_read_RSA_box_key)" 1>&2
-				printf "RC=%d\n" "$rc" 1>&2
-				[ "$rc" -eq 1 ] && exit $YF_CHECK_SIGNATURE_NO_BOX_KEY || exit $rc
-			fi
-			shift
-			;;
 		"-e")
 			if [ -z "$2" ]; then
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_variable_name)" "-e" 1>&2
+				__yf_emsg "ERR_missing_variable_name" "-e"
 				exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
 			fi
 			unset MOD
@@ -1362,27 +1344,51 @@ while [ "$#" -gt 0 ]; do
 			EXP=010001
 			if [ ${#MOD} -gt 0 ]; then
 				if ! check_modulus "$MOD"; then
-					# shellcheck disable=SC2059
-					printf "$(__yf_get_localized ERR_invalid_modulus)" "1" "$2" 1>&2
+					__yf_emsg "ERR_invalid_modulus" "1" "$2"
 					exit $YF_CHECK_SIGNATURE_INVALID_DATA
 				fi
 				printf "DESC=\"environment variable from command line\" SRC=\"%s\" MOD=%s EXP=%s\n" "$2" "$MOD" "$EXP" >>"$tmp/$public_keys_list"
 			else
-				# shellcheck disable=SC2059
-				printf "$(__yf_get_localized ERR_missing_env_value)" "$2" 1>&2
+				__yf_info "ERR_missing_env_value" "$2"
 			fi
 			shift 2
 			;;
+		"-b")
+			if ! builtin_keys >>"$tmp/$public_keys_list"; then
+				__yf_emsg "ERR_no_fritzos_device" "-b"
+				exit $YF_CHECK_SIGNATURE_NO_BUILTIN_KEYS
+			fi
+			shift
+			;;
+		"-s")
+			if [ -n "$2" ]; then
+				__yf_emsg "ERR_too_much_arguments" "$1"
+				exit $YF_CHECK_SIGNATURE_NO_BOX_KEY
+			fi
+			if ! is_fritzos_environment; then
+				__yf_emsg "ERR_no_fritzos_device" "-s"
+				exit $YF_CHECK_SIGNATURE_NO_BOX_KEY
+			fi
+			if [ -s "$tmp/$public_keys_list" ]; then
+				__yf_emsg "ERR_too_much_keys" "-s"
+				exit $YF_CHECK_SIGNATURE_INVALID_OPTION
+			fi
+			if ! read_box_key >>"$tmp/$public_keys_list"; then
+				rc=$?
+				__yf_emsg "ERR_RSA_key"
+				[ "$rc" -eq 1 ] && exit $YF_CHECK_SIGNATURE_NO_BOX_KEY || exit $rc
+			fi
+			shift
+			;;
 		*)
-			# shellcheck disable=SC2059
-			printf "$(__yf_get_localized ERR_unknown_option)" "$1" 1>&2
+			__yf_emsg "ERR_unknown_option" "$1"
 			exit $YF_CHECK_SIGNATURE_INVALID_OPTION
 			;;
 	esac
 done
 if ! [ -s "$tmp/$public_keys_list" ]; then
 	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_no_public_keys)" 1>&2
+	__yf_emsg "ERR_no_public_keys"
 	exit $YF_CHECK_SIGNATURE_NO_KEYS_DEFINED
 fi
 #######################################################################################################
@@ -1391,22 +1397,18 @@ fi
 #                                                                                                     #
 #######################################################################################################
 [ "$YF_CHECK_SIGNATURE_SHOW_KEYS" = "1" ] && { printf "\n=== public keys collected ===\n" && cat "$tmp/$public_keys_list" && printf "=============================\n\n"; } 1>&2
-# shellcheck disable=SC2059
-[ "$(wc -l <"$tmp/$public_keys_list")" -gt 1 ] && printf "$(__yf_get_localized INF_probing_keys)" 1>&2
+[ "$(wc -l <"$tmp/$public_keys_list")" -gt 1 ] && __yf_info "INF_probing_keys"
 key_found=0
-# shellcheck disable=SC2162
-while read line; do
+while read -r line; do
 	eval "$line"
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized INF_public_key_check)" "$SRC" 1>&2
+	__yf_info "INF_public_key_check" "$SRC"
 	modulus_to_der "$MOD" "$EXP" >"$tmp/$tmp_pubkey"
 	if output="$("$YF_SIGNIMAGE_OPENSSL" rsautl -verify -pubin -inkey "$tmp/$tmp_pubkey" -keyform der -asn1parse -in "$tmp/$sig_file_content" 2>&1)"; then
 		key_found=1
 		show_ok
 		algo=$(printf "%s\n" "$output" | sed -n -e "s|^.*OBJECT.*:\(.*\)\$|\1|p" 2>/dev/null)
 		if [ ${#algo} -gt 0 ]; then
-			# shellcheck disable=SC2059
-			printf "$(__yf_get_localized INF_check_supported_hash)" "$algo" 1>&2
+			__yf_info "INF_check_supported_hash" "$algo"
 			if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$algo" 2>&1 2>/dev/null 1>&2; then
 				show_ok
 				break
@@ -1423,8 +1425,7 @@ while read line; do
 	fi
 done <"$tmp/$public_keys_list"
 if [ $key_found -eq 0 ]; then
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_wrong_public_keys)" 1>&2
+	__yf_emsg "ERR_wrong_public_keys"
 	exit $YF_CHECK_SIGNATURE_WRONG_PUBLIC_KEY
 fi
 #######################################################################################################
@@ -1433,12 +1434,11 @@ fi
 # and pipe its output to openssl                                                                      #
 #                                                                                                     #
 #######################################################################################################
-if ! res="$( ( "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
-	"$YF_SIGNIMAGE_DD" if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
-	"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) | \
+if ! res="$( ( dd if="$image_file" bs=512 count=$seek_image status=none 2>/dev/null;
+	dd if=/dev/zero bs=512 count=2 status=none 2>/dev/null;
+	dd if="$image_file" bs=512 skip=$(( seek_image + 2 )) status=none 2>/dev/null ) | \
 	"$YF_SIGNIMAGE_OPENSSL" dgst -"$algo" -verify "$tmp/$tmp_pubkey" -keyform der -signature "$tmp/$sig_file_content")"; then
-	# shellcheck disable=SC2059
-	printf "$(__yf_get_localized ERR_verify_failed)" 1>&2
+	__yf_emsg "ERR_verify_failed"
 	exit $YF_CHECK_SIGNATURE_VERIFICATION_FAILED
 fi
 #######################################################################################################
@@ -1447,7 +1447,7 @@ fi
 #                                                                                                     #
 #######################################################################################################
 # shellcheck disable=SC2059
-printf "$(__yf_get_localized INF_verify_success)" 1>&2
+__yf_info "INF_verify_success"
 exit $YF_CHECK_SIGNATURE_SUCCESS
 #######################################################################################################
 #                                                                                                     #
