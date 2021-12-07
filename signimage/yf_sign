@@ -105,7 +105,9 @@ my_name="${0##*/}"
 config_file="${YF_SIGNIMAGE_CONFIG:-$my_path/yf_signimage.conf}"
 if ! [ -r "$config_file" ]; then
 	# no configuration file, use already defined environment variables or default values
-	YF_SIGNIMAGE_KEYS="${YF_SIGNIMAGE_KEYS:-$HOME/.yf_signimage/image_signing}"
+	home_dir="${HOME:-~}"
+	[ "${home_dir%*/}" != "$home_dir" ] && home_dir="${home_dir%*/}"
+	YF_SIGNIMAGE_KEYS="${YF_SIGNIMAGE_KEYS:-$home_dir/.yf_signimage/image_signing}"
 	YF_SIGNIMAGE_PRIVKEYEXT="${YF_SIGNIMAGE_PRIVKEYEXT:-.key}"
 	YF_SIGNIMAGE_PUBKEYEXT="${YF_SIGNIMAGE_PUBKEYEXT:-.pem}"
 	YF_SIGNIMAGE_AVMKEYEXT="${YF_SIGNIMAGE_AVMKEYEXT:-.asc}"
@@ -121,29 +123,9 @@ filename_prefix="$YF_SIGNIMAGE_KEYS"
 private_extension="$YF_SIGNIMAGE_PRIVKEYEXT"
 #######################################################################################################
 #                                                                                                     #
-# get the names of needed external commands, if called from any cross-device toolchain                #
+# get the names of needed external commands, if called from a cross-device toolchain                  #
 #                                                                                                     #
 #######################################################################################################
-if [ -n "$YF_SIGNIMAGE_TAR" ]; then
-	__YF_SIGNIMAGE_TAR="$YF_SIGNIMAGE_TAR"
-	__yf_signimage_tar()
-	{
-		"$__YF_SIGNIMAGE_TAR" "$@"
-	}
-	YF_SIGNIMAGE_TAR="__yf_signimage_tar"
-else
-	YF_SIGNIMAGE_TAR="tar"
-fi
-if [ -n "$YF_SIGNIMAGE_DD" ]; then
-	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
-	__yf_signimage_dd()
-	{
-		"$__YF_SIGNIMAGE_DD" "$@"
-	}
-	YF_SIGNIMAGE_DD="__yf_signimage_dd"
-else
-	YF_SIGNIMAGE_DD="dd"
-fi
 if [ -n "$YF_SIGNIMAGE_OPENSSL" ]; then
 	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
 	__yf_signimage_openssl()
@@ -207,8 +189,7 @@ __yf_get_language()
 		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
 	}
 
-	___yf_lang="$1"
-	shift
+	___yf_lang="$1" && shift
 
 	if [ -n "$Language" ]; then
 		___yf_check="$(__yf_get_language_code "$Language")"
@@ -296,6 +277,14 @@ __yf_info()
 	__yf_info_output "$___yf_mask" "$@"
 	unset ___yf_mask
 }
+__yf_help()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@"
+	unset ___yf_mask
+}
 #######################################################################################################
 #                                                                                                     #
 # temporary directory creation                                                                        #
@@ -307,7 +296,7 @@ __yf_random()
 	for h in md5sum sha1sum; do
 		if __check_required_command $h; then
 			if [ -c /dev/urandom ] && __check_required_command "dd"; then
-				$YF_SIGNIMAGE_DD if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				dd if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
 			fi
 			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
 				if [ -f $f ]; then
@@ -363,7 +352,10 @@ __yf_show_license()
 }
 __yf_show_version()
 {
-	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, %s\n" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	[ "$__yf_language__" = "de" ] && v_display="$(printf "%s\n" "$v_display" | sed -e "s|version|Version|g")"
+	printf "%s\n" "$v_display"
 }
 __yf_show_copyright()
 {
@@ -390,6 +382,8 @@ eval "$(__yf_msg 'en' 'INF_license'					'\nLicensed to you according to GPLv2 or
 eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_canceled'				'${__yf_ansi_bright_red__}CANCELED${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
@@ -405,7 +399,7 @@ eval "$(__yf_msg 'en' 'INF_filler'					'${__yf_ansi_yellow__}Repeating first ent
 eval "$(__yf_msg 'en' 'INF_filler_once'				'once')"
 eval "$(__yf_msg 'en' 'INF_filler_twice'			'twice')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_signing'					'Signing the image hash (${__yf_ansi_bold__}$hash_algo${__yf_ansi_reset__}) with RSA key from ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
+eval "$(__yf_msg 'en' 'INF_signing'					'Signing the image hash (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) with RSA key from ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
 eval "$(__yf_msg 'en' 'INF_signing_inplace'			'Signing input image in-place ... ')"
 eval "$(__yf_msg 'en' 'INF_signing_stdout'			'Copying signed image to STDOUT ... ')"
 # shellcheck disable=SC2016
@@ -414,7 +408,9 @@ eval "$(__yf_msg 'en' 'INF_check_image_format'		'Checking input file format ... 
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'INF_wrong_eoa_block_count'	'${__yf_ansi_yellow__}Too much end of archive markers read from input file:${__yf_ansi_reset__} blocks expected=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, blocks present=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Input data will be truncated after last archive member.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Enter your password for the signing key: ${__yf_ansi_reset__}')"
+eval "$(__yf_msg 'en' 'INF_no_eoa_blocks'			'${__yf_ansi_yellow__}Not enough end of archive markers read from input file:${__yf_ansi_reset__} blocks expected=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, blocks present=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Signed image will get a valid end of archive mark (2 512-blocks with zeros).${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Enter your password for the signing key (${__yf_ansi_bright_white__}%s${__yf_ansi_bright_blue__}): ${__yf_ansi_reset__}')"
 eval "$(__yf_msg 'en' 'INF_check_password'			'Checking password for the private key file ... ')"
 
 # shellcheck disable=SC2016
@@ -438,7 +434,7 @@ eval "$(__yf_msg 'en' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}This versi
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_wrong_signature_pos'		'${__yf_ansi_red__}The input file contains a member ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} already (in the wrong position) and will not be signed by this script.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Mismatch of ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} between shell and urlader environment (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}')"
+eval "$(__yf_msg 'en' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Mismatch of ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} between shell and urlader environment (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}The special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -455,6 +451,10 @@ eval "$(__yf_msg 'en' 'ERR_private_key_missing'		'${__yf_ansi_red__}The private 
 eval "$(__yf_msg 'en' 'ERR_no_password_from_term'	'${__yf_ansi_red__}No password for private key was specified while calling and STDIN is not your terminal.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'en' 'ERR_missing_key_password'	'${__yf_ansi_red__}The private key file ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} seems to be encrypted, you have to specify the password and not an empty string.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_invalid_option'			'${__yf_ansi_red__}Unknown option ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} specified.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'en' 'ERR_too_many_arguments'		'${__yf_ansi_red__}Too many arguments specified while calling: ${__yf_ansi_bright_white__}%s${__yf_ansi_reset__}\n')"
 #######################################################################################################
 #                                                                                                     #
 # messages - german                                                                                   #
@@ -466,6 +466,8 @@ eval "$(__yf_msg 'de' 'INF_license'					'\nLizenziert nach den Bestimmungen der 
 eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_canceled'				'${__yf_ansi_bright_red__}ABGEBROCHEN${__yf_ansi_reset__}\n')"
 
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
@@ -482,16 +484,18 @@ eval "$(__yf_msg 'de' 'INF_filler'					'${__yf_ansi_yellow__}%s Wiederholen des 
 eval "$(__yf_msg 'de' 'INF_filler_once'				'Einmaliges')"
 eval "$(__yf_msg 'de' 'INF_filler_twice'			'Zweimaliges')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_signing'					'Signieren des Hash-Wertes (${__yf_ansi_bold__}$hash_algo${__yf_ansi_reset__}) über den Inhalt der Image-Datei mit dem RSA-Schlüssel von ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
+eval "$(__yf_msg 'de' 'INF_signing'					'Signieren des Hash-Wertes (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) über den Inhalt der Image-Datei mit dem RSA-Schlüssel von ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
 eval "$(__yf_msg 'de' 'INF_signing_inplace'			'Hinzufügen/Ersetzen der Signatur-Datei in der Image-Datei ... ')"
 eval "$(__yf_msg 'de' 'INF_signing_stdout'			'Ausgabe der signierten Image-Datei ... ')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'INF_replace_signature'		'${__yf_ansi_yellow__}Die Image-Datei enthält bereits eine Signatur, diese wird mit einer neuen ersetzt.${__yf_ansi_reset__}\n')"
 eval "$(__yf_msg 'de' 'INF_check_image_format'		'Prüfung des Formats der Image-Datei ... ')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_wrong_eoa_block_count'	'${__yf_ansi_yellow__}Zu viele leere Blöcke am Ende der Image-Datei:${__yf_ansi_reset__} erwartet=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, vorhanden=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Die überflüssigen Blöcke werden vor dem Signieren abgeschnitten.${__yf_ansi_reset__}\n')"
+eval "$(__yf_msg 'de' 'INF_wrong_eoa_block_count'	'${__yf_ansi_yellow__}Zu viele leere Blöcke am Ende der Image-Datei:${__yf_ansi_reset__} erwartet=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, gefunden=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Die überflüssigen Blöcke werden vor dem Signieren abgeschnitten.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Kennwort für den privaten Schlüssel (der zum Signieren genutzt wird) eingeben: ${__yf_ansi_reset__}')"
+eval "$(__yf_msg 'de' 'INF_no_eoa_blocks'			'${__yf_ansi_yellow__}Nicht genug leere Blöcke am Ende der Image-Datei:${__yf_ansi_reset__} erwartet=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, gefunden=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Die signierte Datei wird mit einer gültigen Dateiende-Markierung versehen.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Kennwort für den privaten Schlüssel (${__yf_ansi_bright_white__}%s${__yf_ansi_bright_blue__}) eingeben: ${__yf_ansi_reset__}')"
 eval "$(__yf_msg 'de' 'INF_check_password'			'Prüfen des Kennworts für den privaten Schlüssel ... ')"
 
 # shellcheck disable=SC2016
@@ -513,9 +517,9 @@ eval "$(__yf_msg 'de' 'ERR_unsupported_hash'		'${__yf_ansi_red__}Der Hash-Algori
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_wrong_signature_pos'		'${__yf_ansi_red__}Die Image-Datei enthält bereits eine Signatur (${__yf_ansi_bright_white__}%s${__yf_ansi_red__}), aber nicht als letzten Eintrag - die Datei wird von diesem Skript nicht signiert.${__yf_ansi_reset__}\n')"
+eval "$(__yf_msg 'de' 'ERR_wrong_signature_pos'		'${__yf_ansi_red__}Die Image-Datei enthält bereits eine Signatur (${__yf_ansi_bright_white__}%s${__yf_ansi_red__}), aber nicht als letzten Eintrag - die Datei wird von diesem Skript nicht signiert.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Die Werte für ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} im Shell- und im Urlader-Environment sind nicht identisch (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}')"
+eval "$(__yf_msg 'de' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Die Werte für ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} im Shell- und im Urlader-Environment sind nicht identisch (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}Der spezielle Modus, die Image-Datei mit dem privaten Schlüssel des Gerätes zu signieren, steht nur auf einem Gerät mit FRITZ!OS von AVM zur Verfügung.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
@@ -532,6 +536,10 @@ eval "$(__yf_msg 'de' 'ERR_private_key_missing'		'${__yf_ansi_red__}Die Datei mi
 eval "$(__yf_msg 'de' 'ERR_no_password_from_term'	'${__yf_ansi_red__}Es wurde beim Aufruf kein Kennwort für den privaten Schlüssel angegeben und STDIN ist kein Terminal, so daß es auch nicht während der Verarbeitung abgefragt werden kann.${__yf_ansi_reset__}\n')"
 # shellcheck disable=SC2016
 eval "$(__yf_msg 'de' 'ERR_missing_key_password'	'${__yf_ansi_red__}Die Datei mit dem privaten Schlüssel ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} ist mit einem Kennwort verschlüsselt, daher muß ein Kennwort eingegeben werden, das nicht leer sein darf.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_invalid_option'			'${__yf_ansi_red__}Unbekannte Option ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} angegeben beim Aufruf.${__yf_ansi_reset__}\n')"
+# shellcheck disable=SC2016
+eval "$(__yf_msg 'de' 'ERR_too_many_arguments'		'${__yf_ansi_red__}Beim Aufruf wurden überzählige Parameter angegeben: ${__yf_ansi_bright_white__}%s${__yf_ansi_reset__}\n')"
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -543,84 +551,74 @@ usage()
 		__yf_show_version
 		__yf_show_copyright
 		__yf_show_license
-		printf    "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
-		printf    "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		__yf_help "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		__yf_help "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
 	else
 		__yf_show_version
 		__yf_show_copyright
 		__yf_show_license
-		printf "\nPurpose:\n\n\033[1;34mSign a TAR archive file as firmware image for FRITZ!OS devices.\033[0m\n\n"
-		printf "Usage:\n\n"
-		printf "\033[1;32m%s \033[0m" "$0"
-		printf "\033[1mimagefile\033[0m [\033[1mpassword\033[0m]\n\n"
-		printf "\033[1mimagefile\033[0m is the archive to sign, it has to follow some rules according its format (see below).\n"
-		printf "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
-		printf "location, while the script is running.\n\n"
-		printf "The \033[1mpassword\033[0m is the one of your private key, which will be used to encrypt your signature. This\n"
-		printf "password (if your private key was stored with encryption) will be read from terminal (without\n"
-		printf "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
-		printf "preset using an environment value called \033[1mYF_SIGNIMAGE_KEYPASSWORD\033[0m.\n\n"
-		printf "The signed image will be written to STDOUT, you're in charge to redirect it to the proper target\n"
-		printf "location. If STDOUT is connected to a terminal device, the script will be aborted.\n\n"
-		printf "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
-		printf "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
-		printf "a better hash algorithm (remember that \033[1mopenssl\033[0m binary still has to support it) with a variable\n"
-		printf "\033[1mYF_SIGNIMAGE_HASH\033[0m in the environment, which contains the name of algorithm to use.\n"
-		printf "It has to be one of:\n\n"
+		__yf_help "\nPurpose:\n\n${__yf_ansi_bright_blue__}Sign a TAR archive file as firmware image for FRITZ!OS devices.${__yf_ansi_reset__}\n\n"
+		__yf_help "Usage:\n\n"
+		__yf_help "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
+		__yf_help "[ ${__yf_ansi_bold__}options${__yf_ansi_reset__} ] "
+		__yf_help "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} [ ${__yf_ansi_bold__}password${__yf_ansi_reset__} ]\n\n"
+		__yf_help "${__yf_ansi_bold__}options${__yf_ansi_reset__} is an optional value out of the following:\n\n"
+		__yf_help "${__yf_ansi_bold__}-h${__yf_ansi_reset__} or ${__yf_ansi_bold__}--help${__yf_ansi_reset__}     - show this info on STDOUT\n"
+		__yf_help "${__yf_ansi_bold__}-i${__yf_ansi_reset__} or ${__yf_ansi_bold__}--in-place${__yf_ansi_reset__} - sign the image file in-place, do not output data to STDOUT\n"
+		__yf_help "${__yf_ansi_bold__}-b${__yf_ansi_reset__} or ${__yf_ansi_bold__}--on-box${__yf_ansi_reset__}   - use FRITZ!OS device key (see comments below) to sign\n\n"
+		__yf_help "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} is the archive to sign, it has to follow some rules according its format (see below).\n"
+		__yf_help "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
+		__yf_help "location, while the script is running.\n\n"
+		__yf_help "The ${__yf_ansi_bold__}password${__yf_ansi_reset__} is the one of your private key, which will be used to encrypt your signature. This\n"
+		__yf_help "password (if your private key was stored with encryption) will be read from terminal (without\n"
+		__yf_help "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
+		__yf_help "preset using an environment value called ${__yf_ansi_bold__}YF_SIGNIMAGE_KEYPASSWORD${__yf_ansi_reset__}.\n\n"
+		__yf_help "If option ${__yf_ansi_bold__}-i${__yf_ansi_reset__} (long: ${__yf_ansi_bold__}--in-place${__yf_ansi_reset__}) is not specified, the signed image will be written to STDOUT and\n"
+		__yf_help "you're in charge to redirect it to the proper target location. If a terminal is connected there,\n"
+		__yf_help "the script will be aborted.\n\n"
+		__yf_help "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
+		__yf_help "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
+		__yf_help "a better hash algorithm (remember that ${__yf_ansi_bold__}openssl${__yf_ansi_reset__} binary still has to support it) with a variable\n"
+		__yf_help "${__yf_ansi_bold__}YF_SIGNIMAGE_HASH${__yf_ansi_reset__} in the environment, which contains the name of algorithm to use.\n"
+		__yf_help "It has to be one of:\n\n"
 		for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
-			printf -- "- %s\n" "$algo"
+			__yf_help "- %s\n" "$algo"
 		done
-		printf "\n"
-		printf "A special use case is signing of a TAR file directly in a FRITZ!OS environment, if such a signed\n"
-		printf "file is surely verified later only on the same device. Then the RSA key from \033[1mwebsrv_ssl_key.pem\033[0m\n"
-		printf "may be used instead of an additional key and there's no need to specify a password for the key,\n"
-		printf "because it's available with \033[1mprivatekeypassword\033[0m from device (hardware) settings.\n\n"
-		printf "To switch this script into 'internal-only mode', set the environment variable \033[1mYF_SIGNIMAGE_ON_BOX\033[0m\n"
-		printf "to a value of '1' while calling. But be aware, that a key size other than 1024 bits would lead to\n"
-		printf "impossibility to verify the signature with AVM's components ... and newer FRITZ!OS versions use a\n"
-		printf "2048-bit RSA key to protect their TLS connections.\n\n"
-		printf "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
-		printf "urlader and shell environment are different (due to an 'alien' firmware running, while the value\n"
-		printf "from bootloader isn't changeable), the script will cease to detect the host system as a FRITZ!OS\n"
-		printf "device. In this case you may provide any non-empty value with a variable named\n"
-		printf "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
-		printf "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
-		printf "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the \033[1m--format=gnu\033[0m\n"
-		printf "or \033[1m--format=oldgnu\033[0m option while creating the file.\n\n"
-		printf "Furthermore the first archived member has to be a directory entry with name \033[1m./var/\033[0m - the starting\n"
-		printf "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
-		printf "such an entry. AVM's components will filter out any names not starting with this path name and\n"
-		printf "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
-		printf "If the provided input image already contains a member called \033[1m./var/signature\033[0m, it has to be the\n"
-		printf "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
-		printf "will abort the signing process. If no signature file was found on input archive, a new one is\n"
-		printf "appended after the signed payload.\n\n"
-		printf "To make integration of this script into a foreign toolchain easier, the location of some needed\n"
-		printf "tools may be overwritten with environment values. Currently there are three utilities needed:\n"
-		printf "\033[1mtar\033[0m, \033[1mopenssl\033[0m and \033[1mdd\033[0m (the latter one is found in POSIX specifications).\n"
-		printf "Their locations may be specified with variables \033[1mYF_SIGNIMAGE_<toolname>\033[0m, where \033[1m<toolname>\033[0m\n"
-		printf "is the name of the utility in uppercase letters. If a value isn't present, the simple name\n"
-		printf "of this tool will be used to call it. You may use spaces within these values, if you ensure\n"
-		printf "proper quotes while calling (e.g. YF_SIGNIMAGE_TAR='busybox tar' to use the applet of your\n"
-		printf "BusyBox binary).\n\n"
-		printf "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
-		printf "read from an configuration file with name \033[1myf_signimage.conf\033[0m. The file has to be stored\n"
-		printf "in the same directory as this script. Please read the comments in this file, if you want to change\n"
-		printf "the places, where other files will be searched. To change the location, where the configuration\n"
-		printf "file will be expected, you may use an environment value \033[1mYF_SIGNIMAGE_CONFIG\033[0m with the\n"
-		printf "(relative or absolute) path name of it.\n\n"
-		printf "To keep backward compatibility with previous versions, the provided configuration template still\n"
-		printf "takes the environment variable \033[1mname_prefix\033[0m into account - but this name shouldn't be\n"
-		printf "used any longer. Use \033[1mYF_SIGNIMAGE_KEYS\033[0m variable instead - it's presence is checked\n"
-		printf "first and any settings here, will overrule all others. If there's no variable with any of those\n"
-		printf "names, due to historic reasons the presence of \033[1mFREETZ_IMAGE_SIGNING_PREFIX\033[0m will be\n"
-		printf "checked. An existing variable with this name will be used next - otherwise a value of\n"
-		printf "\033[1m\$HOME/.yf_signimage/image_signing\033[0m gets assigned in the last resort.\n\n"
-		printf "The file extensions from configuration file shouldn't be changed without strong knowledge about\n"
-		printf "using cryptographic tools. Please don't blame the author, if your own changes to these values\n"
-		printf "render the script(s) useless (beside you've to respect the license terms even, which are denying\n"
-		printf "responsibility of the author). The extension names were only moved to the configuration file to\n"
-		printf "prevent most rationales for own changes to the script files.\n\n"
+		__yf_help "\n"
+		__yf_help "A special use case (which is activated by option ${__yf_ansi_bold__}-b${__yf_ansi_reset__} or ${__yf_ansi_bold__}--on-box${__yf_ansi_reset__}) is signing a TAR file directly\n"
+		__yf_help "in a FRITZ!OS environment, if such a signature is surely verified later only on the same device.\n"
+		__yf_help "Then the RSA key from ${__yf_ansi_bold__}websrv_ssl_key.pem${__yf_ansi_reset__} may be used instead of an additional key and there's no\n"
+		__yf_help "need to specify a password for the key, because it's computed from device (hardware) settings.\n\n"
+		__yf_help "To switch the script into this mode without the options above, you may set the environment\n"
+		__yf_help "variable ${__yf_ansi_bold__}YF_SIGNIMAGE_ON_BOX${__yf_ansi_reset__} to a value of '1' instead. But be aware in any case, that a key size\n"
+		__yf_help "other than 1024 bits would lead to impossibility to verify the signature with AVM's components -\n"
+		__yf_help "and newer FRITZ!OS versions use a 2048-bit RSA key to protect their TLS connections.\n\n"
+		__yf_help "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
+		__yf_help "urlader and shell environment are different (due to an 'alien' firmware running, while the value\n"
+		__yf_help "from bootloader isn't changeable), the script will cease to detect the host system as a FRITZ!OS\n"
+		__yf_help "device. In this case you may provide any non-empty value with a environment variable named\n"
+		__yf_help "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
+		__yf_help "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
+		__yf_help "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the ${__yf_ansi_bold__}--format=gnu${__yf_ansi_reset__}\n"
+		__yf_help "or ${__yf_ansi_bold__}--format=oldgnu${__yf_ansi_reset__} option while creating the file.\n\n"
+		__yf_help "Furthermore the first archived member has to be a directory entry with name ${__yf_ansi_bold__}./var/${__yf_ansi_reset__} - the first\n"
+		__yf_help "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
+		__yf_help "such an entry. AVM's components will filter out any names not starting with this path name and\n"
+		__yf_help "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
+		__yf_help "If the provided input image already contains a member called ${__yf_ansi_bold__}./var/signature${__yf_ansi_reset__}, it has to be the\n"
+		__yf_help "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
+		__yf_help "will abort the signing process. If no signature file was found on input archive, a new one is\n"
+		__yf_help "appended after the signed payload.\n\n"
+		__yf_help "To make integration of this script into a foreign toolchain easier, the location of the used\n"
+		__yf_help "OpenSSL command line utility may be overwritten with ${__yf_ansi_bold__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_reset__} from environment or the\n"
+		__yf_help "configuration file.\n\n"
+		__yf_help "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
+		__yf_help "read from a configuration file with name ${__yf_ansi_bold__}yf_signimage.conf${__yf_ansi_reset__}. The file has to be stored in the\n"
+		__yf_help "same directory as this script. Please read the comments there, if you want to change the places,\n"
+		__yf_help "where other files will be searched. To change location, where the configuration file will be\n"
+		__yf_help "expected, you may use an environment value ${__yf_ansi_bold__}YF_SIGNIMAGE_CONFIG${__yf_ansi_reset__} with the (relative or absolute)\n"
+		__yf_help "path name of it. If no configuration file exists, default values (see configuration template)\n"
+		__yf_help "will be used.\n\n"
 	fi
 )
 #######################################################################################################
@@ -710,9 +708,12 @@ read_password_from_terminal()
 	# parameter strings may contain ANSI sequences to format terminal output
 	__yf_info_output "$@"
 	tty_settings="$(stty -g)"
+	# shellcheck disable=SC2064
+	trap "stty '$tty_settings' 2>/dev/null 1>&2" EXIT
+	# shellcheck disable=SC2064
+	trap "printf '$(__yf_get_localized INF_canceled)' 1>&2; exit 1" INT
 	stty -echo
 	read -r password
-	stty "$tty_settings" 2>/dev/null 1>&2
 	__yf_info_output "\n"
 	printf "%s\n" "$password"
 )
@@ -768,7 +769,7 @@ tar_header_checksum()
 #######################################################################################################
 is_fritzos_environment()
 (
-	hwrev_shell="$(eval printf "%s\n" "$hwrev_name")"
+	hwrev_shell="$(eval "printf '%s\n' \$$hwrev_name")"
 	[ ${#hwrev_shell} -eq 0 ] && exit 1
 	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && exit 1
 	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || exit 1
@@ -777,7 +778,7 @@ is_fritzos_environment()
 	[ ${#hwrev_loader} -eq 0 ] && exit 1
 	if [ -z "$YF_SIGNIMAGE_IGNORE_HWREVISION" ] && [ "$hwrev_shell" != "$hwrev_loader" ]; then
 		__yf_emsg "ERR_hwrev_mismatch" "$hwrev_name" "$hwrev_shell" "$hwrev_loader"
-		exit 1
+		exit 2
 	fi
 	prompt_loader="$(sed -n -e "s|^$prompt_name\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	[ ${#prompt_loader} -eq 0 ] && exit 1
@@ -795,7 +796,7 @@ is_fritzos_environment()
 box_key_password()
 (
 	is_fritzos_environment || exit 1
-	maca="$(sed -n -e "$(printf "s|^%s[ \t]*\(.*\)|\1|p" "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	maca="$(sed -n -e "$(printf 's|^%s\\t\\(.*\\)|\\1|p' "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
 	if command -v md5sum 2>/dev/null 1>&2; then
 		hash="$(printf "%s" "$maca" | md5sum)"
 	else
@@ -814,45 +815,54 @@ box_key_password()
 #                                                                                                     #
 #######################################################################################################
 tmp=$(__yf_mktmp -d)
-trap 'rm -r "$tmp" 2>/dev/null 1>&2' EXIT HUP
+trap '[ -d "$tmp" ] && rm -r "$tmp" 2>/dev/null 1>&2' EXIT INT
 if [ -n "$DEBUG_MESSAGES" ]; then # show all defined messages and exit
-	set | grep "^__YF_L10N" 1>&2
+	set | sed -n -e "/^__YF_L10N/p" 1>&2
 	exit 0
-fi
-#######################################################################################################
-#                                                                                                     #
-# check arguments for specified options                                                               #
-#                                                                                                     #
-#######################################################################################################
-if [ -z "$1" ]; then
-	usage 1>&2
-	__yf_emsg "ERR_missing_image_name"
-	exit $YF_SIGN_INVALID_CALL
-elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-	usage
-	exit $YF_SIGN_SUCCESS
-elif [ "$1" = "-i" ] || [ "$1" = "--in-place" ]; then
-	sign_in_place=1
-	shift
 fi
 #######################################################################################################
 #                                                                                                     #
 # some output due to license terms                                                                    #
 #                                                                                                     #
 #######################################################################################################
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage
+	exit $YF_SIGN_SUCCESS
+fi
 __yf_show_version 1>&2
 __yf_show_copyright 1>&2
 __yf_info "INF_license"
 #######################################################################################################
 #                                                                                                     #
-# check input file and output target                                                                  #
+# check arguments for specified options                                                               #
 #                                                                                                     #
 #######################################################################################################
 if [ -z "$1" ]; then
-	usage 1>&2
+	__yf_emsg "ERR_missing_image_name"
+	exit $YF_SIGN_INVALID_CALL
+else
+	while [ -n "$(expr "$1" : "\(-.\+\).*")" ]; do
+		if [ "$1" = "-i" ] || [ "$1" = "--in-place" ]; then
+			sign_in_place=1
+			shift
+		elif [ "$1" = "-b" ] || [ "$1" = "--on-box" ]; then
+			on_box=1
+			shift
+		else
+			__yf_emsg "ERR_invalid_option" "$1"
+			exit $YF_SIGN_INVALID_CALL
+		fi
+	done
+fi
+if [ -z "$1" ]; then
 	__yf_emsg "ERR_missing_image_name"
 	exit $YF_SIGN_INVALID_CALL
 fi
+#######################################################################################################
+#                                                                                                     #
+# check input file and output target                                                                  #
+#                                                                                                     #
+#######################################################################################################
 image_file="$1"
 shift
 if [ "$image_file" = "-" ]; then
@@ -882,6 +892,19 @@ fi
 if [ -t 1 ] && ! [ "$sign_in_place" = "1" ]; then
 	__yf_emsg "ERR_output_to_terminal"
 	exit $YF_SIGN_NO_OUTPUT_TO_TERMINAL
+fi
+#######################################################################################################
+#                                                                                                     #
+# check key password on command line                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ -n "$1" ]; then
+	KEYPASSWORD="$1"
+	shift
+fi
+if [ -n "$1" ]; then
+	__yf_emsg "ERR_too_many_arguments" "$*"
+	exit $YF_SIGN_INVALID_CALL
 fi
 #######################################################################################################
 #                                                                                                     #
@@ -920,22 +943,21 @@ openssl_check_digest "$v_major" "$v_minor" "$hash_algo" || exit $YF_SIGN_OSSL_UN
 # check the special case of signing on the FRITZ!Box with the internal key                            #
 #                                                                                                     #
 #######################################################################################################
-on_box=0
-if [ ${#YF_SIGNIMAGE_ON_BOX} -gt 0 ]; then
-	if [ "$YF_SIGNIMAGE_ON_BOX" = "1" ]; then
-		if ! is_fritzos_environment; then
-			__yf_emsg "ERR_no_fritzos_device"
-			exit $YF_SIGN_NO_FRITZOS_DEVICE
+[ -z "$on_box" ] && on_box="${YF_SIGNIMAGE_ON_BOX:-0}"
+if [ "$on_box" = "1" ]; then
+	is_fritzos_environment
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		[ "$rc" -lt 2 ] && __yf_emsg "ERR_no_fritzos_device"
+		exit $YF_SIGN_NO_FRITZOS_DEVICE
+	else
+		KEYPASSWORD="$(box_key_password)"
+		if [ ${#KEYPASSWORD} -eq 0 ]; then
+			__yf_emsg "ERR_box_key_password"
+			exit $YF_SIGN_BOX_KEY_PASSWORD_ERROR
 		else
-			KEYPASSWORD="$(box_key_password)"
-			if [ ${#KEYPASSWORD} -eq 0 ]; then
-				__yf_emsg "ERR_box_key_password"
-				exit $YF_SIGN_BOX_KEY_PASSWORD_ERROR
-			else
-				filename_prefix="$box_key_name"
-				private_extension=".pem"
-				on_box=1
-			fi
+			filename_prefix="$box_key_name"
+			private_extension=".pem"
 		fi
 	fi
 fi
@@ -945,12 +967,12 @@ fi
 #                                                                                                     #
 #######################################################################################################
 __yf_info "INF_check_image_format"
-if ! "$YF_SIGNIMAGE_DD" if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null; then
+if ! dd if="$image_file" bs=1 skip=257 count=5 status=none 2>/dev/null | grep -q "^ustar\$" 2>/dev/null; then
 	show_error
 	__yf_emsg "ERR_no_tar_file"
 	exit $YF_SIGN_IMAGE_FORMAT_ERROR
 fi
-if "$YF_SIGNIMAGE_DD" if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null; then
+if dd if="$image_file" bs=100 count=1 status=none 2>/dev/null | grep -q "PaxHeaders" 2>/dev/null; then
 	show_error
 	__yf_emsg "ERR_wrong_tar_format"
 	exit $YF_SIGN_IMAGE_FORMAT_ERROR
@@ -961,8 +983,8 @@ fi
 #                                                                                                     #
 #######################################################################################################
 printf "%s\000" "$sig_file_first" >"$tmp/$first_dir"
-if ! "$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=$(( ${#first_dir} )) 7 2>/dev/null | cmp -s "$tmp/$first_dir" - 2>/dev/null || \
-   ! [ "$("$YF_SIGNIMAGE_DD" if="$image_file" bs=1 count=1 skip=156 2>/dev/null)" = "5" ]; then
+if ! dd if="$image_file" bs=1 count=$(( ${#sig_file_first} + 1 )) 2>/dev/null | cmp -s "$tmp/$first_dir" - 2>/dev/null || \
+   ! [ "$(dd if="$image_file" bs=1 count=1 skip=156 2>/dev/null)" = "5" ]; then
 	show_error
 	__yf_emsg "ERR_invalid_1st_member" "$sig_file_first"
 	exit $YF_SIGN_IMAGE_FORMAT_ERROR
@@ -996,36 +1018,33 @@ file_size="$(wc -c < "$image_file")"
 file_blocks=$(( file_size / 512 ))
 eoa_blocks=$(( file_blocks - copy_blocks - signature_blocks ))
 show_ok
-#cat "$tmp/$tar_toc" 1>&2
-#printf "copy_block=%u file_blocks=%u signature_blocks=%u eoa_blocks=%u file_size=%u\n" "$copy_blocks" "$file_blocks" "$signature_blocks" "$eoa_blocks" "$file_size" 1>&2
-# TODO: remove debug code above
 [ $signature_blocks -gt 0 ] && __yf_info "INF_replace_signature"
 [ $eoa_blocks -gt 2 ] && __yf_info "INF_wrong_eoa_block_count" "2" "$eoa_blocks"
+[ $eoa_blocks -lt 2 ] && __yf_info "INF_no_eoa_blocks" "2" "$eoa_blocks"
 #######################################################################################################
 #                                                                                                     #
 # get the password for the private key, if needed                                                     #
 #                                                                                                     #
 #######################################################################################################
-if [ $on_box -eq 0 ]; then
+if [ "$on_box" != "1" ]; then
 	if ! [ -f "${filename_prefix}${private_extension}" ]; then
 		__yf_emsg "ERR_private_key_missing" "$filename_prefix" "$private_extension"
 		exit $YF_SIGN_PRIVATE_KEY_MISSING
 	fi
 	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
-		if [ -z "$2" ]; then
+		if [ -z "$KEYPASSWORD" ]; then
 			if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
 				if ! [ -t 0 ]; then
 					usage 1>&2
 					__yf_emsg "ERR_no_password_from_term"
 					exit $YF_SIGN_WRONG_PASSWORD
 				else
-					KEYPASSWORD="$(read_password_from_terminal "$(__yf_get_localized INF_enter_password)")"
+					# shellcheck disable=SC2059
+					KEYPASSWORD="$(read_password_from_terminal "$(printf "$(__yf_get_localized INF_enter_password)" "${filename_prefix}${private_extension}")")" || exit $YF_SIGN_WRONG_PASSWORD
 				fi
 			else
 				KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
 			fi
-		else
-			KEYPASSWORD="$2"
 		fi
 	fi
 fi
@@ -1034,7 +1053,7 @@ fi
 # check key password first (and key file presence)                                                    #
 #                                                                                                     #
 #######################################################################################################
-if [ $on_box -eq 0 ]; then
+if [ "$on_box" != "1" ]; then
 	if [ ${#KEYPASSWORD} -gt 0 ]; then
 		__yf_info "INF_check_password"
 		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
@@ -1055,17 +1074,15 @@ fi
 # prepare a temporary block as filler, if circumvention of AVM's hash error is needed                 #
 #                                                                                                     #
 #######################################################################################################
-rm -f "$tmp/$filler_name"
 touch "$tmp/$filler_name"
 if [ -z "$YF_SIGNIMAGE_SKIP_WORKAROUNDS" ]; then
 	if [ $(( ( copy_blocks + 2 ) % 20 )) -eq 0 ]; then
 		__yf_info "INF_filler" "$(__yf_get_localized INF_filler_once)"
-		"$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/$filler_name" bs=512 count=1 status=none 2>/dev/null
+		dd if="$image_file" of="$tmp/$filler_name" bs=512 count=1 status=none 2>/dev/null
 		show_ok
 	elif [ $(( ( copy_blocks + 3 ) % 20 )) -eq 0 ]; then
 		__yf_info "INF_filler" "$(__yf_get_localized INF_filler_twice)"
-		( "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=1 status=none 2>/dev/null;
-		"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=1 status=none 2>/dev/null ) >"$tmp/$filler_name"
+		( dd if="$image_file" bs=512 count=1 status=none 2>/dev/null; dd if="$image_file" bs=512 count=1 status=none 2>/dev/null ) >"$tmp/$filler_name"
 		show_ok
 	fi
 fi
@@ -1075,7 +1092,7 @@ fi
 # be used as "end of archive" header too (2 continous empty blocks with a size of 512 octets)         #
 #                                                                                                     #
 #######################################################################################################
-"$YF_SIGNIMAGE_DD" if=/dev/zero of="$tmp/$empty_name" bs=512 count=2 status=none 2>/dev/null
+dd if=/dev/zero of="$tmp/$empty_name" bs=512 count=2 status=none 2>/dev/null
 #######################################################################################################
 #                                                                                                     #
 # generate the signature file                                                                         #
@@ -1086,12 +1103,15 @@ fi
 # - an additional 1K block of zeros serves as new EoA header                                          #
 #                                                                                                     #
 #######################################################################################################
-__yf_info "INF_signing" "$filename_prefix" "$private_extension"
-if "$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/$filler_name" "$tmp/$empty_name" "$tmp/$empty_name" | \
-"$YF_SIGNIMAGE_OPENSSL" dgst -"$hash_algo" -sign "${filename_prefix}${private_extension}" -out "$tmp/$sig_file_content" -passin "pass:$KEYPASSWORD"; then
+__yf_info "INF_signing" "$hash_algo" "$filename_prefix" "$private_extension"
+export KEYPASSWORD
+if dd if="$image_file" bs=512 count=$copy_blocks status=none 2>&1 | cat - "$tmp/$filler_name" "$tmp/$empty_name" "$tmp/$empty_name" | \
+"$YF_SIGNIMAGE_OPENSSL" dgst -"$hash_algo" -sign "${filename_prefix}${private_extension}" -out "$tmp/$sig_file_content" -passin "env:KEYPASSWORD"; then
+	export KEYPASSWORD=""
 	show_ok
 	sigsize="$(wc -c < "$tmp/$sig_file_content")"
 else
+	export KEYPASSWORD=""
 	show_error
 	exit $YF_SIGN_DIGEST_ERROR
 fi
@@ -1100,13 +1120,13 @@ fi
 # build our own signature member using the first member entry from image                              #
 #                                                                                                     #
 #######################################################################################################
-"$YF_SIGNIMAGE_DD" if="$image_file" of="$tmp/$hdr_name" bs=512 count=1 status=none 2>/dev/null
-printf "%s" "${sig_file_content}" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=6 conv=notrunc status=none 2>/dev/null
-printf "%04o\000" "$sigsize" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=131 conv=notrunc status=none 2>/dev/null
-printf "0" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=156 conv=notrunc status=none 2>/dev/null
-printf "        " | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
+dd if="$image_file" of="$tmp/$hdr_name" bs=512 count=1 status=none 2>/dev/null
+printf "%s" "${sig_file_content}" | dd of="$tmp/$hdr_name" bs=1 seek=6 conv=notrunc status=none 2>/dev/null
+printf "%04o\000" "$sigsize" | dd of="$tmp/$hdr_name" bs=1 seek=131 conv=notrunc status=none 2>/dev/null
+printf "0" | dd of="$tmp/$hdr_name" bs=1 seek=156 conv=notrunc status=none 2>/dev/null
+printf "        " | dd of="$tmp/$hdr_name" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
 chksum=$(tar_header_checksum "$tmp/$hdr_name")
-printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
+printf "%06o\000" "$chksum" | dd of="$tmp/$hdr_name" bs=1 seek=148 conv=notrunc status=none 2>/dev/null
 #######################################################################################################
 #                                                                                                     #
 # combine signature and EoA headers in a single file                                                  #
@@ -1114,7 +1134,7 @@ printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=1
 #######################################################################################################
 {
 	cat "$tmp/$filler_name" "$tmp/$hdr_name" "$tmp/$sig_file_content"
-	"$YF_SIGNIMAGE_DD" if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
+	dd if=/dev/zero bs=$(( 512 - sigsize )) count=1 status=none 2>/dev/null
 	cat "$tmp/$empty_name"
 } >"$tmp/$append_name"
 #######################################################################################################
@@ -1124,10 +1144,10 @@ printf "%06o\000" "$chksum" | "$YF_SIGNIMAGE_DD" of="$tmp/$hdr_name" bs=1 seek=1
 #######################################################################################################
 if [ "$sign_in_place" = "1" ]; then
 	__yf_info "INF_signing_inplace"
-	"$YF_SIGNIMAGE_DD" if="$tmp/$append_name" of="$image_file" bs=512 seek=$copy_blocks status=none
+	dd if="$tmp/$append_name" of="$image_file" bs=512 seek=$copy_blocks status=none
 else
 	__yf_info "INF_signing_stdout"
-	"$YF_SIGNIMAGE_DD" if="$image_file" bs=512 count=$copy_blocks status=none
+	dd if="$image_file" bs=512 count=$copy_blocks status=none
 	cat "$tmp/$append_name"
 fi
 show_ok
