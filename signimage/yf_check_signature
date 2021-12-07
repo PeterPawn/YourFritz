@@ -61,6 +61,8 @@ eva_prompt="Eva_AVM"
 public_keys_list="public_keys_to_consider"
 tmp_pubkey="pubkey"
 tar_toc="tar_members"
+openssl_conf_name="openssl.conf"
+image_file_name="image_file"
 YF_UI_LANGUAGES="en de"
 #######################################################################################################
 #                                                                                                     #
@@ -724,8 +726,8 @@ show_version()
 		printf "v_major=%s v_minor=%s" "$v_major" "$v_minor"
 		cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
 		if [ -n "$cnf" ]; then # OpenSSL configuration file missing
-			touch "$tmp/openssl.cnf"
-			printf "; export OPENSSL_CONF=\"%s\"" "$tmp/openssl.cnf"
+			touch "$tmp/$openssl_conf_name"
+			printf "; export OPENSSL_CONF=\"%s\"" "$tmp/$openssl_conf_name"
 		fi
 		printf "\n"
 	fi
@@ -1087,7 +1089,7 @@ if [ -z "$1" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 else
 	image_file="$1"
 	if [ "$image_file" = "-" ]; then
-		image_file="$tmp/input_image"
+		image_file="$tmp/$image_file_name"
 		cat >"$image_file" 2>/dev/null
 	fi
 	shift
