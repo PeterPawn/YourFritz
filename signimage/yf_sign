@@ -177,6 +177,29 @@ __yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
 __yf_ansi_reset__="$(__yf_ansi_sgr 0)"
 __yf_bold() { printf -- "%s" "$__yf_ansi_bold__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
 __yf_undl() { printf -- "%s" "$__yf_ansi_underline__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_color_codes()
+{
+	printf "%s\n" "$1" | sed \
+		-e "s|#BOLD#|${__yf_ansi_bold__}|g" \
+		-e "s|#UNDL#|${__yf_ansi_underline__}|g" \
+		-e "s|#BLCK#|${__yf_ansi_black__}|g" \
+		-e "s|#RED#|${__yf_ansi_red__}|g" \
+		-e "s|#GRN#|${__yf_ansi_green__}|g" \
+		-e "s|#YLLW#|${__yf_ansi_yellow__}|g" \
+		-e "s|#BLU#|${__yf_ansi_blue__}|g" \
+		-e "s|#MGNT#|${__yf_ansi_magenta__}|g" \
+		-e "s|#CYN#|${__yf_ansi_cyan__}|g" \
+		-e "s|#WHT#|${__yf_ansi_white__}|g" \
+		-e "s|#GRY#|${__yf_ansi_gray__}|g" \
+		-e "s|#BRED#|${__yf_ansi_bright_red__}|g" \
+		-e "s|#BGRN#|${__yf_ansi_bright_green__}|g" \
+		-e "s|#BYLLW#|${__yf_ansi_bright_yellow__}|g" \
+		-e "s|#BBLU#|${__yf_ansi_bright_blue__}|g" \
+		-e "s|#BMGNT#|${__yf_ansi_bright_magenta__}|g" \
+		-e "s|#BCYN#|${__yf_ansi_bright_cyan__}|g" \
+		-e "s|#BWHT#|${__yf_ansi_bright_white__}|g" \
+		-e "s|#RSET#|${__yf_ansi_reset__}|g"
+}
 
 __yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
 __yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
@@ -240,6 +263,21 @@ __yf_msg()
 {
 	__yf_declare_message "$@"
 }
+__yf_localization()
+{
+	language="en"
+	while read -r id message; do
+		if [ "$id" = "language" ]; then
+			language="$message"
+			continue
+		fi
+		if [ -n "$id" ]; then
+			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
+				&& __yf_declare_message $language $id "$(__yf_color_codes "$message")"
+		fi
+	done
+}
+
 #######################################################################################################
 #                                                                                                     #
 # functions to display messages to user                                                               #
@@ -279,7 +317,7 @@ __yf_info()
 }
 __yf_help()
 {
-	___yf_mask="$1"
+	___yf_mask="$(__yf_color_codes "$1")"
 	shift
 	# shellcheck disable=SC2059
 	printf -- "${___yf_mask}" "$@"
@@ -374,172 +412,115 @@ __yf_show_copyright()
 
 #######################################################################################################
 #                                                                                                     #
-# messages - english                                                                                  #
+# prepare localized messages                                                                          #
 #                                                                                                     #
 #######################################################################################################
-eval "$(__yf_msg 'en' 'INF_license'					'\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_show_error'				'${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_canceled'				'${__yf_ansi_bright_red__}CANCELED${__yf_ansi_reset__}\n')"
+___yf_localization="$(__yf_mktmp)"
+__yf_localization >"$___yf_localization" <<'EOM'
+# YF_UI localization start
 
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_ossl_version'			'Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
-eval "$(__yf_msg 'en' 'INF_copy_stdin'				'Copying image data from STDIN ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_data_count_stdin'		'${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} bytes copied${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_check_command'			'Check ${__yf_ansi_bold__}%s${__yf_ansi_reset__} command ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_check_digest'			'Verify digest algorithm ${__yf_ansi_bold__}%s${__yf_ansi_reset__} is supported ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_filler'					'${__yf_ansi_yellow__}Repeating first entry %s as filler ... ${__yf_ansi_reset__}')"
-eval "$(__yf_msg 'en' 'INF_filler_once'				'once')"
-eval "$(__yf_msg 'en' 'INF_filler_twice'			'twice')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_signing'					'Signing the image hash (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) with RSA key from ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
-eval "$(__yf_msg 'en' 'INF_signing_inplace'			'Signing input image in-place ... ')"
-eval "$(__yf_msg 'en' 'INF_signing_stdout'			'Copying signed image to STDOUT ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_replace_signature'		'${__yf_ansi_yellow__}There is already a signature file in the provided image, it will be replaced by a new one.${__yf_ansi_reset__}\n')"
-eval "$(__yf_msg 'en' 'INF_check_image_format'		'Checking input file format ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_wrong_eoa_block_count'	'${__yf_ansi_yellow__}Too much end of archive markers read from input file:${__yf_ansi_reset__} blocks expected=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, blocks present=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Input data will be truncated after last archive member.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_no_eoa_blocks'			'${__yf_ansi_yellow__}Not enough end of archive markers read from input file:${__yf_ansi_reset__} blocks expected=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, blocks present=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Signed image will get a valid end of archive mark (2 512-blocks with zeros).${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Enter your password for the signing key (${__yf_ansi_bright_white__}%s${__yf_ansi_bright_blue__}): ${__yf_ansi_reset__}')"
-eval "$(__yf_msg 'en' 'INF_check_password'			'Checking password for the private key file ... ')"
+language en
 
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_openssl'			'${__yf_ansi_red__}Missing ${__yf_ansi_white__}openssl${__yf_ansi_red__} binary, set ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__} variable to its path name.${__yf_ansi_reset__}\a\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_image_name'		'${__yf_ansi_red__}Missing image file name argument.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_inplace_stdin'			'${__yf_ansi_red__}An image file read from STDIN may not be signed in-place.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_invalid_image_data'		'${__yf_ansi_red__}The provided image file contains invalid data.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_stdin_from_terminal'		'${__yf_ansi_red__}Image file shall be read from STDIN, but it is a terminal device.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_image_file_missing'		'${__yf_ansi_red__}The specified image file ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_output_to_terminal'		'${__yf_ansi_red__}The standard output descriptor (STDOUT) is connected to a terminal device, please redirect output to a file.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_unsupported_hash'		'${__yf_ansi_red__}Unknown or unsupported (by this script) hash algorithm ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} specified.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}This version of OpenSSL (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) is unsupported.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_wrong_signature_pos'		'${__yf_ansi_red__}The input file contains a member ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} already (in the wrong position) and will not be signed by this script.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Mismatch of ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} between shell and urlader environment (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}The special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_box_key_password'		'${__yf_ansi_red__}Error determining the password of RSA key from FRITZ!OS.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_no_tar_file'				'${__yf_ansi_red__}Input file does not look like a TAR archive.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_wrong_tar_format'		'${__yf_ansi_red__}Input file contains extended headers (PaxHeaders) and may not be signed this way.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_invalid_1st_member'		'${__yf_ansi_red__}First member of archive file has to be a directory and has to use the name ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_private_key_missing'		'${__yf_ansi_red__}The private key file ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} is not a regular file or is missing.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_no_password_from_term'	'${__yf_ansi_red__}No password for private key was specified while calling and STDIN is not your terminal.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_missing_key_password'	'${__yf_ansi_red__}The private key file ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} seems to be encrypted, you have to specify the password and not an empty string.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_invalid_option'			'${__yf_ansi_red__}Unknown option ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} specified.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'en' 'ERR_too_many_arguments'		'${__yf_ansi_red__}Too many arguments specified while calling: ${__yf_ansi_bright_white__}%s${__yf_ansi_reset__}\n')"
-#######################################################################################################
-#                                                                                                     #
-# messages - german                                                                                   #
-#                                                                                                     #
-#######################################################################################################
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_license'					'\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_show_error'				'${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_show_ok'					'${__yf_ansi_green__}OK${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_canceled'				'${__yf_ansi_bright_red__}ABGEBROCHEN${__yf_ansi_reset__}\n')"
+INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
+ERR_show_error				#RED#FAILED#RSET#\n
+INF_show_ok					#GRN#OK#RSET#\n
+INF_canceled				#BRED#CANCELED#RSET#\n
 
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_ossl_version'			'Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_copy_stdin'				'Kopiere Image-Daten von STDIN in temporäre Datei ... ${__yf_ansi_reset__}')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_data_count_stdin'		'${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} Bytes kopiert${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_check_command'			'Prüfe Verfügbarkeit des ${__yf_ansi_bold__}%s${__yf_ansi_reset__}-Kommandos ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_check_digest'			'Prüfe, ob der Digest-Algorithmus ${__yf_ansi_bold__}%s${__yf_ansi_reset__} unterstützt ist ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_filler'					'${__yf_ansi_yellow__}%s Wiederholen des ersten Eintrags als Füllblock ... ${__yf_ansi_reset__}')"
-eval "$(__yf_msg 'de' 'INF_filler_once'				'Einmaliges')"
-eval "$(__yf_msg 'de' 'INF_filler_twice'			'Zweimaliges')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_signing'					'Signieren des Hash-Wertes (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) über den Inhalt der Image-Datei mit dem RSA-Schlüssel von ${__yf_ansi_bold__}%s%s${__yf_ansi_reset__} ... ')"
-eval "$(__yf_msg 'de' 'INF_signing_inplace'			'Hinzufügen/Ersetzen der Signatur-Datei in der Image-Datei ... ')"
-eval "$(__yf_msg 'de' 'INF_signing_stdout'			'Ausgabe der signierten Image-Datei ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_replace_signature'		'${__yf_ansi_yellow__}Die Image-Datei enthält bereits eine Signatur, diese wird mit einer neuen ersetzt.${__yf_ansi_reset__}\n')"
-eval "$(__yf_msg 'de' 'INF_check_image_format'		'Prüfung des Formats der Image-Datei ... ')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_wrong_eoa_block_count'	'${__yf_ansi_yellow__}Zu viele leere Blöcke am Ende der Image-Datei:${__yf_ansi_reset__} erwartet=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, gefunden=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Die überflüssigen Blöcke werden vor dem Signieren abgeschnitten.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_no_eoa_blocks'			'${__yf_ansi_yellow__}Nicht genug leere Blöcke am Ende der Image-Datei:${__yf_ansi_reset__} erwartet=${__yf_ansi_bold__}%u${__yf_ansi_reset__}, gefunden=${__yf_ansi_bold__}%u${__yf_ansi_reset__}.\n${__yf_ansi_yellow__}Die signierte Datei wird mit einer gültigen Dateiende-Markierung versehen.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'INF_enter_password'			'${__yf_ansi_bright_blue__}Kennwort für den privaten Schlüssel (${__yf_ansi_bright_white__}%s${__yf_ansi_bright_blue__}) eingeben: ${__yf_ansi_reset__}')"
-eval "$(__yf_msg 'de' 'INF_check_password'			'Prüfen des Kennworts für den privaten Schlüssel ... ')"
+INF_ossl_version			Found version: #BBLU#%s#RSET# ...
+INF_copy_stdin				Copying image data from STDIN ...
+INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# bytes copied#RSET#\n
+INF_check_command			Check #BOLD#%s#RSET# command ...
+INF_check_digest			Verify digest algorithm #BOLD#%s#RSET# is supported ...
+INF_filler					#YLLW#Repeating first entry %s as filler ... #RSET#
+INF_filler_once				once
+INF_filler_twice			twice
+INF_signing					Signing the image hash (#BOLD#%s#RSET#) with RSA key from #BOLD#%s%s#RSET# ...
+INF_signing_inplace			Signing input image in-place ...
+INF_signing_stdout			Copying signed image to STDOUT ...
+INF_replace_signature		#YLLW#There is already a signature file in the provided image, it will be replaced by a new one.#RSET#\n
+INF_check_image_format		Checking input file format ...
+INF_wrong_eoa_block_count	#YLLW#Too much end of archive markers read from input file:#RSET# blocks expected=#BOLD#%u#RSET#, blocks present=#BOLD#%u#RSET#.\n#YLLW#Input data will be truncated after last archive member.#RSET#\n
+INF_no_eoa_blocks			#YLLW#Not enough end of archive markers read from input file:#RSET# blocks expected=#BOLD#%u#RSET#, blocks present=#BOLD#%u#RSET#.\n#YLLW#Signed image will get a valid end of archive mark (2 512-blocks with zeros).#RSET#\n
+INF_enter_password			#BBLU#Enter your password for the signing key (#BWHT#%s#BBLU#): #RSET#
+INF_check_password			Checking password for the private key file ...
 
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_openssl'			'${__yf_ansi_red__}Es fehlt die Datei für ${__yf_ansi_white__}openssl${__yf_ansi_red__}, bitte die ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__}-Einstellung auf den Pfad zu diesem Kommando setzen.${__yf_ansi_reset__}\a\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_image_name'		'${__yf_ansi_red__}Es wurde keine Image-Datei angegeben beim Aufruf.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_inplace_stdin'			'${__yf_ansi_red__}Eine Image-Datei von der Standardeingabe kann nicht innerhalb derselben Datei signiert werden.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_invalid_image_data'		'${__yf_ansi_red__}Die angegebene Image-Datei enthält ungültige Daten.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_stdin_from_terminal'		'${__yf_ansi_red__}Die Image-Datei soll von STDIN gelesen werden, dort ist aber das Terminal verbunden.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_image_file_missing'		'${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} existiert nicht.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_output_to_terminal'		'${__yf_ansi_red__}Die Standardausgabe (STDOUT) ist mit einem Terminal verbunden, die Ausgabe einer signierten Datei ergibt daher keinen Sinn.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_unsupported_hash'		'${__yf_ansi_red__}Der Hash-Algorithmus ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} wird von diesem Skript nicht unterstützt.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_openssl_unsupported'		'\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_wrong_signature_pos'		'${__yf_ansi_red__}Die Image-Datei enthält bereits eine Signatur (${__yf_ansi_bright_white__}%s${__yf_ansi_red__}), aber nicht als letzten Eintrag - die Datei wird von diesem Skript nicht signiert.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_hwrev_mismatch'			'${__yf_ansi_red__}Die Werte für ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} im Shell- und im Urlader-Environment sind nicht identisch (${__yf_ansi_bright_white__}%s${__yf_ansi_red__} vs. ${__yf_ansi_bright_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_no_fritzos_device'		'${__yf_ansi_red__}Der spezielle Modus, die Image-Datei mit dem privaten Schlüssel des Gerätes zu signieren, steht nur auf einem Gerät mit FRITZ!OS von AVM zur Verfügung.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_box_key_password'		'${__yf_ansi_red__}Fehler beim Berechnen des Kennworts für den privaten Schlüssel des Geräts.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_no_tar_file'				'${__yf_ansi_red__}Die Image-Datei ist kein TAR-Archiv.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_wrong_tar_format'		'${__yf_ansi_red__}Die Image-Datei nutzt ein erweitertes TAR-Format (siehe ${__yf_ansi_bright_white__}--help${__yf_ansi_red__}) und wird von diesem Skript nicht signiert.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_invalid_1st_member'		'${__yf_ansi_red__}Der erste Eintrag in der Image-Datei muß ein Verzeichnis mit exakt dem Namen ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} sein.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_private_key_missing'		'${__yf_ansi_red__}Die Datei mit dem privaten Schlüssel ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} ist keine reguläre Datei oder sie existiert nicht.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_no_password_from_term'	'${__yf_ansi_red__}Es wurde beim Aufruf kein Kennwort für den privaten Schlüssel angegeben und STDIN ist kein Terminal, so daß es auch nicht während der Verarbeitung abgefragt werden kann.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_missing_key_password'	'${__yf_ansi_red__}Die Datei mit dem privaten Schlüssel ${__yf_ansi_bright_white__}%s%s${__yf_ansi_red__} ist mit einem Kennwort verschlüsselt, daher muß ein Kennwort eingegeben werden, das nicht leer sein darf.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_invalid_option'			'${__yf_ansi_red__}Unbekannte Option ${__yf_ansi_bright_white__}%s${__yf_ansi_red__} angegeben beim Aufruf.${__yf_ansi_reset__}\n')"
-# shellcheck disable=SC2016
-eval "$(__yf_msg 'de' 'ERR_too_many_arguments'		'${__yf_ansi_red__}Beim Aufruf wurden überzählige Parameter angegeben: ${__yf_ansi_bright_white__}%s${__yf_ansi_reset__}\n')"
+ERR_missing_openssl			#RED#Missing #WHT#openssl#RED# binary, set #WHT#YF_SIGNIMAGE_OPENSSL#RED# variable to its path name.#RSET#\a\n
+ERR_missing_image_name		#RED#Missing image file name argument.#RSET#\n
+ERR_inplace_stdin			#RED#An image file read from STDIN may not be signed in-place.#RSET#\n
+ERR_invalid_image_data		#RED#The provided image file contains invalid data.#RSET#\n
+ERR_stdin_from_terminal		#RED#Image file shall be read from STDIN, but it is a terminal device.#RSET#\n
+ERR_image_file_missing		#RED#The specified image file #BWHT#%s#RED# does not exist.#RSET#\n
+ERR_output_to_terminal		#RED#The standard output descriptor (STDOUT) is connected to a terminal device, please redirect output to a file.#RSET#\n
+ERR_unsupported_hash		#RED#Unknown or unsupported (by this script) hash algorithm #BWHT#%s#RED# specified.#RSET#\n
+ERR_openssl_unsupported		\n#RED#This version of OpenSSL (#BWHT#%s.%s.%s#RED#) is unsupported.#RSET#\n
+ERR_wrong_signature_pos		#RED#The input file contains a member #BWHT#%s#RED# already (in the wrong position) and will not be signed by this script.#RSET#\n
+ERR_hwrev_mismatch			#RED#Mismatch of #BWHT#%s#RED# between shell and urlader environment (#BWHT#%s#RED# vs. #BWHT#%s#RED#).#RSET#\n
+ERR_no_fritzos_device		#RED#The special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.#RSET#\n
+ERR_box_key_password		#RED#Error determining the password of RSA key from FRITZ!OS.#RSET#\n
+ERR_no_tar_file				#RED#Input file does not look like a TAR archive.#RSET#\n
+ERR_wrong_tar_format		#RED#Input file contains extended headers (PaxHeaders) and may not be signed this way.#RSET#\n
+ERR_invalid_1st_member		#RED#First member of archive file has to be a directory and has to use the name #BWHT#%s#RED#.#RSET#\n
+ERR_private_key_missing		#RED#The private key file #BWHT#%s%s#RED# is not a regular file or is missing.#RSET#\n
+ERR_no_password_from_term	#RED#No password for private key was specified while calling and STDIN is not your terminal.#RSET#\n
+ERR_missing_key_password	#RED#The private key file #BWHT#%s%s#RED# seems to be encrypted, you have to specify the password and not an empty string.#RSET#\n
+ERR_invalid_option			#RED#Unknown option #BWHT#%s#RED# specified.#RSET#\n
+ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%s#RSET#\n
+
+language de
+
+INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
+ERR_show_error				#RED#FEHLER#RSET#\n
+INF_show_ok					#GRN#OK#RSET#\n
+INF_canceled				#BRED#ABGEBROCHEN#RSET#\n
+
+INF_ossl_version			Gefundene Version: #BBLU#%s#RSET# ...
+INF_copy_stdin				Kopiere Image-Daten von STDIN in temporäre Datei ... #RSET#
+INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# Bytes kopiert#RSET#\n
+INF_check_command			Prüfe Verfügbarkeit des #BOLD#%s#RSET#-Kommandos ...
+INF_check_digest			Prüfe, ob der Digest-Algorithmus #BOLD#%s#RSET# unterstützt ist ...
+INF_filler					#YLLW#%s Wiederholen des ersten Eintrags als Füllblock ... #RSET#
+INF_filler_once				Einmaliges
+INF_filler_twice			Zweimaliges
+INF_signing					Signieren des Hash-Wertes (#BOLD#%s#RSET#) über den Inhalt der Image-Datei mit dem RSA-Schlüssel von #BOLD#%s%s#RSET# ...
+INF_signing_inplace			Hinzufügen/Ersetzen der Signatur-Datei in der Image-Datei ...
+INF_signing_stdout			Ausgabe der signierten Image-Datei ...
+INF_replace_signature		#YLLW#Die Image-Datei enthält bereits eine Signatur, diese wird mit einer neuen ersetzt.#RSET#\n
+INF_check_image_format		Prüfung des Formats der Image-Datei ...
+INF_wrong_eoa_block_count	#YLLW#Zu viele leere Blöcke am Ende der Image-Datei:#RSET# erwartet=#BOLD#%u#RSET#, gefunden=#BOLD#%u#RSET#.\n#YLLW#Die überflüssigen Blöcke werden vor dem Signieren abgeschnitten.#RSET#\n
+INF_no_eoa_blocks			#YLLW#Nicht genug leere Blöcke am Ende der Image-Datei:#RSET# erwartet=#BOLD#%u#RSET#, gefunden=#BOLD#%u#RSET#.\n#YLLW#Die signierte Datei wird mit einer gültigen Dateiende-Markierung versehen.#RSET#\n
+INF_enter_password			#BBLU#Kennwort für den privaten Schlüssel (#BWHT#%s#BBLU#) eingeben: #RSET#
+INF_check_password			Prüfen des Kennworts für den privaten Schlüssel ...
+
+ERR_missing_openssl			#RED#Es fehlt die Datei für #WHT#openssl#RED#, bitte die #WHT#YF_SIGNIMAGE_OPENSSL#RED#-Einstellung auf den Pfad zu diesem Kommando setzen.#RSET#\a\n
+ERR_missing_image_name		#RED#Es wurde keine Image-Datei angegeben beim Aufruf.#RSET#\n
+ERR_inplace_stdin			#RED#Eine Image-Datei von der Standardeingabe kann nicht innerhalb derselben Datei signiert werden.#RSET#\n
+ERR_invalid_image_data		#RED#Die angegebene Image-Datei enthält ungültige Daten.#RSET#\n
+ERR_stdin_from_terminal		#RED#Die Image-Datei soll von STDIN gelesen werden, dort ist aber das Terminal verbunden.#RSET#\n
+ERR_image_file_missing		#RED#Die angegebene Image-Datei #BWHT#%s#RED# existiert nicht.#RSET#\n
+ERR_output_to_terminal		#RED#Die Standardausgabe (STDOUT) ist mit einem Terminal verbunden, die Ausgabe einer signierten Datei ergibt daher keinen Sinn.#RSET#\n
+ERR_unsupported_hash		#RED#Der Hash-Algorithmus #BWHT#%s#RED# wird von diesem Skript nicht unterstützt.#RSET#\n
+ERR_openssl_unsupported		\n#RED#Diese OpenSSL-Version (#BWHT#%s.%s.%s#RED#) wird nicht unterstützt.#RSET#\n
+ERR_wrong_signature_pos		#RED#Die Image-Datei enthält bereits eine Signatur (#BWHT#%s#RED#), aber nicht als letzten Eintrag - die Datei wird von diesem Skript nicht signiert.#RSET#\n
+ERR_hwrev_mismatch			#RED#Die Werte für #BWHT#%s#RED# im Shell- und im Urlader-Environment sind nicht identisch (#BWHT#%s#RED# vs. #BWHT#%s#RED#).#RSET#\n
+ERR_no_fritzos_device		#RED#Der spezielle Modus, die Image-Datei mit dem privaten Schlüssel des Gerätes zu signieren, steht nur auf einem Gerät mit FRITZ!OS von AVM zur Verfügung.#RSET#\n
+ERR_box_key_password		#RED#Fehler beim Berechnen des Kennworts für den privaten Schlüssel des Geräts.#RSET#\n
+ERR_no_tar_file				#RED#Die Image-Datei ist kein TAR-Archiv.#RSET#\n
+ERR_wrong_tar_format		#RED#Die Image-Datei nutzt ein erweitertes TAR-Format (siehe #BWHT#--help#RED#) und wird von diesem Skript nicht signiert.#RSET#\n
+ERR_invalid_1st_member		#RED#Der erste Eintrag in der Image-Datei muß ein Verzeichnis mit exakt dem Namen #BWHT#%s#RED# sein.#RSET#\n
+ERR_private_key_missing		#RED#Die Datei mit dem privaten Schlüssel #BWHT#%s%s#RED# ist keine reguläre Datei oder sie existiert nicht.#RSET#\n
+ERR_no_password_from_term	#RED#Es wurde beim Aufruf kein Kennwort für den privaten Schlüssel angegeben und STDIN ist kein Terminal, so daß es auch nicht während der Verarbeitung abgefragt werden kann.#RSET#\n
+ERR_missing_key_password	#RED#Die Datei mit dem privaten Schlüssel #BWHT#%s%s#RED# ist mit einem Kennwort verschlüsselt, daher muß ein Kennwort eingegeben werden, das nicht leer sein darf.#RSET#\n
+ERR_invalid_option			#RED#Unbekannte Option #BWHT#%s#RED# angegeben beim Aufruf.#RSET#\n
+ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegeben: #BWHT#%s#RSET#\n
+
+# YF_UI localization end
+EOM
+. "$___yf_localization"
+rm -f "$___yf_localization" 2>/dev/null
+if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
+	set | sed -n -e "/^__YF_L10N/p" 1>&2
+	exit 0
+fi
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
@@ -553,44 +534,110 @@ usage()
 		__yf_show_license
 		__yf_help "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
 		__yf_help "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		__yf_help "\nZweck:\n\n#BBLU#Signieren einer Datei (TAR-Archiv) als Firmware-Image für Geräte mit FRITZ!OS#RSET#\n\n"
+		__yf_help "Aufruf:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "#BOLD#imagefile#RSET# [ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# ist eine optionale Angabe aus den folgenden Werten:\n\n"
+		__yf_help "#BOLD#-h#RSET# oder #BOLD#--help#RSET#     - zeigt diese Informationen auf STDOUT an\n"
+		__yf_help "#BOLD#-i#RSET# oder #BOLD#--in-place#RSET# - ändert die angegebene Image-Datei, anstatt eine signierte Kopie auf STDOUT\n"
+		__yf_help "                     auszugeben\n"
+		__yf_help "#BOLD#-b#RSET# oder #BOLD#--on-box#RSET#   - verwendet den privaten Schlüssel des FRITZ!OS auf dem Gerät (siehe Kommentare\n"
+		__yf_help "                     weiter unten) zum Signieren\n\n"
+		__yf_help "#BOLD#imagefile#RSET# ist die zu signierende Image-Datei, die bei ihrem Format ein paar Einschränkungen unter-\n"
+		__yf_help "liegt (siehe weiter unten). Wenn der Name als Bindestrich (-) angegeben wurde, wird der Inhalt von\n"
+		__yf_help "STDIN für die Dauer der Verarbeitung durch das Skript in eine temporäre Datei geschrieben und im\n"
+		__yf_help "weiteren Verlauf mit dieser Datei gearbeitet.\n\n"
+		__yf_help "#BOLD#password#RSET# ist das Kennwort für den privaten RSA-Schlüssel, der zum Signieren verwendet werden soll.\n"
+		__yf_help "Wenn es nicht beim Aufruf angegeben und der private Schlüssel mit einem Kennwort gesichert wurde,\n"
+		__yf_help "wird das Kennwort vom Terminal gelesen (ohne Anzeige der eingegebenen Zeichen). Alternativ kann das\n"
+		__yf_help "Kennwort auch über die Environment-Variable #BOLD#YF_SIGNIMAGE_KEYPASSWORD#RSET# bereitgestellt werden.\n\n"
+		__yf_help "Wenn die option #BOLD#-i#RSET# (lang: #BOLD#--in-place#RSET#) nicht angegeben wurde, wird die signierte Image-Datei auf\n"
+		__yf_help "STDOUT ausgegeben und der Aufrufer ist dafür zuständig, die Daten per Umleitung an einem passenden\n"
+		__yf_help "Ort zu speichern. Wenn STDOUT ein Terminal sein sollte, wird die Verarbeitung abgebrochen. Bei\n"
+		__yf_help "Verwendung der vorstehenden Option wird die angegebene Image-Datei nach dem zu signierenden Payload\n"
+		__yf_help "abgeschnitten und danach dieser Datei direkt die Signatur (und die notwendigen Blöcke zur Anzeige\n"
+		__yf_help "des Dateiendes) hinzugefügt.\n\n"
+		__yf_help "Standardmäßig wird zum Signieren ein MD5-Hash über den Dateiinhalt verwendet (weil das bei AVM auch\n"
+		__yf_help "der Fall ist). Wenn man beim Signieren schon sicher weiß, daß diese Signatur nicht mit Komponenten\n"
+		__yf_help "von AVM geprüft werden soll, kann man auch einen aktuelleren Hash-Algorithmus verwenden, ebenso wie\n"
+		__yf_help "einen längeren RSA-Key (AVM nutzt nur 1024-Bit Schlüssellänge bei Signieren). Die Angabe eines\n"
+		__yf_help "anderen Hash-Algorithmus (der von #BOLD#openssl#RSET# auch unterstützt werden muß) erfolgt durch das Setzen der\n"
+		__yf_help "Environment-Variablen #BOLD#YF_SIGNIMAGE_HASH#RSET# auf den passenden Wert.\n\n"
+		__yf_help "Ein Spezialfall (der durch Angabe der Option #BOLD#-b#RSET# oder #BOLD#--on-box#RSET#) aktiviert wird, ist das Signieren\n"
+		__yf_help "der Datei auf einem Gerät mit FRITZ!OS von AVM, wenn auch die Signaturprüfung später wieder auf\n"
+		__yf_help "diesem Gerät erfolgen soll. Dann kann der vorhandene RSA-Key des Gerätes (in #BOLD#websrv_ssl_key.pem#RSET#),\n"
+		__yf_help "mit dem das Web-Interface im FRITZ!OS die TLS-Verbindungen absichert) zum Signieren herangezogen\n"
+		__yf_help "werden und es braucht keinen zusätzlichen RSA-Key und auch kein Kennwort für diesen Schlüssel, weil\n"
+		__yf_help "dieses Kennwort aus den Daten (der Hardware) des Gerätes errechnet wird.\n\n"
+		__yf_help "Um diesen Modus beim Signieren auch ohne die Angabe der oben genannten Option(en) zu aktivieren,\n"
+		__yf_help "kann die Environment-Variable #BOLD#YF_SIGNIMAGE_ON_BOX#RSET# auf den Wert '1' gesetzt werden. Auch dabei muß\n"
+		__yf_help "dann aber beachtet werden, daß die AVM-Komponenten nur mit RSA-Keys mit einer Schlüssellänge von\n"
+		__yf_help "1024 Bit umgehen können, während aktuelle RSA-Keys für AVM-Geräte aber 2048 Bit Schlüssellänge\n"
+		__yf_help "verwenden.\n\n"
+		__yf_help "Wenn man versucht, auf einem Gerät mit FRITZ!OS von AVM, wo im laufenden OS ein anderer Wert für\n"
+		__yf_help "#BOLD#HWRevision#RSET# verwendet wird, als derjenige, der im Bootloader hinterlegt wurde (wo also eine Firmware\n"
+		__yf_help "für ein anderes Modell verwendet wird), eine Image-Datei zu signieren, wird das Skript auch keine\n"
+		__yf_help "Signatur erstellen. Um auch in diesem Fall einen Signaturversuch zu erzwingen, kann man einen\n"
+		__yf_help "beliebigen (aber nicht leeren) Wert mit dem Namen #BOLD#YF_SIGNIMAGE_IGNORE_HWREVISION#RSET# im Environment\n"
+		__yf_help "setzen, in diesem Fall wird das Ergebnis dieser Prüfung ignoriert.\n\n"
+		__yf_help "Die zu signierende Image-Datei muß das traditionelle TAR-Format verwenden (ohne irgendwelche\n"
+		__yf_help "Erweiterungen). Wird zum Erstellen der Image-Datei die GNU-Implementierung des #BOLD#tar#RSET#-Kommandos\n"
+		__yf_help "verwendet (https://www.gnu.org/software/tar), muß man die Option #BOLD#--format=gnu#RSET# oder #BOLD#--format=oldgnu#RSET#\n"
+		__yf_help "angeben beim Aufruf.\n\n"
+		__yf_help "Außerdem muß der erste Eintrag im Image-File zwingend ein Verzeichnis mit dem Namen #BOLD#./var/#RSET# sein - \n"
+		__yf_help "der führende Punkt ist wichtig und das Skript wird kein Image signieren, welches nicht mit exakt so\n"
+		__yf_help "einem Eintrag startet. Die Komponenten von AVM filtern jeden Eintrag aus der Image-Datei, dessen\n"
+		__yf_help "Name nicht mit diesem Verzeichnis beginnt und der Haupteinsatzzweck dieses Skripts ist immer noch\n"
+		__yf_help "das Signieren von Firmware-Images in einer AVM-kompatiblen Art und Weise.\n\n"
+		__yf_help "Wenn die Image-Datei bereits einen Eintrag mit dem Namen #BOLD#./var/signature#RSET# enthält, muß das der\n"
+		__yf_help "allerletzte Eintrag in der Datei sein - diese Signatur wird dann durch eine neue ersetzt. Enthält\n"
+		__yf_help "die Datei noch keine Signatur, wird hinter den zu signierenden Daten eine solche hinzugefügt.\n\n"
+		__yf_help "Soll eine spezielle Version des #BOLD#OpenSSL#RSET#-Kommandozeilenprogramms vewendet werden, kann deren Datei-\n"
+		__yf_help "name mit der Variablen #BOLD#YF_SIGNIMAGE_OPENSSL#RSET# (im Environment oder der Konfigurationsdatei) über-\n"
+		__yf_help "schrieben werden.\n\n"
+		__yf_help "Der Ort im Dateisystem, wo zusätzliche Dateien für die Kryptographie-Operationen (private und\n"
+		__yf_help "öffentliche Schlüssel, Startwerte für Zufallszahlen, etc.) gesucht werden sollen, kann über eine\n"
+		__yf_help "Konfigurationsdatei mit dem Namen #BOLD#yf_signimage.conf#RSET# festgelegt werden. Die Datei wird in demselben\n"
+		__yf_help "Verzeichnis gesucht, wo sich auch dieses Skript befindet. Um den Pfad zu dieser Datei ebenfalls\n"
+		__yf_help "selbst festzulegen, kann eine Environment-Variable mit Namen #BOLD#YF_SIGNIMAGE_CONFIG#RSET# benutzt werden.\n"
+		__yf_help "Wird keine Konfigurationsdatei gefunden, werden entsprechende Standardwerte (sieher Vorlage für die\n"
+		__yf_help "Konfigurationsdatei) verwendet. Vor dem Ändern von Einstellungen bitte sorgfältig die Kommentare im\n"
+		__yf_help "bereitgestellten Muster für die Konfigurationsdatei lesen.\n\n"
 	else
 		__yf_show_version
 		__yf_show_copyright
 		__yf_show_license
-		__yf_help "\nPurpose:\n\n${__yf_ansi_bright_blue__}Sign a TAR archive file as firmware image for FRITZ!OS devices.${__yf_ansi_reset__}\n\n"
+		__yf_help "\nPurpose:\n\n#BBLU#Sign a TAR archive file as firmware image for FRITZ!OS devices.#RSET#\n\n"
 		__yf_help "Usage:\n\n"
-		__yf_help "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
-		__yf_help "[ ${__yf_ansi_bold__}options${__yf_ansi_reset__} ] "
-		__yf_help "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} [ ${__yf_ansi_bold__}password${__yf_ansi_reset__} ]\n\n"
-		__yf_help "${__yf_ansi_bold__}options${__yf_ansi_reset__} is an optional value out of the following:\n\n"
-		__yf_help "${__yf_ansi_bold__}-h${__yf_ansi_reset__} or ${__yf_ansi_bold__}--help${__yf_ansi_reset__}     - show this info on STDOUT\n"
-		__yf_help "${__yf_ansi_bold__}-i${__yf_ansi_reset__} or ${__yf_ansi_bold__}--in-place${__yf_ansi_reset__} - sign the image file in-place, do not output data to STDOUT\n"
-		__yf_help "${__yf_ansi_bold__}-b${__yf_ansi_reset__} or ${__yf_ansi_bold__}--on-box${__yf_ansi_reset__}   - use FRITZ!OS device key (see comments below) to sign\n\n"
-		__yf_help "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} is the archive to sign, it has to follow some rules according its format (see below).\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "#BOLD#imagefile#RSET# [ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# is an optional value out of the following:\n\n"
+		__yf_help "#BOLD#-h#RSET# or #BOLD#--help#RSET#     - show this info on STDOUT\n"
+		__yf_help "#BOLD#-i#RSET# or #BOLD#--in-place#RSET# - sign the image file in-place, do not output data to STDOUT\n"
+		__yf_help "#BOLD#-b#RSET# or #BOLD#--on-box#RSET#   - use FRITZ!OS device key (see comments below) to sign\n\n"
+		__yf_help "#BOLD#imagefile#RSET# is the archive to sign, it has to follow some rules according its format (see below).\n"
 		__yf_help "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
 		__yf_help "location, while the script is running.\n\n"
-		__yf_help "The ${__yf_ansi_bold__}password${__yf_ansi_reset__} is the one of your private key, which will be used to encrypt your signature. This\n"
+		__yf_help "The #BOLD#password#RSET# is the one of your private key, which will be used to encrypt your signature. This\n"
 		__yf_help "password (if your private key was stored with encryption) will be read from terminal (without\n"
 		__yf_help "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
-		__yf_help "preset using an environment value called ${__yf_ansi_bold__}YF_SIGNIMAGE_KEYPASSWORD${__yf_ansi_reset__}.\n\n"
-		__yf_help "If option ${__yf_ansi_bold__}-i${__yf_ansi_reset__} (long: ${__yf_ansi_bold__}--in-place${__yf_ansi_reset__}) is not specified, the signed image will be written to STDOUT and\n"
+		__yf_help "preset using an environment value called #BOLD#YF_SIGNIMAGE_KEYPASSWORD#RSET#.\n\n"
+		__yf_help "If option #BOLD#-i#RSET# (long: #BOLD#--in-place#RSET#) is not specified, the signed image will be written to STDOUT and\n"
 		__yf_help "you're in charge to redirect it to the proper target location. If a terminal is connected there,\n"
 		__yf_help "the script will be aborted.\n\n"
 		__yf_help "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
 		__yf_help "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
-		__yf_help "a better hash algorithm (remember that ${__yf_ansi_bold__}openssl${__yf_ansi_reset__} binary still has to support it) with a variable\n"
-		__yf_help "${__yf_ansi_bold__}YF_SIGNIMAGE_HASH${__yf_ansi_reset__} in the environment, which contains the name of algorithm to use.\n"
-		__yf_help "It has to be one of:\n\n"
-		for algo in $YF_SIGNIMAGE_SUPPORTED_HASHES; do
-			__yf_help "- %s\n" "$algo"
-		done
-		__yf_help "\n"
-		__yf_help "A special use case (which is activated by option ${__yf_ansi_bold__}-b${__yf_ansi_reset__} or ${__yf_ansi_bold__}--on-box${__yf_ansi_reset__}) is signing a TAR file directly\n"
+		__yf_help "a better hash algorithm (remember that #BOLD#openssl#RSET# binary still has to support it) with a variable\n"
+		__yf_help "#BOLD#YF_SIGNIMAGE_HASH#RSET# in the environment, which contains the name of algorithm to use.\n"
+		__yf_help "A special use case (which is activated by option #BOLD#-b#RSET# or #BOLD#--on-box#RSET#) is signing a TAR file directly\n"
 		__yf_help "in a FRITZ!OS environment, if such a signature is surely verified later only on the same device.\n"
-		__yf_help "Then the RSA key from ${__yf_ansi_bold__}websrv_ssl_key.pem${__yf_ansi_reset__} may be used instead of an additional key and there's no\n"
+		__yf_help "Then the RSA key from #BOLD#websrv_ssl_key.pem#RSET# may be used instead of an additional key and there's no\n"
 		__yf_help "need to specify a password for the key, because it's computed from device (hardware) settings.\n\n"
 		__yf_help "To switch the script into this mode without the options above, you may set the environment\n"
-		__yf_help "variable ${__yf_ansi_bold__}YF_SIGNIMAGE_ON_BOX${__yf_ansi_reset__} to a value of '1' instead. But be aware in any case, that a key size\n"
+		__yf_help "variable #BOLD#YF_SIGNIMAGE_ON_BOX#RSET# to a value of '1' instead. But be aware in any case, that a key size\n"
 		__yf_help "other than 1024 bits would lead to impossibility to verify the signature with AVM's components -\n"
 		__yf_help "and newer FRITZ!OS versions use a 2048-bit RSA key to protect their TLS connections.\n\n"
 		__yf_help "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
@@ -599,24 +646,24 @@ usage()
 		__yf_help "device. In this case you may provide any non-empty value with a environment variable named\n"
 		__yf_help "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
 		__yf_help "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
-		__yf_help "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the ${__yf_ansi_bold__}--format=gnu${__yf_ansi_reset__}\n"
-		__yf_help "or ${__yf_ansi_bold__}--format=oldgnu${__yf_ansi_reset__} option while creating the file.\n\n"
-		__yf_help "Furthermore the first archived member has to be a directory entry with name ${__yf_ansi_bold__}./var/${__yf_ansi_reset__} - the first\n"
+		__yf_help "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the #BOLD#--format=gnu#RSET#\n"
+		__yf_help "or #BOLD#--format=oldgnu#RSET# option while creating the file.\n\n"
+		__yf_help "Furthermore the first archived member has to be a directory entry with name #BOLD#./var/#RSET# - the first\n"
 		__yf_help "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
 		__yf_help "such an entry. AVM's components will filter out any names not starting with this path name and\n"
 		__yf_help "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
-		__yf_help "If the provided input image already contains a member called ${__yf_ansi_bold__}./var/signature${__yf_ansi_reset__}, it has to be the\n"
+		__yf_help "If the provided input image already contains a member called #BOLD#./var/signature#RSET#, it has to be the\n"
 		__yf_help "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
 		__yf_help "will abort the signing process. If no signature file was found on input archive, a new one is\n"
 		__yf_help "appended after the signed payload.\n\n"
 		__yf_help "To make integration of this script into a foreign toolchain easier, the location of the used\n"
-		__yf_help "OpenSSL command line utility may be overwritten with ${__yf_ansi_bold__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_reset__} from environment or the\n"
+		__yf_help "OpenSSL command line utility may be overwritten with #BOLD#YF_SIGNIMAGE_OPENSSL#RSET# from environment or the\n"
 		__yf_help "configuration file.\n\n"
 		__yf_help "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
-		__yf_help "read from a configuration file with name ${__yf_ansi_bold__}yf_signimage.conf${__yf_ansi_reset__}. The file has to be stored in the\n"
+		__yf_help "read from a configuration file with name #BOLD#yf_signimage.conf#RSET#. The file has to be stored in the\n"
 		__yf_help "same directory as this script. Please read the comments there, if you want to change the places,\n"
 		__yf_help "where other files will be searched. To change location, where the configuration file will be\n"
-		__yf_help "expected, you may use an environment value ${__yf_ansi_bold__}YF_SIGNIMAGE_CONFIG${__yf_ansi_reset__} with the (relative or absolute)\n"
+		__yf_help "expected, you may use an environment value #BOLD#YF_SIGNIMAGE_CONFIG#RSET# with the (relative or absolute)\n"
 		__yf_help "path name of it. If no configuration file exists, default values (see configuration template)\n"
 		__yf_help "will be used.\n\n"
 	fi
@@ -816,10 +863,6 @@ box_key_password()
 #######################################################################################################
 tmp=$(__yf_mktmp -d)
 trap '[ -d "$tmp" ] && rm -r "$tmp" 2>/dev/null 1>&2' EXIT INT
-if [ -n "$DEBUG_MESSAGES" ]; then # show all defined messages and exit
-	set | sed -n -e "/^__YF_L10N/p" 1>&2
-	exit 0
-fi
 #######################################################################################################
 #                                                                                                     #
 # some output due to license terms                                                                    #
