@@ -422,13 +422,13 @@ __yf_localization >"$___yf_localization" <<'EOM'
 language en
 
 INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
-ERR_show_error				#RED#FAILED#RSET#\n
-INF_show_ok					#GRN#OK#RSET#\n
-INF_canceled				#BRED#CANCELED#RSET#\n
+ERR_show_error				#RED# FAILED#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# CANCELED#RSET#\n
 
 INF_ossl_version			Found version: #BBLU#%s#RSET# ...
 INF_copy_stdin				Copying image data from STDIN ...
-INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# bytes copied#RSET#\n
+INF_data_count_stdin		#GRN# OK#RSET# - #BWHT#%u#RSET# bytes copied#RSET#\n
 INF_check_command			Check #BOLD#%s#RSET# command ...
 INF_check_digest			Verify digest algorithm #BOLD#%s#RSET# is supported ...
 INF_filler					#YLLW#Repeating first entry %s as filler ... #RSET#
@@ -469,13 +469,13 @@ ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%
 language de
 
 INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
-ERR_show_error				#RED#FEHLER#RSET#\n
-INF_show_ok					#GRN#OK#RSET#\n
-INF_canceled				#BRED#ABGEBROCHEN#RSET#\n
+ERR_show_error				#RED# FEHLER#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# ABGEBROCHEN#RSET#\n
 
 INF_ossl_version			Gefundene Version: #BBLU#%s#RSET# ...
 INF_copy_stdin				Kopiere Image-Daten von STDIN in temporäre Datei ... #RSET#
-INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# Bytes kopiert#RSET#\n
+INF_data_count_stdin		#GRN# OK#RSET# - #BWHT#%u#RSET# Bytes kopiert#RSET#\n
 INF_check_command			Prüfe Verfügbarkeit des #BOLD#%s#RSET#-Kommandos ...
 INF_check_digest			Prüfe, ob der Digest-Algorithmus #BOLD#%s#RSET# unterstützt ist ...
 INF_filler					#YLLW#%s Wiederholen des ersten Eintrags als Füllblock ... #RSET#
