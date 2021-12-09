@@ -1,0 +1,709 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later WITH exceptions
+#######################################################################################################
+#                                                                                                     #
+# convert a public key from AVM's format to a PEM or DER file                                         #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# yf_mod2der, version 1.0.1                                                                           #
+#                                                                                                     #
+# Some functions in this script were taken from the YourFritz Shell Script library (YF_SCRIPTLIB)     #
+# and/or from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from           #
+# https://github.com/PeterPawn/YourFritz.                                                             #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2021 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This script is licensed according to the following terms:                                           #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
+# file, you HAVE TO KEEP these functions together as one single continous part in your script AND     #
+# this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of UI functions, these changes HAVE TO BE marked with the #
+# name of author AND the date of change AND a short explanation, what was changed (if it's not        #
+# obvious).                                                                                           #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#################################################################################################EMBED#
+#                                                                                                     #
+# some constants                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+pem_header_start="-----BEGIN PUBLIC KEY-----"
+pem_header_end="-----END PUBLIC KEY-----"
+YF_UI_LANGUAGES="en de"
+#######################################################################################################
+#                                                                                                     #
+# exit code definitions                                                                               #
+#                                                                                                     #
+#######################################################################################################
+YF_MOD2DER_SUCCESS=0 # processing complete successfully
+YF_MOD2DER_INVALID_CALL=1 # parameter error while calling
+YF_MOD2DER_OUTPUT_TO_TERMINAL=2 # data would be written to terminal
+YF_MOD2DER_INPUT_FROM_TERMINAL=3 # data would be read from terminal
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##   Y o u r F r i t z   s h e l l   s c r i p t    l i b r ar y   a n d   Y o u r F r i t z   U I   ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+__yf_check_required_command()
+(
+	IFS=:
+	set -- "$1"
+	for n in "$@"; do
+		command -v "$n" 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+
+__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+__yf_ansi_underline__="$(__yf_ansi_sgr 4)"
+__yf_ansi_black__="$(__yf_ansi_sgr 30)"
+__yf_ansi_red__="$(__yf_ansi_sgr 31)"
+__yf_ansi_green__="$(__yf_ansi_sgr 32)"
+__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+__yf_ansi_blue__="$(__yf_ansi_sgr 34)"
+__yf_ansi_magenta__="$(__yf_ansi_sgr 35)"
+__yf_ansi_cyan__="$(__yf_ansi_sgr 36)"
+__yf_ansi_white__="$(__yf_ansi_sgr 37)"
+__yf_ansi_gray__="$(__yf_ansi_sgr 90)"
+__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+__yf_ansi_bright_yellow__="$(__yf_ansi_sgr 93)"
+__yf_ansi_bright_blue__="$(__yf_ansi_sgr 94)"
+__yf_ansi_bright_magenta__="$(__yf_ansi_sgr 95)"
+__yf_ansi_bright_cyan__="$(__yf_ansi_sgr 96)"
+__yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
+__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+__yf_bold() { printf -- "%s" "$__yf_ansi_bold__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_undl() { printf -- "%s" "$__yf_ansi_underline__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_color_codes()
+{
+	printf "%s\n" "$1" | sed \
+		-e "s|#BOLD#|${__yf_ansi_bold__}|g" \
+		-e "s|#UNDL#|${__yf_ansi_underline__}|g" \
+		-e "s|#BLCK#|${__yf_ansi_black__}|g" \
+		-e "s|#RED#|${__yf_ansi_red__}|g" \
+		-e "s|#GRN#|${__yf_ansi_green__}|g" \
+		-e "s|#YLLW#|${__yf_ansi_yellow__}|g" \
+		-e "s|#BLU#|${__yf_ansi_blue__}|g" \
+		-e "s|#MGNT#|${__yf_ansi_magenta__}|g" \
+		-e "s|#CYN#|${__yf_ansi_cyan__}|g" \
+		-e "s|#WHT#|${__yf_ansi_white__}|g" \
+		-e "s|#GRY#|${__yf_ansi_gray__}|g" \
+		-e "s|#BRED#|${__yf_ansi_bright_red__}|g" \
+		-e "s|#BGRN#|${__yf_ansi_bright_green__}|g" \
+		-e "s|#BYLLW#|${__yf_ansi_bright_yellow__}|g" \
+		-e "s|#BBLU#|${__yf_ansi_bright_blue__}|g" \
+		-e "s|#BMGNT#|${__yf_ansi_bright_magenta__}|g" \
+		-e "s|#BCYN#|${__yf_ansi_bright_cyan__}|g" \
+		-e "s|#BWHT#|${__yf_ansi_bright_white__}|g" \
+		-e "s|#RSET#|${__yf_ansi_reset__}|g"
+}
+
+__yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
+__yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
+
+__yf_languages__="${YF_UI_LANGUAGES:-en}"
+__yf_get_language()
+(
+	__yf_get_language_code()
+	{
+		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+	}
+
+	___yf_lang="$1" && shift
+
+	if [ -n "$Language" ]; then
+		___yf_check="$(__yf_get_language_code "$Language")"
+	elif [ -n "$LC_ALL" ]; then
+		___yf_check="$(__yf_get_language_code "$LC_ALL")"
+	else
+		[ -z "$LANG" ] || ___yf_check="$(__yf_get_language_code "$LANG")"
+	fi
+	if [ -n "$___yf_check" ]; then
+		[ "$___yf_lang" = "$___yf_check" ] || \
+		for ___yf_lng in "$@"; do
+			[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
+		done
+	fi
+	printf -- '%s' "${___yf_lang:-en}"
+	unset ___yf_lng
+	unset ___yf_lang
+	unset ___yf_check
+)
+__yf_language__="$(eval __yf_get_language "$__yf_languages__")"
+
+__yf_get_localized()
+(
+	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
+	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+	eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
+	[ -z "$___yf_msg" ] && printf -- "Message definition '%s' is missing for '%s'.\n" "$1" "$__yf_language__" 1>&2 && return
+	printf -- '%s' "$___yf_msg"
+	unset ___yf_msg
+	unset ___yf_lang
+)
+__yf_declare_message()
+{
+	___yf_msg_lang="$1"
+	if [ "${#___yf_msg_lang}" -ne 2 ]; then
+		___yf_msg_lang='en'
+		___yf_msg_code="$1"
+		shift
+	else
+		___yf_msg_code="$2"
+		shift 2
+	fi
+	printf -- '__YF_L10N_%s_%s="%s"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_msg()
+{
+	__yf_declare_message "$@"
+}
+__yf_localization()
+{
+	language="en"
+	while read -r id message; do
+		if [ "$id" = "language" ]; then
+			language="$message"
+			continue
+		fi
+		if [ -n "$id" ]; then
+			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
+				&& __yf_declare_message "$language" "$id" "$(__yf_color_codes "$message")"
+		fi
+	done
+}
+
+#######################################################################################################
+#                                                                                                     #
+# functions to display messages to user                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_nl_out() { printf -- '\n'; }
+__yf_nl_err() { __yf_nl_out 1>&2; }
+__yf_errmsg()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}\a" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_emsg()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_info_output()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_info()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_info_output "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_help()
+{
+	___yf_mask="$(__yf_color_codes "$1")"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@"
+	unset ___yf_mask
+}
+#######################################################################################################
+#                                                                                                     #
+# temporary directory creation                                                                        #
+#                                                                                                     #
+#######################################################################################################
+__yf_random()
+(
+	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
+	for h in md5sum sha1sum; do
+		if __yf_check_required_command $h; then
+			if [ -c /dev/urandom ] && __yf_check_required_command "dd"; then
+				dd if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+			fi
+			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
+				if [ -f $f ]; then
+					$h < $f | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				fi
+			done
+		fi
+	done
+	__yf_check_required_command "date" && date +%s && exit 0
+	printf "%d" "$$"
+)
+# shellcheck disable=SC2120
+__yf_mktmp()
+(
+	if __yf_check_required_command "mktemp"; then
+		n="$(mktemp "$@" 2>/dev/null)"
+	fi
+	if [ -z "$n" ]; then
+		t="${TMPDIR:-/tmp}"
+		[ "$1" = "-d" ] && d=1 || d=0
+		[ "$1" = "-p" ] && t="$2"
+		[ -z "$t" ] && t="/tmp"
+		n="$t/$(__yf_random)"
+		if [ $d -eq 1 ]; then
+			[ -d "$n" ] && n="$t/$(__yf_random)"
+			mkdir -p "$n" 2>/dev/null
+		else
+			while [ -e "$n" ]; do
+				n="$t/$(__yf_random)"
+			done
+			touch "$n" 2>/dev/null
+		fi
+	fi
+	printf "%s\n" "$n"
+)
+#######################################################################################################
+#                                                                                                     #
+# hexadecimal string to binary data conversion                                                        #
+#                                                                                                     #
+#######################################################################################################
+__yf_hex2bin()
+(
+	__yf_hex2bin_read_octal()
+	{
+		i=1
+		h=1
+		z=0
+		# shellcheck disable=SC2030
+		while read -r p l o; do
+			[ "$i" -lt "$p" ] && return 1 # zero bytes on input stream are an error
+			i=$(( i + 1 ))
+			if [ "$o" -eq 11 ] || [ "$o" -eq 12 ] || [ "$o" -eq 15 ] || [ "$o" -eq 40 ]; then
+				[ $h -eq 1 ] && continue || return 1 # whitespace after odd hex-digits
+			fi
+			if [ "$o" -ge 60 ] && [ "$o" -le 67 ]; then
+				c=$(( o - 60 ))
+			elif [ "$o" -ge 70 ] && [ "$o" -le 71 ]; then
+				c=$(( o - 62 ))
+			elif [ "$o" -ge 101 ] && [ "$o" -le 106 ]; then
+				c=$(( o - 91 ))
+			elif [ "$o" -ge 141 ] && [ "$o" -le 146 ]; then
+				c=$(( o - 131 ))
+			else
+				return 1 # invalid character found
+			fi
+			if [ $h -eq 0 ]; then
+				v=$(( v + c ))
+				if [ $v -eq 0 ]; then
+					z=$(( z + 1 )) # count consecutive zeros
+				else
+					if [ $z -gt 0 ]; then
+						dd if=/dev/zero bs=$z count=1 2>/dev/null
+						z=0
+					fi
+					printf "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+				fi
+				h=1
+			else
+				v=$(( c * 16 ))
+				h=0
+			fi
+		done
+		[ $z -gt 0 ] && dd if=/dev/zero bs="$z" count=1 2>/dev/null
+		return 0
+	}
+
+	command -v cmp 2>/dev/null 1>&2 || return 1
+	command cmp -l -- /dev/zero - 2>/dev/null | __yf_hex2bin_read_octal
+	return $?
+)
+__yf_base64()
+(
+	___yf_base64_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+	___yf_base64_append()
+	{
+		if ! [ "$1" = "eof" ]; then
+			# shellcheck disable=SC2031
+			l=$(( l + 1 ))
+			# shellcheck disable=SC2031
+			v=$(( ( v * 256 ) + $1 ))
+		else
+			[ $l -eq 0 ] && return
+			v=$(( v << ( 8 * ( 3 - l ) ) ))
+		fi
+		if [ $l -eq 3 ] || [ "$1" = "eof" ]; then
+			printf "%c" "$(expr "${___yf_base64_charset}" : ".\{$(( v >> 18 ))\}\(.\).*")"
+			printf "%c" "$(expr "${___yf_base64_charset}" : ".\{$(( ( v >> 12 ) % 64 ))\}\(.\).*")"
+			[ $l -eq 1 ] && printf "==" && return
+			printf "%c" "$(expr "${___yf_base64_charset}" : ".\{$(( ( v >> 6 ) % 64 ))\}\(.\).*")"
+			[ $l -eq 2 ] && printf "=" && return
+			printf "%c" "$(expr "${___yf_base64_charset}" : ".\{$(( v % 64 ))\}\(.\).*")"
+			l=0
+			v=0
+			k=$(( k + 1 ))
+			[ $k -eq 16 ] && printf "\n" && k=0
+		fi
+	}
+
+	___yf_base64_read_octal()
+	{
+		i=1
+		l=0
+		v=0
+		k=0
+		ff=0
+		# shellcheck disable=SC2034
+		while read -r pos left right; do
+			while [ "$i" -lt "$pos" ]; do # zeros are equal for 'cmp'
+				if [ $ff -eq 1 ]; then
+					___yf_base64_append 377
+					ff=0
+					i=$(( i + 1 ))
+				fi
+				___yf_base64_append 0
+				i=$(( i + 1 ))
+			done
+			if [ "$right" -eq 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			___yf_base64_append "0$right"
+			i=$(( pos + 1 ))
+		done
+		___yf_base64_append eof
+	}
+
+	[ -t 0 ] && return 1
+	if command -v base64 2>/dev/null 1>&2 ; then
+		if [ "$(command base64 --help 2>&1 | sed -n -e "s|.*\(-w\).*|\1|p")" = "-w" ]; then
+			command base64 -w 64
+		else
+			command base64
+		fi
+	else
+		command -v cmp 2>/dev/null 1>&2 || return 1
+		( command cat; printf "%b" "\377" ) | command cmp -l -- /dev/zero - 2>/dev/null | ___yf_base64_read_octal
+		printf "\n"
+	fi
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# usage screen support functions                                                                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d' | \
+	sed -e 's| *$||'
+}
+__yf_show_script_name()
+{
+	[ -n "$1" ] && printf -- '%s' "$1"
+	printf -- '%s' "${0#*/}"
+	[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+}
+__yf_show_license()
+{
+	__yf_get_script_lines 'LIC'
+}
+__yf_show_version()
+{
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	[ "$__yf_language__" = "de" ] && v_display="$(printf "%s\n" "$v_display" | sed -e "s|version|Version|g")"
+	printf "%s\n" "$v_display"
+}
+__yf_show_copyright()
+{
+	__yf_get_script_lines 'CPY'
+}
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##  D o n ' t   c h a n g e   a n y t h i n g   a b o v e   t h i s   p o i n t.                     ##
+##                                                                                                   ##
+##  ( u p   t o   t h e   f i r s t   m a r k )                                                      ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+#######################################################################################################
+#                                                                                                     #
+# prepare localized messages                                                                          #
+#                                                                                                     #
+#######################################################################################################
+___yf_localization="$(__yf_mktmp)"
+__yf_localization >"$___yf_localization" <<'EOM'
+# YF_UI localization start
+
+language en
+
+INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
+ERR_invalid_option			#RED#Unknown option #BWHT#%s#RED# specified.#RSET#\n
+ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%s#RSET#\n
+ERR_input_is_terminal		#RED#No file name specified and STDIN is from terminal.#RSET#\n
+ERR_output_is_terminal		#RED#Output (to STDOUT) would be displayed at the terminal, but contains binary data.#RSET#\n
+
+language de
+
+INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
+ERR_invalid_option			#RED#Unbekannte Option #BWHT#%s#RED# angegeben beim Aufruf.#RSET#\n
+ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegeben: #BWHT#%s#RSET#\n
+ERR_input_is_terminal		#RED#Es wurde kein Dateiname angegeben und STDIN ist mit dem Terminal verbunden.#RSET#\n
+ERR_output_is_terminal		#RED#Die Ausgabe würde auf das Terminal erfolgen, aber es handelt sich um binäre Daten.#RSET#\n
+
+# YF_UI localization end
+EOM
+# shellcheck disable=SC1090
+. "$___yf_localization"
+rm -f "$___yf_localization" 2>/dev/null
+if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
+	set | sed -n -e "/^__YF_L10N/p" 1>&2
+	exit 0
+fi
+unset ___yf_localization
+#######################################################################################################
+#                                                                                                     #
+# usage screen, caller has to redirect output to STDERR if needed                                     #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	if [ "$__yf_language__" = "de" ]; then
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		__yf_help "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		__yf_help "\nZweck:\n\n#BBLU#Konvertieren eines öfféntlichen RSA-Schlüssels vom AVM-Format in ein PKCS#8-kompatibles Format#RSET#\n\n"
+		__yf_help "Aufruf:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "[ #BOLD#input_file#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# ist eine optionale Angabe aus den folgenden Werten:\n\n"
+		__yf_help "#BOLD#-h#RSET# oder #BOLD#--help#RSET#        - zeigt diese Informationen auf STDOUT an\n"
+		__yf_help "#BOLD#-p#RSET# oder #BOLD#--pem--format#RSET# - gibt die Daten im PEM-Format aus (Standard)\n"
+		__yf_help "#BOLD#-d#RSET# oder #BOLD#--der--format#RSET# - gibt die Daten im DER-Format aus, STDOUT darf kein Terminal sein\n\n"
+		__yf_help "#BOLD#input_file#RSET# ist die optionale Angabe des Namens der Datei mit dem AVM-formatierten öffentlichen\n"
+		__yf_help "Schlüssel, fehlt der Name beim Aufruf, wird versucht von STDIN zu lesen (solange dort nicht das\n"
+		__yf_help "Terminal verbunden ist.\n\n"
+	else
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nPurpose:\n\n#BBLU#Generate a RSA key usable to sign firmware images for AVM's devices.#RSET#\n\n"
+		__yf_help "Usage:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "[ #BOLD#input_file#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# is an optional value out of the following:\n\n"
+		__yf_help "#BOLD#-h#RSET# or #BOLD#--help#RSET#       - show this info on STDOUT\n"
+		__yf_help "#BOLD#-p#RSET# or #BOLD#--pem-format#RSET# - use PEM as output format (standard)\n"
+		__yf_help "#BOLD#-d#RSET# or #BOLD#--der-format#RSET# - use DER as output format (STDOUT can't be a terminal)\n\n"
+		__yf_help "#BOLD#input_file#RSET# is an optional argument with input file name. If it's missing, data will be read from\n"
+		__yf_help "STDIN. If STDIN is a terminal device, execution of script will be aborted.\n\n"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# some subfunctions                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# get even number of hexadecimal digits                                                               #
+#                                                                                                     #
+#######################################################################################################
+hex_even()
+(
+	l="$(printf "%x" "$1")"
+	[ "$(( ${#l} % 2 ))" = "1" ] && printf "0%x\n" "$1" || printf "%x\n" "$1"
+)
+#######################################################################################################
+#                                                                                                     #
+# encode ASN.1 length field                                                                           #
+#                                                                                                     #
+#######################################################################################################
+asn1_length()
+(
+	l=0
+	v="$1"
+	l="$(( ${#v} / 2 ))"
+	if [ "$l" -gt 127 ]; then
+		i="$(hex_even "$l")"
+		l="$(( ( ${#i} / 2 ) + 128 ))"
+		printf "%s\n" "$(hex_even $l)$i"
+	else
+		printf "%s\n" "$(hex_even $l)"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# ASN.1 types used                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+asn1_type_int="02"
+asn1_type_seq="30"
+asn1_type_bstr="03"
+asn1_type_oid="06"
+asn1_type_null="0500"
+#######################################################################################################
+#                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage
+	exit $YF_MOD2DER_SUCCESS
+fi
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+__yf_info "INF_license"
+#######################################################################################################
+#                                                                                                     #
+# check options                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+output_pem=1
+if [ -n "$1" ]; then
+	while [ -n "$(expr "$1" : "\(-.\+\).*")" ]; do
+		if [ "$1" = "-p" ] || [ "$1" = "--pem-format" ]; then
+			output_pem=1
+			shift
+		elif [ "$1" = "-d" ] || [ "$1" = "--der-format" ]; then
+			output_pem=0
+			shift
+			if [ -t 1 ]; then
+				__yf_emsg "ERR_output_is_terminal"
+				exit $YF_MOD2DER_OUTPUT_TO_TERMINAL
+			fi
+		else
+			__yf_emsg "ERR_invalid_option" "$1"
+			exit $YF_MOD2DER_INVALID_CALL
+		fi
+	done
+fi
+#######################################################################################################
+#                                                                                                     #
+# get modulus and exponent from file                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ -z "$1" ] || [ "$1" = "-" ]; then
+	if [ -t 0 ]; then
+		__yf_emsg "ERR_input_is_terminal"
+		exit $YF_MOD2DER_INPUT_FROM_TERMINAL
+	else
+		read -r modulus
+		read -r exponent
+	fi
+else
+	modulus="$(sed -n -e "1p" <"$1")"
+	exponent="$(sed -n -e "2p" <"$1")"
+fi
+#######################################################################################################
+#                                                                                                     #
+# build rsa_public_key sequence (RFC 2313, chapter 7.1)                                               #
+#                                                                                                     #
+#######################################################################################################
+modulus_len="${asn1_type_int}$(asn1_length "$modulus")"
+exponent_len="${asn1_type_int}$(asn1_length "$exponent")"
+#######################################################################################################
+#                                                                                                     #
+# PKCS#1 format                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+rsa_pubkey_content="${modulus_len}${modulus}${exponent_len}${exponent}"
+rsa_pubkey_len="$(asn1_length "$rsa_pubkey_content")"
+rsa_pubkey_seq="${asn1_type_seq}${rsa_pubkey_len}${rsa_pubkey_content}"
+#######################################################################################################
+#                                                                                                     #
+# embed it into a BIT STRING, zero unused bits on last byte                                           #
+#                                                                                                     #
+#######################################################################################################
+rsa_pubkey_bitstring="00$rsa_pubkey_seq"
+rsa_bitstring="${asn1_type_bstr}$(asn1_length "$rsa_pubkey_bitstring")${rsa_pubkey_bitstring}"
+#######################################################################################################
+#                                                                                                     #
+# create an object of type rsaEncryption (object id 1.2.840.113549.1.1.1 - RFC 2313), no parameters   #
+#                                                                                                     #
+# 1 x 40 + 2 = 42 = 0x2A ==> 0x2A                                                                     #
+#                                                                                                     #
+# 840 = 0x348 = multibyte = ( 0x8000 + ((0x348 << 1) & ~255) + (0x348 & 127) )                        #
+# ==> 0x8648                                                                                          #
+#                                                                                                     #
+# 113549 = 0x1BB8D = multibyte ==> 0x86F70D                                                           #
+#                                                                                                     #
+# each 1 ==> 0x01                                                                                     #
+#                                                                                                     #
+#######################################################################################################
+objectid="2A864886F70D010101"
+rsa_object_rsaEncryption="${asn1_type_oid}$(asn1_length "$objectid")${objectid}"
+rsa_algorithm="${rsa_object_rsaEncryption}${asn1_type_null}"
+rsa_object_seq="${asn1_type_seq}$(asn1_length "$rsa_algorithm")${rsa_algorithm}"
+#######################################################################################################
+#                                                                                                     #
+# outer sequence                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+der_outermost_seq="${asn1_type_seq}$(asn1_length "${rsa_object_seq}${rsa_bitstring}")"
+#######################################################################################################
+#                                                                                                     #
+# encode it in base64 and add headers, if output format PEM was requested, otherwise use raw DER      #
+#                                                                                                     #
+#######################################################################################################
+if [ "$output_pem" = "1" ]; then
+	printf "%s\n" "$pem_header_start"
+	printf "%s\n" "${der_outermost_seq}${rsa_object_seq}${rsa_bitstring}" | __yf_hex2bin | __yf_base64
+	printf "%s\n" "$pem_header_end"
+else
+	printf "%s\n" "${der_outermost_seq}${rsa_object_seq}${rsa_bitstring}" | __yf_hex2bin
+fi
+#######################################################################################################
+#                                                                                                     #
+# all done here                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit $YF_MOD2DER_SUCCESS
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
