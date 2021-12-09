@@ -273,7 +273,7 @@ __yf_localization()
 		fi
 		if [ -n "$id" ]; then
 			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
-				&& __yf_declare_message $language $id "$(__yf_color_codes "$message")"
+				&& __yf_declare_message "$language" "$id" "$(__yf_color_codes "$message")"
 		fi
 	done
 }
@@ -515,6 +515,7 @@ ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegebe
 
 # YF_UI localization end
 EOM
+# shellcheck disable=SC1090
 . "$___yf_localization"
 rm -f "$___yf_localization" 2>/dev/null
 if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
@@ -756,10 +757,8 @@ read_password_from_terminal()
 	# parameter strings may contain ANSI sequences to format terminal output
 	__yf_info_output "$@"
 	tty_settings="$(stty -g)"
-	# shellcheck disable=SC2064
-	trap "stty '$tty_settings' 2>/dev/null 1>&2" EXIT
-	# shellcheck disable=SC2064
-	trap "printf '$(__yf_get_localized INF_canceled)' 1>&2; exit 1" INT
+	trap 'stty "$tty_settings" 2>/dev/null 1>&2' EXIT
+	trap 'printf "$(__yf_get_localized INF_canceled)" 1>&2; exit 1' INT
 	stty -echo
 	read -r password
 	__yf_info_output "\n"

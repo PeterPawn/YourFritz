@@ -263,7 +263,7 @@ __yf_localization()
 		fi
 		if [ -n "$id" ]; then
 			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
-				&& __yf_declare_message $language $id "$(__yf_color_codes "$message")"
+				&& __yf_declare_message "$language" "$id" "$(__yf_color_codes "$message")"
 		fi
 	done
 }
@@ -366,8 +366,7 @@ __yf_hex2bin()
 		i=1
 		h=1
 		z=0
-		# shellcheck disable=SC2162
-		while read p l o; do
+		while read -r p l o; do
 			[ "$i" -lt "$p" ] && return 1 # zero bytes on input stream are an error
 			i=$(( i + 1 ))
 			if [ "$o" -eq 11 ] || [ "$o" -eq 12 ] || [ "$o" -eq 15 ] || [ "$o" -eq 40 ]; then
@@ -461,107 +460,108 @@ __yf_localization >"$___yf_localization" <<'EOM'
 language en
 
 INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
-ERR_show_error				${__yf_ansi_red__}FAILED${__yf_ansi_reset__}\n
-INF_show_ok					${__yf_ansi_green__}OK${__yf_ansi_reset__}\n
+ERR_show_error				#RED#FAILED#RSET#\n
+INF_show_ok					#GRN#OK#RSET#\n
 
-INF_ossl_version			Found version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ...
+INF_ossl_version			Found version: #BBLU#%s#RSET# ...
 INF_copy_stdin				Copying image data from STDIN ...
-INF_data_count_stdin		${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} bytes copied${__yf_ansi_reset__}\n
-INF_read_box_privkey		Trying to read public key from FRITZ!OS private key file (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ...
-INF_read_box_cert			Trying to read public key from ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ...
-INF_check_command			Check ${__yf_ansi_bold__}%s${__yf_ansi_reset__} command ...
-INF_check_digest			Verify digest algorithm ${__yf_ansi_bold__}%s${__yf_ansi_reset__} is supported ...
-INF_verify_success			${__yf_ansi_green__}Verification succeeded.${__yf_ansi_reset__}\n
-INF_public_key_check		Checking the public key from ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ...
-INF_check_supported_hash	Checking support for the used hash algorithm ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ...
+INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# bytes copied#RSET#\n
+INF_read_box_privkey		Trying to read public key from FRITZ!OS private key file (#BOLD#%s#RSET#) ...
+INF_read_box_cert			Trying to read public key from #BOLD#%s#RSET# ...
+INF_check_command			Check #BOLD#%s#RSET# command ...
+INF_check_digest			Verify digest algorithm #BOLD#%s#RSET# is supported ...
+INF_verify_success			#GRN#Verification succeeded.#RSET#\n
+INF_public_key_check		Checking the public key from #BOLD#%s#RSET# ...
+INF_check_supported_hash	Checking support for the used hash algorithm #BOLD#%s#RSET# ...
 INF_probing_keys			Trying to determine the correct key now ...\n
 
-ERR_missing_openssl			${__yf_ansi_red__}Missing ${__yf_ansi_white__}openssl${__yf_ansi_red__} binary, set ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__} variable to its path name.${__yf_ansi_reset__}\n
-ERR_RSA_key					${__yf_ansi_red__}Unable to read RSA key (%s) from input file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n
-ERR_unexpected_exp			${__yf_ansi_red__}Unexpected output while reading exponent from public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s).${__yf_ansi_reset__}\n
-ERR_missing_file_for_option	${__yf_ansi_red__}Missing filename after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n
-ERR_missing_file_with_list	${__yf_ansi_red__}The specified public key files list ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\n
-ERR_no_fritzos_device		${__yf_ansi_red__}The option ${__yf_ansi_white__}%s${__yf_ansi_red__} may only be used on a FRITZ!OS device.${__yf_ansi_reset__}\n
-ERR_pubkey_file_missing		${__yf_ansi_red__}The specified public key file ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) does not exist.${__yf_ansi_reset__}\n
+ERR_missing_openssl			#RED#Missing #WHT#openssl#RED# binary, set #WHT#YF_SIGNIMAGE_OPENSSL#RED# variable to its path name.#RSET#\n
+ERR_RSA_key					#RED#Unable to read RSA key (%s) from input file #WHT#%s#RED#.#RSET#\n
+ERR_unexpected_exp			#RED#Unexpected output while reading exponent from public key file #WHT#%s#RED# (%s).#RSET#\n
+ERR_missing_file_for_option	#RED#Missing filename after #WHT#%s#RED# option.#RSET#\n
+ERR_missing_file_with_list	#RED#The specified public key files list #WHT#%s#RED# does not exist.#RSET#\n
+ERR_no_fritzos_device		#RED#The option #WHT#%s#RED# may only be used on a FRITZ!OS device.#RSET#\n
+ERR_pubkey_file_missing		#RED#The specified public key file #WHT#%s#RED# (%s) does not exist.#RSET#\n
 PART_condensed				condensed format
 PART_avmformat				AVMs format
 PART_pkcs1					%s format
-ERR_too_much_keys			${__yf_ansi_red__}The option ${__yf_ansi_white__}%s${__yf_ansi_red__} may only be used without any other keys.${__yf_ansi_reset__}\n
-ERR_missing_variable_name	${__yf_ansi_red__}Missing variable name after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n
-ERR_no_public_keys			${__yf_ansi_red__}None of the specified public keys could be loaded.${__yf_ansi_reset__}\n
-ERR_wrong_public_keys		${__yf_ansi_red__}No usable public key was found.${__yf_ansi_reset__}\n
-ERR_verify_failed			${__yf_ansi_red__}Signature verification failed.${__yf_ansi_reset__}\n
-ERR_image_file_missing		${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} does not exist.${__yf_ansi_reset__}\n
-ERR_no_signature_found		${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains no signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n
-ERR_invalid_signature_file	${__yf_ansi_red__}The specified image file ${__yf_ansi_white__}%s${__yf_ansi_red__} contains an invalid signature file (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n
-ERR_missing_env_value		${__yf_ansi_yellow__}The specified environment variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} is missing or has an empty value.${__yf_ansi_reset__}\n
-ERR_unknown_option			${__yf_ansi_red__}Unknown option ${__yf_ansi_white__}%s${__yf_ansi_red__} specified on command line.${__yf_ansi_reset__}\n
-ERR_invalid_modulus			${__yf_ansi_yellow__}Invalid modulus value on line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n
-ERR_too_much_arguments		${__yf_ansi_red__}Extra data specified after ${__yf_ansi_white__}%s${__yf_ansi_red__} option.${__yf_ansi_reset__}\n
-ERR_invalid_exponent		${__yf_ansi_yellow__}Invalid exponent value on line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n
-ERR_file_read_error			${__yf_ansi_yellow__}Unable to read modulus value from file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, which was included on line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, file skipped.${__yf_ansi_reset__}\n
-ERR_file_missing_error		${__yf_ansi_yellow__}File ${__yf_ansi_white__}%s${__yf_ansi_yellow__} from line ${__yf_ansi_white__}%u${__yf_ansi_yellow__} of ${__yf_ansi_white__}%s${__yf_ansi_yellow__} does not exist, line skipped.${__yf_ansi_reset__}\n
-ERR_missing_modulus			${__yf_ansi_red__}Missing ${__yf_ansi_white__}MOD${__yf_ansi_red__} value (modulus) on line ${__yf_ansi_white__}%u${__yf_ansi_red__} of condensed file ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n
-ERR_modulus_read_error		${__yf_ansi_yellow__}Unable to read modulus value from file ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, file skipped.${__yf_ansi_reset__}\n
-ERR_openssl_unsupported		\n${__yf_ansi_red__}This version of OpenSSL (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) is unsupported.${__yf_ansi_reset__}\n
-ERR_stdin_from_terminal		${__yf_ansi_red__}Image file shall be read from STDIN, but it is a terminal device.${__yf_ansi_reset__}\n
-ERR_missing_image_name		${__yf_ansi_red__}Missing image file name argument.${__yf_ansi_reset__}\n
-ERR_missing_key_sources		${__yf_ansi_red__}Missing key source options on command line.${__yf_ansi_reset__}\n
-ERR_invalid_image_data		${__yf_ansi_red__}Invalid image data found on STDIN.${__yf_ansi_reset__}\n
+ERR_too_much_keys			#RED#The option #WHT#%s#RED# may only be used without any other keys.#RSET#\n
+ERR_missing_variable_name	#RED#Missing variable name after #WHT#%s#RED# option.#RSET#\n
+ERR_no_public_keys			#RED#None of the specified public keys could be loaded.#RSET#\n
+ERR_wrong_public_keys		#RED#No usable public key was found.#RSET#\n
+ERR_verify_failed			#RED#Signature verification failed.#RSET#\n
+ERR_image_file_missing		#RED#The specified image file #WHT#%s#RED# does not exist.#RSET#\n
+ERR_no_signature_found		#RED#The specified image file #WHT#%s#RED# contains no signature file (#WHT#%s#RED#).#RSET#\n
+ERR_invalid_signature_file	#RED#The specified image file #WHT#%s#RED# contains an invalid signature file (#WHT#%s#RED#).#RSET#\n
+ERR_missing_env_value		#YLLW#The specified environment variable #WHT#%s#YLLW# is missing or has an empty value.#RSET#\n
+ERR_unknown_option			#RED#Unknown option #WHT#%s#RED# specified on command line.#RSET#\n
+ERR_invalid_modulus			#YLLW#Invalid modulus value on line #WHT#%u#YLLW# of file #WHT#%s#YLLW#.#RSET#\n
+ERR_too_much_arguments		#RED#Extra data specified after #WHT#%s#RED# option.#RSET#\n
+ERR_invalid_exponent		#YLLW#Invalid exponent value on line #WHT#%u#YLLW# of file #WHT#%s#YLLW#.#RSET#\n
+ERR_file_read_error			#YLLW#Unable to read modulus value from file #WHT#%s#YLLW#, which was included on line #WHT#%u#YLLW# of file #WHT#%s#YLLW#, file skipped.#RSET#\n
+ERR_file_missing_error		#YLLW#File #WHT#%s#YLLW# from line #WHT#%u#YLLW# of #WHT#%s#YLLW# does not exist, line skipped.#RSET#\n
+ERR_missing_modulus			#RED#Missing #WHT#MOD#RED# value (modulus) on line #WHT#%u#RED# of condensed file #WHT#%s#RED#.#RSET#\n
+ERR_modulus_read_error		#YLLW#Unable to read modulus value from file #WHT#%s#YLLW#, file skipped.#RSET#\n
+ERR_openssl_unsupported		\n#RED#This version of OpenSSL (#BWHT#%s.%s.%s#RED#) is unsupported.#RSET#\n
+ERR_stdin_from_terminal		#RED#Image file shall be read from STDIN, but it is a terminal device.#RSET#\n
+ERR_missing_image_name		#RED#Missing image file name argument.#RSET#\n
+ERR_missing_key_sources		#RED#Missing key source options on command line.#RSET#\n
+ERR_invalid_image_data		#RED#Invalid image data found on STDIN.#RSET#\n
 
 language de
 
 INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
-ERR_show_error				${__yf_ansi_red__}FEHLER${__yf_ansi_reset__}\n
-INF_show_ok					${__yf_ansi_green__}OK${__yf_ansi_reset__}\n
+ERR_show_error				#RED#FEHLER#RSET#\n
+INF_show_ok					#GRN#OK#RSET#\n
 
-INF_ossl_version			Gefundene Version: ${__yf_ansi_bright_blue__}%s${__yf_ansi_reset__} ...
+INF_ossl_version			Gefundene Version: #BBLU#%s#RSET# ...
 INF_copy_stdin				Kopiere Image-Daten von STDIN in temporäre Datei ...
-INF_data_count_stdin		${__yf_ansi_green__}OK${__yf_ansi_reset__} - ${__yf_ansi_bright_white__}%u${__yf_ansi_reset__} Bytes kopiert${__yf_ansi_reset__}\n
-INF_read_box_privkey		Versuche den öffentlichen Schlüssel aus der privaten Schlüsseldatei im FRITZ!OS zu extrahieren (${__yf_ansi_bold__}%s${__yf_ansi_reset__}) ...
-INF_read_box_cert			Versuche den öffentlichen Schlüssel aus dem Zertifikat in ${__yf_ansi_bold__}%s${__yf_ansi_reset__} im FRITZ!OS zu extrahieren ...
-INF_check_command			Prüfe Verfügbarkeit des ${__yf_ansi_bold__}%s${__yf_ansi_reset__}-Kommandos ...
-INF_check_digest			Prüfe, ob der Digest-Algorithmus ${__yf_ansi_bold__}%s${__yf_ansi_reset__} unterstützt ist ...
-INF_verify_success			${__yf_ansi_green__}Die Signaturprüfung war erfolgreich.${__yf_ansi_reset__}\n
-INF_public_key_check		Prüfung des öffentlichen Schlüssels von ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ...
-INF_check_supported_hash	Prüfung der Unterstützung des verwendeten Hash-Algorithmus ${__yf_ansi_bold__}%s${__yf_ansi_reset__} ...
+INF_data_count_stdin		#GRN#OK#RSET# - #BWHT#%u#RSET# Bytes kopiert#RSET#\n
+INF_read_box_privkey		Versuche den öffentlichen Schlüssel aus der privaten Schlüsseldatei im FRITZ!OS zu extrahieren (#BOLD#%s#RSET#) ...
+INF_read_box_cert			Versuche den öffentlichen Schlüssel aus dem Zertifikat in #BOLD#%s#RSET# im FRITZ!OS zu extrahieren ...
+INF_check_command			Prüfe Verfügbarkeit des #BOLD#%s#RSET#-Kommandos ...
+INF_check_digest			Prüfe, ob der Digest-Algorithmus #BOLD#%s#RSET# unterstützt ist ...
+INF_verify_success			#GRN#Die Signaturprüfung war erfolgreich.#RSET#\n
+INF_public_key_check		Prüfung des öffentlichen Schlüssels von #BOLD#%s#RSET# ...
+INF_check_supported_hash	Prüfung der Unterstützung des verwendeten Hash-Algorithmus #BOLD#%s#RSET# ...
 INF_probing_keys			Suche nach dem passenden öffentlichen Schlüssel ...\n
 
-ERR_missing_openssl			${__yf_ansi_red__}Es fehlt die Datei für ${__yf_ansi_white__}openssl${__yf_ansi_red__}, bitte die ${__yf_ansi_white__}YF_SIGNIMAGE_OPENSSL${__yf_ansi_red__}-Einstellung auf den Pfad zu diesem Kommando setzen.${__yf_ansi_reset__}\n
-ERR_RSA_key					${__yf_ansi_red__}Der RSA-Schlüssel (%s) kann nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} gelesen werden.${__yf_ansi_reset__}\n
-ERR_unexpected_exp			${__yf_ansi_red__}Unerwartetes Ergebnis beim Versuch, den Exponenten des öffentlichen Schlüssels aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} (%s) zu lesen.${__yf_ansi_reset__}\n
-ERR_missing_file_for_option	${__yf_ansi_red__}Die Angabe eines Dateinamens nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__} fehlt.${__yf_ansi_reset__}\n
-ERR_missing_file_with_list	${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} für die Liste mit Namen von Schlüsseldateien existiert nicht.${__yf_ansi_reset__}\n
-ERR_no_fritzos_device		${__yf_ansi_red__}Die Option ${__yf_ansi_white__}-b${__yf_ansi_red__} kann nur auf einem Gerät mit FRITZ!OS von AVM genutzt werden.${__yf_ansi_reset__}\n
-ERR_pubkey_file_missing		${__yf_ansi_red__}Die angegebene Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} mit öffentlichen Schlüsseln (%s) existiert nicht.${__yf_ansi_reset__}\n
+ERR_missing_openssl			#RED#Es fehlt die Datei für #WHT#openssl#RED#, bitte die #WHT#YF_SIGNIMAGE_OPENSSL#RED#-Einstellung auf den Pfad zu diesem Kommando setzen.#RSET#\n
+ERR_RSA_key					#RED#Der RSA-Schlüssel (%s) kann nicht aus der Datei #WHT#%s#RED# gelesen werden.#RSET#\n
+ERR_unexpected_exp			#RED#Unerwartetes Ergebnis beim Versuch, den Exponenten des öffentlichen Schlüssels aus der Datei #WHT#%s#RED# (%s) zu lesen.#RSET#\n
+ERR_missing_file_for_option	#RED#Die Angabe eines Dateinamens nach der Option #WHT#%s#RED# fehlt.#RSET#\n
+ERR_missing_file_with_list	#RED#Die angegebene Datei #WHT#%s#RED# für die Liste mit Namen von Schlüsseldateien existiert nicht.#RSET#\n
+ERR_no_fritzos_device		#RED#Die Option #WHT#-b#RED# kann nur auf einem Gerät mit FRITZ!OS von AVM genutzt werden.#RSET#\n
+ERR_pubkey_file_missing		#RED#Die angegebene Datei #WHT#%s#RED# mit öffentlichen Schlüsseln (%s) existiert nicht.#RSET#\n
 PART_condensed				komprimiertes Format
 PART_avmformat				AVM-(Text-)Format
 PART_pkcs1					%s-Format
-ERR_too_much_keys			${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} kann nicht mit weiteren Optionen/Schlüsseln kombiniert werden.${__yf_ansi_reset__}\n
-ERR_missing_variable_name	${__yf_ansi_red__}Der Name der Environment-Variablen fehlt nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n
-ERR_no_public_keys			${__yf_ansi_red__}Es ist kein öffentlicher Schlüssel für die Prüfung der Signatur verfügbar.${__yf_ansi_reset__}\n
-ERR_wrong_public_keys		${__yf_ansi_red__}Es konnte kein passender öffentlicher Schlüssel gefunden werden.${__yf_ansi_reset__}\n
-ERR_verify_failed			${__yf_ansi_red__}Die Signaturprüfung ist fehlgeschlagen.${__yf_ansi_reset__}\n
-ERR_image_file_missing		${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} existiert nicht.${__yf_ansi_reset__}\n
-ERR_no_signature_found		${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält keine Signatur (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n
-ERR_invalid_signature_file	${__yf_ansi_red__}Die angegebene Image-Datei ${__yf_ansi_white__}%s${__yf_ansi_red__} enthält eine Signatur-Datei mit ungültigem Aufbau (${__yf_ansi_white__}%s${__yf_ansi_red__}).${__yf_ansi_reset__}\n
-ERR_missing_env_value		${__yf_ansi_yellow__}Die angegebene Environment-Variable ${__yf_ansi_white__}%s${__yf_ansi_yellow__} ist nicht gesetzt oder der Wert ist leer (Länge 0).${__yf_ansi_reset__}\n
-ERR_unknown_option			${__yf_ansi_red__}Die Option ${__yf_ansi_white__}%s${__yf_ansi_red__} is unbekannt.${__yf_ansi_reset__}\n
-ERR_invalid_modulus			${__yf_ansi_yellow__}Ungültige Daten für den Wert des Modulus in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n
-ERR_too_much_arguments		${__yf_ansi_red__}Zusätzliche Argumente angegeben nach der Option ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n
-ERR_invalid_exponent		${__yf_ansi_yellow__}Ungültige Daten für den Wert des Exponenten in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}.${__yf_ansi_reset__}\n
-ERR_file_read_error			${__yf_ansi_yellow__}Der Modulus-Wert konnte nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, die in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} hinzugefügt werden sollte, gelesen werden - die Datei wurde ignoriert.${__yf_ansi_reset__}\n
-ERR_file_missing_error		${__yf_ansi_yellow__}Die Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__}, die in Zeile ${__yf_ansi_white__}%u${__yf_ansi_yellow__} der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} hinzugefügt werden sollte, wurde nicht gefunden - die Zeile wurde ignoriert.${__yf_ansi_reset__}\n
-ERR_missing_modulus			${__yf_ansi_red__}Der Wert für ${__yf_ansi_white__}MOD${__yf_ansi_red__} (den Modulus des öffentlichen Schlüssels) fehlt in Zeile ${__yf_ansi_white__}%u${__yf_ansi_red__} der zusammengefassten Datei ${__yf_ansi_white__}%s${__yf_ansi_red__}.${__yf_ansi_reset__}\n
-ERR_modulus_read_error		${__yf_ansi_yellow__}Der Modulus-Wert konnte nicht aus der Datei ${__yf_ansi_white__}%s${__yf_ansi_yellow__} gelesen werden, die Datei wurde ignoriert.${__yf_ansi_reset__}\n
-ERR_openssl_unsupported		\n${__yf_ansi_red__}Diese OpenSSL-Version (${__yf_ansi_bright_white__}%s.%s.%s${__yf_ansi_red__}) wird nicht unterstützt.${__yf_ansi_reset__}\n
-ERR_stdin_from_terminal		${__yf_ansi_red__}Die Image-Datei soll von STDIN gelesen werden, dort ist aber das Terminal verbunden.${__yf_ansi_reset__}\n
-ERR_missing_image_name		${__yf_ansi_red__}Es wurde keine Image-Datei angegeben beim Aufruf.${__yf_ansi_reset__}\n
-ERR_missing_key_sources		${__yf_ansi_red__}Beim Aufruf wurden keine Optionen für Quellen öffentlicher Schlüssel angegeben.${__yf_ansi_reset__}\n
-ERR_invalid_image_data		${__yf_ansi_red__}Ungültige Daten in der Image-Datei, die von STDIN gelesen wurde.${__yf_ansi_reset__}\n
+ERR_too_much_keys			#RED#Die Option #WHT#%s#RED# kann nicht mit weiteren Optionen/Schlüsseln kombiniert werden.#RSET#\n
+ERR_missing_variable_name	#RED#Der Name der Environment-Variablen fehlt nach der Option #WHT#%s#RED#.#RSET#\n
+ERR_no_public_keys			#RED#Es ist kein öffentlicher Schlüssel für die Prüfung der Signatur verfügbar.#RSET#\n
+ERR_wrong_public_keys		#RED#Es konnte kein passender öffentlicher Schlüssel gefunden werden.#RSET#\n
+ERR_verify_failed			#RED#Die Signaturprüfung ist fehlgeschlagen.#RSET#\n
+ERR_image_file_missing		#RED#Die angegebene Image-Datei #WHT#%s#RED# existiert nicht.#RSET#\n
+ERR_no_signature_found		#RED#Die angegebene Image-Datei #WHT#%s#RED# enthält keine Signatur (#WHT#%s#RED#).#RSET#\n
+ERR_invalid_signature_file	#RED#Die angegebene Image-Datei #WHT#%s#RED# enthält eine Signatur-Datei mit ungültigem Aufbau (#WHT#%s#RED#).#RSET#\n
+ERR_missing_env_value		#YLLW#Die angegebene Environment-Variable #WHT#%s#YLLW# ist nicht gesetzt oder der Wert ist leer (Länge 0).#RSET#\n
+ERR_unknown_option			#RED#Die Option #WHT#%s#RED# is unbekannt.#RSET#\n
+ERR_invalid_modulus			#YLLW#Ungültige Daten für den Wert des Modulus in Zeile #WHT#%u#YLLW# der Datei #WHT#%s#YLLW#.#RSET#\n
+ERR_too_much_arguments		#RED#Zusätzliche Argumente angegeben nach der Option #WHT#%s#RED#.#RSET#\n
+ERR_invalid_exponent		#YLLW#Ungültige Daten für den Wert des Exponenten in Zeile #WHT#%u#YLLW# der Datei #WHT#%s#YLLW#.#RSET#\n
+ERR_file_read_error			#YLLW#Der Modulus-Wert konnte nicht aus der Datei #WHT#%s#YLLW#, die in Zeile #WHT#%u#YLLW# der Datei #WHT#%s#YLLW# hinzugefügt werden sollte, gelesen werden - die Datei wurde ignoriert.#RSET#\n
+ERR_file_missing_error		#YLLW#Die Datei #WHT#%s#YLLW#, die in Zeile #WHT#%u#YLLW# der Datei #WHT#%s#YLLW# hinzugefügt werden sollte, wurde nicht gefunden - die Zeile wurde ignoriert.#RSET#\n
+ERR_missing_modulus			#RED#Der Wert für #WHT#MOD#RED# (den Modulus des öffentlichen Schlüssels) fehlt in Zeile #WHT#%u#RED# der zusammengefassten Datei #WHT#%s#RED#.#RSET#\n
+ERR_modulus_read_error		#YLLW#Der Modulus-Wert konnte nicht aus der Datei #WHT#%s#YLLW# gelesen werden, die Datei wurde ignoriert.#RSET#\n
+ERR_openssl_unsupported		\n#RED#Diese OpenSSL-Version (#BWHT#%s.%s.%s#RED#) wird nicht unterstützt.#RSET#\n
+ERR_stdin_from_terminal		#RED#Die Image-Datei soll von STDIN gelesen werden, dort ist aber das Terminal verbunden.#RSET#\n
+ERR_missing_image_name		#RED#Es wurde keine Image-Datei angegeben beim Aufruf.#RSET#\n
+ERR_missing_key_sources		#RED#Beim Aufruf wurden keine Optionen für Quellen öffentlicher Schlüssel angegeben.#RSET#\n
+ERR_invalid_image_data		#RED#Ungültige Daten in der Image-Datei, die von STDIN gelesen wurde.#RSET#\n
 
 # YF_UI localization end
 EOM
+# shellcheck disable=SC1090
 . "$___yf_localization"
 rm -f "$___yf_localization" 2>/dev/null
 if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
@@ -582,30 +582,22 @@ usage()
 		__yf_show_license
 		printf    "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
 		printf    "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
-		# shellcheck disable=SC2059
-		printf    "\nZweck:\n\n${__yf_ansi_bold__}Prüfen, ob die Signatur in einem TAR-Image (nach AVM-Manier) gültig ist.${__yf_ansi_reset__}\n\n"
+		printf    "\nZweck:\n\n#BOLD#Prüfen, ob die Signatur in einem TAR-Image (nach AVM-Manier) gültig ist.#RSET#\n\n"
 		printf    "Aufruf:\n\n"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}\n\n"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ist die zu prüfende Image-Datei, bei Angabe eines Bindestrichs (-) wird der Inhalt der\n"
+		printf    "#GRN#%s #RSET#" "$0"
+		printf    "#BOLD#imagefile#RSET# #BBLU#public_keys#RSET#\n\n"
+		printf    "#BOLD#imagefile#RSET# ist die zu prüfende Image-Datei, bei Angabe eines Bindestrichs (-) wird der Inhalt der\n"
 		printf    "Standardeingabe (STDIN) in eine temporäre Datei geschrieben und im weiteren Verlauf dann diese\n"
 		printf    "verwendet.\n\n"
-		# shellcheck disable=SC2059
-		printf    "Nach dem Namen der Image-Datei kann mittels folgender Optionen festgelegt werden (als ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}),\n"
+		printf    "Nach dem Namen der Image-Datei kann mittels folgender Optionen festgelegt werden (als #BBLU#public_keys#RSET#),\n"
 		printf    "welche öffentlichen RSA-Schlüssel eine gültige Signatur erstellt haben könnten:\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-a ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen öffentlichen Schlüssel im AVM-Format, wobei es sich\n"
+		printf -- "-a #BOLD#filename#RSET# - die Datei #BOLD#filename#RSET# enthält einen öffentlichen Schlüssel im AVM-Format, wobei es sich\n"
 		printf    "              um eine Textdatei handelt, welche in der ersten Zeile den Modulus-Wert als hexadezi-\n"
 		printf    "              male Zeichenkette enthält und in der zweiten Zeile den verwendeten Exponenten\n"
 		printf    "              (üblicherweise 65537, ebenfalls als hexadezimale Zeichenkette: 010001)\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-f ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält pro Zeile den Namen einer Datei, die (in demselben Format,\n"
+		printf -- "-f #BOLD#filename#RSET# - die Datei #BOLD#filename#RSET# enthält pro Zeile den Namen einer Datei, die (in demselben Format,\n"
 		printf    "              welches auch AVM verwendet, s.o.) einen potentiellen öffentlichen Schlüssel enthält\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-c ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält pro Zeile die Angaben für einen öffentlichen Schlüssel,\n"
+		printf -- "-c #BOLD#filename#RSET# - die Datei #BOLD#filename#RSET# enthält pro Zeile die Angaben für einen öffentlichen Schlüssel,\n"
 		printf    "              wobei die Daten jeweils aus einem Name-/Wert-Paar bestehen, mit folgenden Namen:\n\n"
 		printf    "              MOD  - der Modulus des Schlüssels (diese Angabe MUSS vorhanden sein in der Zeile)\n"
 		printf    "              EXP  - der verwendete Exponent (fehlt die Angabe, wird wieder 65537 angenommen)\n"
@@ -616,34 +608,23 @@ usage()
 		printf    "                     in doppelte Anführungszeichen (\") eingeschlossen sein, wenn er vorhanden ist\n\n"
 		printf    "              Die Werte für SRC und DESC dürfen selbst kein doppeltes Anführungszeichen enthalten,\n"
 		printf    "              es gibt auch keine Möglichkeit, ein solches zu 'maskieren' im Wert.\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-e ${__yf_ansi_bold__}variable${__yf_ansi_reset__} - die angegebene ${__yf_ansi_bold__}variable${__yf_ansi_reset__} im Shell-Environment enthält den Modulus eines öffentlichen\n"
+		printf -- "-e #BOLD#variable#RSET# - die angegebene #BOLD#variable#RSET# im Shell-Environment enthält den Modulus eines öffentlichen\n"
 		printf    "              Schlüssels, der Exponent wird fix als 65537 angenommen\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-p ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen PKCS#1-kodierten öffentlichen Schlüssel im PEM-\n"
+		printf -- "-p #BOLD#filename#RSET# - die Datei #BOLD#filename#RSET# enthält einen PKCS#1-kodierten öffentlichen Schlüssel im PEM-\n"
 		printf    "              Format (Base64-kodiertes DER-Format)\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-d ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - die Datei ${__yf_ansi_bold__}filename${__yf_ansi_reset__} enthält einen PKCS#1-kodierten öffentlichen Schlüssel im DER-\n"
+		printf -- "-d #BOLD#filename#RSET# - die Datei #BOLD#filename#RSET# enthält einen PKCS#1-kodierten öffentlichen Schlüssel im DER-\n"
 		printf    "              Format\n\n"
 		printf    "Wird dieses Skript auf einem Gerät mit FRITZ!OS von AVM ausgeführt, stehen auch noch diese beiden\n"
 		printf    "Optionen zur Auswahl:\n\n"
 		printf -- "-b          - alle öffentlichen Schlüssel aus dem laufenden FRITZ!OS werden der Liste potentieller\n"
-		# shellcheck disable=SC2059
-		printf    "              Schlüssel hinzugefügt, die Dateien befinden sich im Verzeichnis ${__yf_ansi_bold__}/etc${__yf_ansi_reset__} und haben die\n"
-		# shellcheck disable=SC2059
-		printf    "              Namen ${__yf_ansi_bold__}avm_firmware_public_key[1-9]${__yf_ansi_reset__} bzw. ${__yf_ansi_bold__}plugin_global_key.pem${__yf_ansi_reset__}\n\n"
-		# shellcheck disable=SC2059
+		printf    "              Schlüssel hinzugefügt, die Dateien befinden sich im Verzeichnis #BOLD#/etc#RSET# und haben die\n"
+		printf    "              Namen #BOLD#avm_firmware_public_key[1-9]#RSET# bzw. #BOLD#plugin_global_key.pem#RSET#\n\n"
 		printf -- "-s          - es wird ausschließlich der öffentliche Schlüssel akzeptiert, der zu dem privaten\n"
-		# shellcheck disable=SC2059
-		printf    "              Schlüssel des Gerätes (in ${__yf_ansi_bold__}/var/flash/websrv_ssl_key.pem${__yf_ansi_reset__}) gehört, dieser wird ggf.\n"
-		# shellcheck disable=SC2059
-		printf    "              auch noch in der Datei ${__yf_ansi_bold__}/var/flash/websrv_ssl_cert.pem${__yf_ansi_reset__} bzw. danach noch in der\n"
-		# shellcheck disable=SC2059
-		printf    "              ${__yf_ansi_bold__}/var/tmp/websrv_ssl_cert.pem${__yf_ansi_reset__} gesucht, wenn er zuvor nicht gefunden wurde (für das\n"
-		# shellcheck disable=SC2059
-		printf    "              Auslesen des Wertes aus einem der beiden Zertifikate muß das vorhandene ${__yf_ansi_bold__}OpenSSL${__yf_ansi_reset__}-\n"
-		# shellcheck disable=SC2059
-		printf    "              Programm zusätzlich das Kommando ${__yf_ansi_bold__}x509${__yf_ansi_reset__} unterstützen); die Option ${__yf_ansi_bold__}-s${__yf_ansi_reset__} kann nicht mit\n"
+		printf    "              Schlüssel des Gerätes (in #BOLD#/var/flash/websrv_ssl_key.pem#RSET#) gehört, dieser wird ggf.\n"
+		printf    "              auch noch in der Datei #BOLD#/var/flash/websrv_ssl_cert.pem#RSET# bzw. danach noch in der\n"
+		printf    "              #BOLD#/var/tmp/websrv_ssl_cert.pem#RSET# gesucht, wenn er zuvor nicht gefunden wurde (für das\n"
+		printf    "              Auslesen des Wertes aus einem der beiden Zertifikate muß das vorhandene #BOLD#OpenSSL#RSET#-\n"
+		printf    "              Programm zusätzlich das Kommando #BOLD#x509#RSET# unterstützen); die Option #BOLD#-s#RSET# kann nicht mit\n"
 		printf    "              anderen Optionen kombiniert werden\n\n"
 		printf    "Der erste öffentliche Schlüssel, mit dem sich die Signatur-Datei in der angegebenen Image-Datei\n"
 		printf    "entschlüsseln läßt (sie werden in der Reihenfolge der Angaben beim Aufruf geprüft), wird danach\n"
@@ -653,38 +634,27 @@ usage()
 		__yf_show_version
 		__yf_show_copyright
 		__yf_show_license
-		# shellcheck disable=SC2059
-		printf    "\nPurpose:\n\n${__yf_ansi_bold__}Check, whether signature of an image file is valid.${__yf_ansi_reset__}\n\n"
+		printf    "\nPurpose:\n\n#BOLD#Check, whether signature of an image file is valid.#RSET#\n\n"
 		printf    "Usage:\n\n"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_green__}%s ${__yf_ansi_reset__}" "$0"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__}\n\n"
-		# shellcheck disable=SC2059
-		printf    "${__yf_ansi_bold__}imagefile${__yf_ansi_reset__} is the archive to check, if specified as a dash (-), STDIN stream will be saved to a\n"
+		printf    "#GRN#%s #RSET#" "$0"
+		printf    "#BOLD#imagefile#RSET# #BBLU#public_keys#RSET#\n\n"
+		printf    "#BOLD#imagefile#RSET# is the archive to check, if specified as a dash (-), STDIN stream will be saved to a\n"
 		printf    "temporary location while the script is running.\n\n"
-		# shellcheck disable=SC2059
-		printf    "The list of public keys to consider for decryption (the ${__yf_ansi_bright_blue__}public_keys${__yf_ansi_reset__} part above) may be built from\n"
+		printf    "The list of public keys to consider for decryption (the #BBLU#public_keys#RSET# part above) may be built from\n"
 		printf    "the following sources:\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-a ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (containing a key in AVM's text format) to the list, the\n"
+		printf -- "-a #BOLD#filename#RSET# - add key from specified file (containing a key in AVM's text format) to the list, the\n"
 		printf    "              file has to contain two lines with hexadecimal strings, where the first line\n"
 		printf    "              represents the modulus value and the second one the exponent\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-f ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add keys from files named in the specified file (one file per line), each file has to\n"
+		printf -- "-f #BOLD#filename#RSET# - add keys from files named in the specified file (one file per line), each file has to\n"
 		printf    "              contain a key in AVM's format (see above)\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-c ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add lines from specified file to the list, lines have to use a text format with\n"
+		printf -- "-c #BOLD#filename#RSET# - add lines from specified file to the list, lines have to use a text format with\n"
 		printf    "              key/value pairs to provide at least a MOD and EXP value (if the used exponent isn't\n"
 		printf    "              the default 65537), SRC (optional) as a pseudo filename and DESC (optional, too) as a\n"
 		printf    "              description to be displayed for this key (the DESC value is unused yet)\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-e ${__yf_ansi_bold__}variable${__yf_ansi_reset__} - add modulus from specified environment variable (hexadecimal string) with a fixed\n"
+		printf -- "-e #BOLD#variable#RSET# - add modulus from specified environment variable (hexadecimal string) with a fixed\n"
 		printf    "              exponent of 0x010001\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-p ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (PEM format) to the list\n\n"
-		# shellcheck disable=SC2059
-		printf -- "-d ${__yf_ansi_bold__}filename${__yf_ansi_reset__} - add key from specified file (DER format) to the list\n\n"
+		printf -- "-p #BOLD#filename#RSET# - add key from specified file (PEM format) to the list\n\n"
+		printf -- "-d #BOLD#filename#RSET# - add key from specified file (DER format) to the list\n\n"
 		printf    "If the script is running from a FRITZ!OS-based device, the following options are available, too:\n\n"
 		printf -- "-b          - add key files from current OS to the list\n\n"
 		printf -- "-s          - verify that image file was signed with RSA key from local FRITZ!OS device - this\n"
@@ -1040,8 +1010,7 @@ tar_get_member_data()
 	else
 		toc="$3"
 	fi
-	# shellcheck disable=SC2162
-	while read line; do
+	while read -r line; do
 		eval "$line"
 		if [ "$2" = "$MEMBER" ]; then
 			if [ "$BLOCKS" -gt 1 ]; then
@@ -1085,7 +1054,6 @@ __yf_info "INF_license"
 #                                                                                                     #
 #######################################################################################################
 if [ -z "$1" ]; then
-	usage 1>&2
 	__yf_emsg "ERR_missing_image_name"
 	exit $YF_CHECK_SIGNATURE_MISSING_ARGUMENTS
 fi
@@ -1112,7 +1080,6 @@ if ! [ -f "$image_file" ]; then
 fi
 shift
 if [ -z "$1" ]; then
-	usage 1>&2
 	__yf_emsg "ERR_missing_key_sources"
 	exit $YF_CHECK_SIGNATURE_MISSING_KEY_OPTIONS
 fi
@@ -1353,7 +1320,6 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 if ! [ -s "$tmp/$public_keys_list" ]; then
-	# shellcheck disable=SC2059
 	__yf_emsg "ERR_no_public_keys"
 	exit $YF_CHECK_SIGNATURE_NO_KEYS_DEFINED
 fi
@@ -1412,7 +1378,6 @@ fi
 # all done                                                                                            #
 #                                                                                                     #
 #######################################################################################################
-# shellcheck disable=SC2059
 __yf_info "INF_verify_success"
 exit $YF_CHECK_SIGNATURE_SUCCESS
 #######################################################################################################
