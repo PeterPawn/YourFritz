@@ -568,6 +568,7 @@ if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
 	set | grep "^__YF_L10N" 1>&2
 	exit 0
 fi
+unset ___yf_localization
 #######################################################################################################
 #                                                                                                     #
 # usage screen, caller has to redirect output to STDERR if needed                                     #
