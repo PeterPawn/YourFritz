@@ -145,7 +145,7 @@ fi
 #######################################################################################################
 #######################################################################################################
 
-__check_required_command()
+__yf_check_required_command()
 (
 	IFS=:
 	set -- "$1"
@@ -332,8 +332,8 @@ __yf_random()
 (
 	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
 	for h in md5sum sha1sum; do
-		if __check_required_command $h; then
-			if [ -c /dev/urandom ] && __check_required_command "dd"; then
+		if __yf_check_required_command $h; then
+			if [ -c /dev/urandom ] && __yf_check_required_command "dd"; then
 				dd if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
 			fi
 			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
@@ -343,12 +343,12 @@ __yf_random()
 			done
 		fi
 	done
-	__check_required_command "date" && date +%s && exit 0
+	__yf_check_required_command "date" && date +%s && exit 0
 	printf "%d" "$$"
 )
 __yf_mktmp()
 (
-	if __check_required_command "mktemp"; then
+	if __yf_check_required_command "mktemp"; then
 		n="$(mktemp "$@" 2>/dev/null)"
 	fi
 	if [ -z "$n" ]; then
