@@ -1,262 +1,919 @@
 #! /bin/sh
-# SPDX-License-Identifier: GPL-2.0-or-later
-#######################################################################################
-#                                                                                     #
-# generate a RSA key usable to sign a firmware image, which may pass the signature    #
-# checks in current FRITZ!OS versions and convert the public key to a file, which     #
-# may be included into an own image for later use                                     #
-#                                                                                     #
-# This script needs a full-functioning OpenSSL binary ('genrsa' is embedded into      #
-# FRITZ!OS images, but 'rsa' and 'rsautl' are not available) and a shell version,     #
-# which may use "read -sp" for hidden terminal reads. If your shell does not          #
-# support such "read" calls (Busybox 1.24.2 knows the needed options), specify the
-# password as argument during call.                                                   #
-#                                                                                     #
-# We assume enough entropy here ... please make sure there's enough randomness,       #
-# before you call this script and you should be profoundly  convinced, that your      #
-# "openssl" binary does not seed the PRNG with any fixed value.                       #
-#                                                                                     #
-# You could read some values from /dev/random (not /dev/urandom, because this uses    #
-# unblocking access and may return poor values, if no entropy is available)  before   #
-# you call this script.                                                               #
-#                                                                                     #
-# $ dd if=/dev/random bs=1 count=16 status=none | busybox hd                          #
-# 00000000  8f 29 47 29 4a b7 95 de  b0 f5 75 52 6c 51 63 4f  |.)G)J.....uRlQcO|      #
-# 00000010                                                                            #
-#                                                                                     #
-# Afterwards the call to 'genrsa' may take some more time, but it should              #
-# get really random values for the key generation.                                    #
-#                                                                                     #
-# You may also generate your own random seed file (have a look at the file name       #
-# definitions in the include file for further explanations) to seed the PRNG for      #
-# the 'genrsa' call.                                                                  #
-#                                                                                     #
-#######################################################################################
-#                                                                                     #
-# determine our script path to locate the include file                                #
-#                                                                                     #
-#######################################################################################
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later WITH exceptions
+#######################################################################################################
+#                                                                                                     #
+# generate a RSA key usable to sign of firmware images for AVM's devices                              #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# yf_genkey, version 1.0.1                                                                            #
+#                                                                                                     #
+# Some functions in this script were taken from the YourFritz Shell Script library (YF_SCRIPTLIB)     #
+# and/or from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from           #
+# https://github.com/PeterPawn/YourFritz.                                                             #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2016-2021 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This script is licensed according to the following terms:                                           #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
+# file, you HAVE TO KEEP these functions together as one single continous part in your script AND     #
+# this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of UI functions, these changes HAVE TO BE marked with the #
+# name of author AND the date of change AND a short explanation, what was changed (if it's not        #
+# obvious).                                                                                           #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#################################################################################################EMBED#
+#                                                                                                     #
+# some constants                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+avm_pubkey_base="/etc/avm_firmware_public_key"
+#avm_default_files="${avm_pubkey_base}[1-9] plugin_global_key.pem"
+avm_copy_proposal="9"
+box_key_name="/var/flash/websrv_ssl_key.pem"
+#box_cert_name1="/var/flash/websrv_ssl_cert.pem"
+#box_cert_name2="/var/tmp/websrv_ssl_cert.pem"
+urlader_environment_file="environment"
+maca_name="maca"
+hwrev_name="HWRevision"
+prompt_name="prompt"
+eva_prompt="Eva_AVM"
+openssl_conf_name="openssl.conf"
+rsa_enc="aes128"
+supported_rsa_key_sizes="1024 2048 3072 4096"
+random_source="/dev/random"
+YF_UI_LANGUAGES="en de"
+#######################################################################################################
+#                                                                                                     #
+# exit code definitions                                                                               #
+#                                                                                                     #
+#######################################################################################################
+YF_GENKEY_SUCCESS=0 # processing complete successfully
+YF_GENKEY_INVALID_CALL=1 # parameter error while calling
+YF_GENKEY_NO_OUTPUT_TO_TERMINAL=2 # signed image would be written to a terminal
+YF_GENKEY_NO_FRITZOS_DEVICE=3 # options are only supported, if running on a FRITZ!OS device
+YF_GENKEY_BOX_KEY_PASSWORD_ERROR=4 # error computing password for private key file from FRITZ!OS
+YF_GENKEY_PRIVATE_KEY_MISSING=5 # the RSA private key file is missing
+YF_GENKEY_WRONG_PASSWORD=6 # password for private key is wrong (or can't be read from terminal)
+YF_GENKEY_SEED_ERROR=7 # error collecting entropy to seed the PRNG
+YF_GENKEY_NO_OSSL_BINARY=32 # no usable openssl binary found
+YF_GENKEY_NO_OSSL_GENRSA=33 # the openssl binary doesn't support the 'genrsa' command
+YF_GENKEY_NO_OSSL_RSA=34 # the openssl binary doesn't support the 'rsa' command
+YF_GENKEY_NO_CONFIG_FILE=127 # error processing configuration file
+#######################################################################################################
+#                                                                                                     #
+# determine our script path to locate the configuration file                                          #
+#                                                                                                     #
+#######################################################################################################
 my_path="$0"
-[ "${my_path%/*}" == "$my_path" ] && my_path="." || my_path="${my_path%/*}"
+[ "${my_path%/*}" = "$my_path" ] && my_path="." || my_path="${my_path%/*}"
+# shellcheck disable=SC2034
 my_name="${0##*/}"
-#######################################################################################
-#                                                                                     #
-# include the common file definitions                                                 #
-#                                                                                     #
-#######################################################################################
-source "$my_path/image_signing_files.inc"
-#######################################################################################
-#                                                                                     #
-# get the path for needed external commands, if called in any toolchain               #
-#                                                                                     #
-# looks a little bit complicated, but has to support definitions for BusyBox          #
-# applets as commands to be used and simple quoting isn't enough to ensure proper     #
-# substitution, but spreading 'eval' statements all over the code looks ugly, too     #
-#                                                                                     #
-#######################################################################################
-if ! [ -z "$YF_SIGNIMAGE_DD" ]; then
-	__YF_SIGNIMAGE_DD="$YF_SIGNIMAGE_DD"
-	__yf_signimage_dd()
-	{
-		eval $__YF_SIGNIMAGE_DD $*
-	}
-	YF_SIGNIMAGE_DD="__yf_signimage_dd"
+#######################################################################################################
+#                                                                                                     #
+# include the configuration file                                                                      #
+#                                                                                                     #
+#######################################################################################################
+config_file="${YF_SIGNIMAGE_CONFIG:-$my_path/yf_signimage.conf}"
+if ! [ -r "$config_file" ]; then
+	# no configuration file, use already defined environment variables or default values
+	home_dir="${HOME:-~}"
+	[ "${home_dir%*/}" != "$home_dir" ] && home_dir="${home_dir%*/}"
+	YF_SIGNIMAGE_KEYS="${YF_SIGNIMAGE_KEYS:-$home_dir/.yf_signimage/image_signing}"
+	YF_SIGNIMAGE_PRIVKEYEXT="${YF_SIGNIMAGE_PRIVKEYEXT:-.key}"
+	YF_SIGNIMAGE_PUBKEYEXT="${YF_SIGNIMAGE_PUBKEYEXT:-.pem}"
+	YF_SIGNIMAGE_AVMKEYEXT="${YF_SIGNIMAGE_AVMKEYEXT:-.asc}"
+	YF_SIGNIMAGE_PRNGSEEDEXT="${YF_SIGNIMAGE_PRNGSEEDEXT:-.rnd}"
+	YF_SIGNIMAGE_KEYSIZE="${YF_SIGNIMAGE_KEYSIZE:-1024}"
+	YF_SIGNIMAGE_SUPPORTED_HASHES="${YF_SIGNIMAGE_SUPPORTED_HASHES:-md5 sha1 sha224 sha256 sha384 sha512 whirlpool}"
+	YF_SIGNIMAGE_DEFAULT_HASH="${YF_SIGNIMAGE_DEFAULT_HASH:-md5}"
 else
-	YF_SIGNIMAGE_DD="dd"
+	# shellcheck source=./yf_signimage.conf
+	. "$config_file" || exit $YF_GENKEY_NO_CONFIG_FILE
 fi
-if ! [ -z "$YF_SIGNIMAGE_OPENSSL" ]; then
+filename_prefix="$YF_SIGNIMAGE_KEYS"
+private_extension="$YF_SIGNIMAGE_PRIVKEYEXT"
+public_extension="$YF_SIGNIMAGE_PUBKEYEXT"
+avm_extension="$YF_SIGNIMAGE_AVMKEYEXT"
+seed_extension="$YF_SIGNIMAGE_PRNGSEEDEXT"
+key_size="$YF_SIGNIMAGE_KEYSIZE"
+#######################################################################################################
+#                                                                                                     #
+# get the names of needed external commands, if called from a cross-device toolchain                  #
+#                                                                                                     #
+#######################################################################################################
+if [ -n "$YF_SIGNIMAGE_OPENSSL" ]; then
 	__YF_SIGNIMAGE_OPENSSL="$YF_SIGNIMAGE_OPENSSL"
 	__yf_signimage_openssl()
 	{
-		KEYPASSWORD="$KEYPASSWORD"
-		eval $__YF_SIGNIMAGE_OPENSSL $*
+		"$__YF_SIGNIMAGE_OPENSSL" "$@"
 	}
 	YF_SIGNIMAGE_OPENSSL="__yf_signimage_openssl"
 else
 	YF_SIGNIMAGE_OPENSSL="openssl"
 fi
-#######################################################################################
-#                                                                                     #
-# some subfunctions                                                                   #
-#                                                                                     #
-#######################################################################################
-show_error() { echo -e "\x1B[1;31mFAILED\x1B[0m" 1>&2; }
-show_ok() { echo -e "\x1B[1;32mOK\x1B[0m" 1>&2; }
-show_version()
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##   Y o u r F r i t z   s h e l l   s c r i p t    l i b r ar y   a n d   Y o u r F r i t z   U I   ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+__yf_check_required_command()
+(
+	IFS=:
+	set -- "$1"
+	for n in "$@"; do
+		command -v "$n" 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+
+__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+__yf_ansi_underline__="$(__yf_ansi_sgr 4)"
+__yf_ansi_black__="$(__yf_ansi_sgr 30)"
+__yf_ansi_red__="$(__yf_ansi_sgr 31)"
+__yf_ansi_green__="$(__yf_ansi_sgr 32)"
+__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+__yf_ansi_blue__="$(__yf_ansi_sgr 34)"
+__yf_ansi_magenta__="$(__yf_ansi_sgr 35)"
+__yf_ansi_cyan__="$(__yf_ansi_sgr 36)"
+__yf_ansi_white__="$(__yf_ansi_sgr 37)"
+__yf_ansi_gray__="$(__yf_ansi_sgr 90)"
+__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+__yf_ansi_bright_yellow__="$(__yf_ansi_sgr 93)"
+__yf_ansi_bright_blue__="$(__yf_ansi_sgr 94)"
+__yf_ansi_bright_magenta__="$(__yf_ansi_sgr 95)"
+__yf_ansi_bright_cyan__="$(__yf_ansi_sgr 96)"
+__yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
+__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+__yf_bold() { printf -- "%s" "$__yf_ansi_bold__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_undl() { printf -- "%s" "$__yf_ansi_underline__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_color_codes()
 {
-	local v
-	v=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
-	if [ $? -eq 127 ]; then
-		echo -e "Missing \x1B[1mopenssl\x1B[0m binary, set YF_SIGNIMAGE_OPENSSL variable to its path name." 1>&2
-		return 127
+	printf "%s\n" "$1" | sed \
+		-e "s|#BOLD#|${__yf_ansi_bold__}|g" \
+		-e "s|#UNDL#|${__yf_ansi_underline__}|g" \
+		-e "s|#BLCK#|${__yf_ansi_black__}|g" \
+		-e "s|#RED#|${__yf_ansi_red__}|g" \
+		-e "s|#GRN#|${__yf_ansi_green__}|g" \
+		-e "s|#YLLW#|${__yf_ansi_yellow__}|g" \
+		-e "s|#BLU#|${__yf_ansi_blue__}|g" \
+		-e "s|#MGNT#|${__yf_ansi_magenta__}|g" \
+		-e "s|#CYN#|${__yf_ansi_cyan__}|g" \
+		-e "s|#WHT#|${__yf_ansi_white__}|g" \
+		-e "s|#GRY#|${__yf_ansi_gray__}|g" \
+		-e "s|#BRED#|${__yf_ansi_bright_red__}|g" \
+		-e "s|#BGRN#|${__yf_ansi_bright_green__}|g" \
+		-e "s|#BYLLW#|${__yf_ansi_bright_yellow__}|g" \
+		-e "s|#BBLU#|${__yf_ansi_bright_blue__}|g" \
+		-e "s|#BMGNT#|${__yf_ansi_bright_magenta__}|g" \
+		-e "s|#BCYN#|${__yf_ansi_bright_cyan__}|g" \
+		-e "s|#BWHT#|${__yf_ansi_bright_white__}|g" \
+		-e "s|#RSET#|${__yf_ansi_reset__}|g"
+}
+
+__yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
+__yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
+
+__yf_languages__="${YF_UI_LANGUAGES:-en}"
+__yf_get_language()
+(
+	__yf_get_language_code()
+	{
+		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+	}
+
+	___yf_lang="$1" && shift
+
+	if [ -n "$Language" ]; then
+		___yf_check="$(__yf_get_language_code "$Language")"
+	elif [ -n "$LC_ALL" ]; then
+		___yf_check="$(__yf_get_language_code "$LC_ALL")"
 	else
-		echo -e "Found \x1B[1;34m$v\x1B[0m" 1>&2
-		v="$("$YF_SIGNIMAGE_OPENSSL" version | sed -e "s|.* \([0-9]\.[0-9]\)\.[0-9].*|\1|")"
-		[ ${#USE_OLD_OPENSSL} -gt 0 ] && [ "$v" = "0_9" ] && printf "0_9\n" && return 0
-		[ "$v" = "1.0" ] && printf "1_0\n" && return 0
-		[ "$v" = "1.1" ] && printf "1_1\n" && return 0
-		if [ "$v" = "0.9" ]; then
-			echo -e "\x1B[1;33mYour OpenSSL version is too old.\x1b[0m" 1>&2
-			return 127
+		[ -z "$LANG" ] || ___yf_check="$(__yf_get_language_code "$LANG")"
+	fi
+	if [ -n "$___yf_check" ]; then
+		[ "$___yf_lang" = "$___yf_check" ] || \
+		for ___yf_lng in "$@"; do
+			[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
+		done
+	fi
+	printf -- '%s' "${___yf_lang:-en}"
+	unset ___yf_lng
+	unset ___yf_lang
+	unset ___yf_check
+)
+__yf_language__="$(eval __yf_get_language "$__yf_languages__")"
+
+__yf_get_localized()
+(
+	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
+	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+	eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
+	[ -z "$___yf_msg" ] && printf -- "Message definition '%s' is missing for '%s'.\n" "$1" "$__yf_language__" 1>&2 && return
+	printf -- '%s' "$___yf_msg"
+	unset ___yf_msg
+	unset ___yf_lang
+)
+__yf_declare_message()
+{
+	___yf_msg_lang="$1"
+	if [ "${#___yf_msg_lang}" -ne 2 ]; then
+		___yf_msg_lang='en'
+		___yf_msg_code="$1"
+		shift
+	else
+		___yf_msg_code="$2"
+		shift 2
+	fi
+	printf -- '__YF_L10N_%s_%s="%s"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_msg()
+{
+	__yf_declare_message "$@"
+}
+__yf_localization()
+{
+	language="en"
+	while read -r id message; do
+		if [ "$id" = "language" ]; then
+			language="$message"
+			continue
 		fi
-		echo -e "\x1B[1;31mYour OpenSSL version is unknown ... please install a version based on 1.0.x or 1.1.x to use this script.\x1B[0m" 1>&2
-		return 1
-	fi
+		if [ -n "$id" ]; then
+			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
+				&& __yf_declare_message "$language" "$id" "$(__yf_color_codes "$message")"
+		fi
+	done
 }
-#######################################################################################
-#                                                                                     #
-# usage screen, caller has to redirect output to STDERR if needed                     #
-#                                                                                     #
-#######################################################################################
-usage()
+
+#######################################################################################################
+#                                                                                                     #
+# functions to display messages to user                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_nl_out() { printf -- '\n'; }
+__yf_nl_err() { __yf_nl_out 1>&2; }
+__yf_errmsg()
 {
-	echo -e "\x1B[1mCreate a RSA key pair to sign image files for AVM routers.\x1B[0m\n"
-	echo -e "Usage:\n"
-	echo -e "$0 [\x1B[1mpassword\x1B[0m]\n"
-	echo -e "The \x1B[1mpassword\x1B[0m will be read from the terminal, if it's not specified.\n"
-	echo -e "The script may generate a key with more than 1024 bit length, if the environment"
-	echo -e "variable KEYSIZE is set to the requested length, but \x1B[1m1024\x1B[0m, \x1B[1m\
-2048\x1B[0m and \x1B[1m4096\x1B[0m are the"
-	echo -e "only valid selections, because larger keys would affect the size of the encrypted"
-	echo -e "signature file and this would need further changes. Please keep in mind, that you"
-	echo -e "cannot use such a key with the original AVM code (yet - I hope, they will change"
-	echo -e "something in the near future, to re-establish a secure handling of images)."
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}\a" "$@" 1>&2
+	unset ___yf_mask
 }
-#######################################################################################
-#                                                                                     #
-# check parameters                                                                    #
-#                                                                                     #
-#######################################################################################
-if [ x"$1" == x"-h" -o x"$1" == x"--help" ]; then
-	usage 1>&2
-	exit 1
-fi
-#######################################################################################
-#                                                                                     #
-# check OpenSSL presence and version                                                  #
-#                                                                                     #
-#######################################################################################
-version=$(show_version)
-rc=$?
-if [ $rc -eq 127 ] || [ $rc -eq 1 ]; then
-	exit 1
-fi
-echo -en "Check \x1B[1mgenrsa\x1B[0m command ... " 1>&2
-if [ $version = 1_0 ] || [ $version = 0_9 ]; then
-	"$YF_SIGNIMAGE_OPENSSL" genrsa -dummy 2>&1 | grep -q '^usage: genrsa' 2>/dev/null 1>&2
-elif [ $version = 1_1 ]; then
-	"$YF_SIGNIMAGE_OPENSSL" genrsa -help 2>&1 | grep -q '^Usage: genrsa' 2>/dev/null 1>&2
-else
-	echo -e "\x1B[1;31mUnexpected OpenSSL version found.\x1B[0m" 1>&2
-	exit 1
-fi
-rc=$?
-if [ $rc -eq 0 ]; then
-	show_ok
-else
-	show_error
-	exit 1
-fi
-#######################################################################################
-#                                                                                     #
-# get and check the password for the new key                                          #
-#                                                                                     #
-#######################################################################################
-if [ -z $1 ]; then
-	if ! [ -t 0 ]; then
-		usage 1>&2
-		exit 1
-	else
-		read -sp "Enter a password for the generated key: " KEYPASSWORD
-		echo "" 1>&2
+__yf_emsg()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_info_output()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_info()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_info_output "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_help()
+{
+	___yf_mask="$(__yf_color_codes "$1")"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@"
+	unset ___yf_mask
+}
+__yf_spinner()
+(
+	___yf_run_spinner()
+	(
+		i=1
+		# only complete lines result in a new step
+		while read -r l; do
+			c="$(expr "$1" : ".\{$(( i - 1 ))\}\(.\).*")"
+			printf -- "\033[1D%c" "$c" 1>&2
+			i=$(( ( i % ${#1} ) + 1 ))
+			unset l
+		done
+	)
+
+	command -v mknod 2>/dev/null 1>&2 || exit 127
+	l="${__yf_spinner_states:-|/-\\}"
+	f="$(__yf_mktmp)"
+	rm -f "$f" 2>/dev/null && mknod "$f" p
+	___yf_run_spinner "$l" <"$f" &
+	p=$!
+	e="$(__yf_mktmp)"
+	printf "  " 1>&2
+	"$@" 2>"$e" >"$f"
+	r=$?
+	wait $p
+	rm -f "$f" 2>/dev/null
+	printf "\033[2D\033[0K" 1>&2
+	if [ $r -ne 0 ]; then
+		cat "$e" 1>&2
 	fi
-else
-	KEYPASSWORD="$1"
-fi
-#######################################################################################
-#                                                                                     #
-# set or check the key size to generate                                               #
-#                                                                                     #
-#######################################################################################
-if [ ${#KEYSIZE} -eq 0 ]; then
-	key_size=1024
-else
-	if [ "$KEYSIZE" == "1024" -o "$KEYSIZE" == "2048" -o "$KEYSIZE" == "4096" ]; then
-		key_size=$KEYSIZE
-	else
-		echo "Unsupported key size \x1B[1m$KEYSIZE\x1B[0m found in the environment." 1>&2
-		exit 1
+	rm -f "$e" 2>/dev/null
+	exit $r
+)
+#######################################################################################################
+#                                                                                                     #
+# temporary directory creation                                                                        #
+#                                                                                                     #
+#######################################################################################################
+__yf_random()
+(
+	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
+	for h in md5sum sha1sum; do
+		if __yf_check_required_command $h; then
+			if [ -c /dev/urandom ] && __yf_check_required_command "dd"; then
+				dd if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+			fi
+			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
+				if [ -f $f ]; then
+					$h < $f | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				fi
+			done
+		fi
+	done
+	__yf_check_required_command "date" && date +%s && exit 0
+	printf "%d" "$$"
+)
+__yf_mktmp()
+(
+	if __yf_check_required_command "mktemp"; then
+		n="$(mktemp "$@" 2>/dev/null)"
 	fi
+	if [ -z "$n" ]; then
+		t="${TMPDIR:-/tmp}"
+		[ "$1" = "-d" ] && d=1 || d=0
+		[ "$1" = "-p" ] && t="$2"
+		[ -z "$t" ] && t="/tmp"
+		n="$t/$(__yf_random)"
+		if [ $d -eq 1 ]; then
+			[ -d "$n" ] && n="$t/$(__yf_random)"
+			mkdir -p "$n" 2>/dev/null
+		else
+			while [ -e "$n" ]; do
+				n="$t/$(__yf_random)"
+			done
+			touch "$n" 2>/dev/null
+		fi
+	fi
+	printf "%s\n" "$n"
+)
+__yf_get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d' | \
+	sed -e 's| *$||'
+}
+__yf_show_script_name()
+{
+	[ -n "$1" ] && printf -- '%s' "$1"
+	printf -- '%s' "${0#*/}"
+	[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+}
+__yf_show_license()
+{
+	__yf_get_script_lines 'LIC'
+}
+__yf_show_version()
+{
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	[ "$__yf_language__" = "de" ] && v_display="$(printf "%s\n" "$v_display" | sed -e "s|version|Version|g")"
+	printf "%s\n" "$v_display"
+}
+__yf_show_copyright()
+{
+	__yf_get_script_lines 'CPY'
+}
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##  D o n ' t   c h a n g e   a n y t h i n g   a b o v e   t h i s   p o i n t.                     ##
+##                                                                                                   ##
+##  ( u p   t o   t h e   f i r s t   m a r k )                                                      ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+#######################################################################################################
+#                                                                                                     #
+# prepare localized messages                                                                          #
+#                                                                                                     #
+#######################################################################################################
+___yf_localization="$(__yf_mktmp)"
+__yf_localization >"$___yf_localization" <<'EOM'
+# YF_UI localization start
+
+language en
+
+INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
+ERR_show_error				#RED# FAILED#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# CANCELED#RSET#\n
+
+INF_ossl_version			Found version: #BBLU#%s#RSET# ...
+INF_check_command			Check #BOLD#%s#RSET# command ...
+INF_check_digest			Verify digest algorithm #BOLD#%s#RSET# is supported ...
+INF_generate_random_seed	Generating random seed file data from #BOLD#%s#RSET# (may take some time) ...
+INF_generate_rsa_key		Generating RSA key (with size of %u bits) as #BOLD#%s#RSET# ...
+INF_extract_public_key_pem	Extracting public key from #BOLD#%s#RSET# to #BOLD#%s#RSET# ...
+INF_extract_public_key_avm	Extracting public key (AVM's format) from #BOLD#%s#RSET# to #BOLD#%s#RSET# ...
+INF_generated_1024bit       \nYou should copy the file #BOLD#%s#RSET# to your firmware image as #BOLD#%s#RSET# to use it for image verification with AVM components later.\n
+INF_generated_other_size	\nThe generated key may be used to sign own TAR archives, if they will be checked later without AVM components. The used key size of #BOLD#%u#RSET# bits isn't supported yet by the original firmware.\n
+INF_enter_password			#BBLU#Enter your password for the signing key (#BWHT#%s#BBLU#): #RSET#
+INF_check_password			Checking password for the private key file ...
+
+ERR_missing_openssl			#RED#Missing #WHT#openssl#RED# binary, set #WHT#YF_SIGNIMAGE_OPENSSL#RED# variable to its path name.#RSET#\a\n
+ERR_openssl_unsupported		\n#RED#This version of OpenSSL (#BWHT#%s.%s.%s#RED#) is unsupported.#RSET#\n
+ERR_hwrev_mismatch			#RED#Mismatch of #BWHT#%s#RED# between shell and urlader environment (#BWHT#%s#RED# vs. #BWHT#%s#RED#).#RSET#\n
+ERR_no_fritzos_device		#RED#The special mode - to sign an image with the RSA key from a device - may only be used in a FRITZ!OS environment.#RSET#\n
+ERR_box_key_password		#RED#Error determining the password of RSA key from FRITZ!OS.#RSET#\n
+ERR_private_key_missing		#RED#The private key file #BWHT#%s%s#RED# is not a regular file or is missing.#RSET#\n
+ERR_no_password_from_term	#RED#No password for private key was specified while calling and STDIN is not your terminal.#RSET#\n
+ERR_missing_key_password	#RED#The private key file #BWHT#%s%s#RED# seems to be encrypted, you have to specify the password and not an empty string.#RSET#\n
+ERR_invalid_option			#RED#Unknown option #BWHT#%s#RED# specified.#RSET#\n
+ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%s#RSET#\n
+
+language de
+
+INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
+ERR_show_error				#RED# FEHLER#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# ABGEBROCHEN#RSET#\n
+
+INF_ossl_version			Gefundene Version: #BBLU#%s#RSET# ...
+INF_check_command			Prüfe Verfügbarkeit des #BOLD#%s#RSET#-Kommandos ...
+INF_check_digest			Prüfe, ob der Digest-Algorithmus #BOLD#%s#RSET# unterstützt ist ...
+INF_generate_random_seed	Bereitstellen von Entropie für den Zufallszahlengenerator (gelesen aus #BOLD#%s#RSET#, was etwas dauern kann) ...
+INF_generate_rsa_key		Generieren eines RSA-Keys (%u Bits Schlüssellänge) in #BOLD#%s#RSET# ...
+INF_extract_public_key_pem	Extrahiere den öffentlichen Schlüssel aus #BOLD#%s#RSET# nach #BOLD#%s#RSET# ...
+INF_extract_public_key_avm	Extrahiere den öffentlichen Schlüssel (im AVM-Format) aus #BOLD#%s#RSET# nach #BOLD#%s#RSET# ...
+INF_generated_1024bit       \nDie Datei #BOLD#%s#RSET# muss in ein Firmware-Image als #BOLD#%s#RSET# kopiert werden, wenn später mit dem soeben generierten Schlüssel signierte Firmware-Images über die AVM-Komponenten installiert werden soll.\n
+INF_generated_other_size	\nDer gerade generierte RSA-Schlüssel kann benutzt werden zum Signieren von TAR-Archiven, solange diese später nicht mit der AVM-Firmware geprüft werden sollen. Die verwendete Schlüssellänge von #BOLD#%u#RSET# Bits wird aktuell von der AVM-Firmware nicht unterstützt.\n
+INF_enter_password			#BBLU#Kennwort für den privaten Schlüssel (#BWHT#%s#BBLU#) eingeben: #RSET#
+INF_check_password			Prüfen des Kennworts für den privaten Schlüssel ...
+
+ERR_missing_openssl			#RED#Es fehlt die Datei für #WHT#openssl#RED#, bitte die #WHT#YF_SIGNIMAGE_OPENSSL#RED#-Einstellung auf den Pfad zu diesem Kommando setzen.#RSET#\a\n
+ERR_openssl_unsupported		\n#RED#Diese OpenSSL-Version (#BWHT#%s.%s.%s#RED#) wird nicht unterstützt.#RSET#\n
+ERR_hwrev_mismatch			#RED#Die Werte für #BWHT#%s#RED# im Shell- und im Urlader-Environment sind nicht identisch (#BWHT#%s#RED# vs. #BWHT#%s#RED#).#RSET#\n
+ERR_no_fritzos_device		#RED#Der spezielle Modus, die Image-Datei mit dem privaten Schlüssel des Gerätes zu signieren, steht nur auf einem Gerät mit FRITZ!OS von AVM zur Verfügung.#RSET#\n
+ERR_box_key_password		#RED#Fehler beim Berechnen des Kennworts für den privaten Schlüssel des Geräts.#RSET#\n
+ERR_private_key_missing		#RED#Die Datei mit dem privaten Schlüssel #BWHT#%s%s#RED# ist keine reguläre Datei oder sie existiert nicht.#RSET#\n
+ERR_no_password_from_term	#RED#Es wurde beim Aufruf kein Kennwort für den privaten Schlüssel angegeben und STDIN ist kein Terminal, so daß es auch nicht während der Verarbeitung abgefragt werden kann.#RSET#\n
+ERR_missing_key_password	#RED#Die Datei mit dem privaten Schlüssel #BWHT#%s%s#RED# ist mit einem Kennwort verschlüsselt, daher muß ein Kennwort eingegeben werden, das nicht leer sein darf.#RSET#\n
+ERR_invalid_option			#RED#Unbekannte Option #BWHT#%s#RED# angegeben beim Aufruf.#RSET#\n
+ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegeben: #BWHT#%s#RSET#\n
+
+# YF_UI localization end
+EOM
+# shellcheck disable=SC1090
+. "$___yf_localization"
+rm -f "$___yf_localization" 2>/dev/null
+if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
+	set | sed -n -e "/^__YF_L10N/p" 1>&2
+	exit 0
 fi
-#######################################################################################
-#                                                                                     #
-# generate a random seed file with content from /dev/random, it will be used later to #
-# call "openssl genrsa"                                                               #
-#                                                                                     #
-#######################################################################################
-if ! [ -f "${name_prefix}.${seed_extension}" ]; then
-	echo -n "Generating random seed file from /dev/random (may take some time) ... " 1>&2
-	"$YF_SIGNIMAGE_DD" if=/dev/random of="${name_prefix}.${seed_extension}" bs=16 count=16 status=none 2>/dev/null
-	if [ $rc -ne 0 -o ! -f "${name_prefix}.${seed_extension}" ]; then
-		show_error
+unset ___yf_localization
+#######################################################################################################
+#                                                                                                     #
+# usage screen, caller has to redirect output to STDERR if needed                                     #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	if [ "$__yf_language__" = "de" ]; then
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		__yf_help "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		__yf_help "\nZweck:\n\n#BBLU#Generieren eines RSA-Schlüssels zum Signieren von Firmware-Images für AVM-Geräte#RSET#\n\n"
+		__yf_help "Aufruf:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "[ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# ist eine optionale Angabe aus den folgenden Werten:\n\n"
+		__yf_help "#BOLD#-h#RSET# oder #BOLD#--help#RSET#     - zeigt diese Informationen auf STDOUT an\n"
+		__yf_help "#BOLD#-i#RSET# oder #BOLD#--in-place#RSET# - ändert die angegebene Image-Datei, anstatt eine signierte Kopie auf STDOUT\n"
+		__yf_help "                     auszugeben\n"
+		__yf_help "#BOLD#-b#RSET# oder #BOLD#--on-box#RSET#   - verwendet den privaten Schlüssel des FRITZ!OS auf dem Gerät (siehe Kommentare\n"
+		__yf_help "                     weiter unten) zum Signieren\n\n"
+		__yf_help "#BOLD#password#RSET# ist das Kennwort für den zu generierenden RSA-Schlüssel. Ist hier kein Kennwort angegeben, wird es am Terminal abgefragt (ohne Anzeige der eingegebenen Zeichen, daher auch mit doppelter Eingabe) und wenn dort dann kein Kennwort eingegeben werden sollte, wird der private Schlüssel beim Speichern nicht mit einem Kennwort gesichert (was per se eine schlechte Idee ist). Alternativ kann das Kennwort auch über eine Environment-Variable mit dem Namen YF_SIGNIMAGE_KEYPASSWORD bereitgestellt werden.\n\n"
+	else
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nPurpose:\n\n#BBLU#Generate a RSA key usable to sign firmware images for AVM's devices.#RSET#\n\n"
+		__yf_help "Usage:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "#BOLD#imagefile#RSET# [ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# is an optional value out of the following:\n\n"
+		__yf_help "#BOLD#-h#RSET# or #BOLD#--help#RSET#     - show this info on STDOUT\n"
+		__yf_help "#BOLD#-i#RSET# or #BOLD#--in-place#RSET# - sign the image file in-place, do not output data to STDOUT\n"
+		__yf_help "#BOLD#-b#RSET# or #BOLD#--on-box#RSET#   - use FRITZ!OS device key (see comments below) to sign\n\n"
+		__yf_help "The #BOLD#password#RSET# will be used to protect the private parts of the new key.\n\n"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# some subfunctions                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+show_error()
+(
+	__yf_emsg "ERR_show_error"
+)
+show_ok()
+(
+	__yf_info "INF_show_ok"
+)
+show_version()
+(
+	version=$("$YF_SIGNIMAGE_OPENSSL" version 2>/dev/null)
+	if [ $? -eq 127 ]; then
+		__yf_emsg "ERR_missing_openssl"
 		exit 1
 	else
+		__yf_info "INF_ossl_version" "$version"
+		vn="$(expr "$version" : "OpenSSL \([^ ]*\).*")"
+		v_l_major="$(expr "$vn" : "\([^\.]*\).*")"
+		v_l_minor="$(expr "$vn" : "[^\.]*\.\([^\.]*\).*")"
+		v_l_patch="$(expr "$vn" : "[^\.]*\.[^\.]\.\(.*\)")"
+		if [ "$(( v_l_major ))" -lt 1 ]; then
+			show_error
+			__yf_emsg "ERR_openssl_unsupported" "$v_l_major" "$v_l_minor" "$v_l_patch"
+			exit 1
+		fi
 		show_ok
+		printf "v_major=%s v_minor=%s" "$v_l_major" "$v_l_minor"
+		cnf="$("$YF_SIGNIMAGE_OPENSSL" version 2>&1 | sed -n -e "s|WARNING: can't open config file: \(.*\)\$|\1|p")"
+		if [ -n "$cnf" ]; then # OpenSSL configuration file missing
+			touch "$tmp/$openssl_conf_name"
+			printf "; export OPENSSL_CONF=\"%s\"" "$tmp/$openssl_conf_name"
+		fi
+		printf "\n"
+	fi
+)
+openssl_check_command()
+(
+	__yf_info "INF_check_command" "$3"
+	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
+		if printf "" | "$YF_SIGNIMAGE_OPENSSL" "$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	else # newer versions provide the 'list' command and there's no need anymore to look for error messages or expected output
+		if "$YF_SIGNIMAGE_OPENSSL" list -1 -commands | grep -q "^$3\$" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	fi
+)
+openssl_check_digest()
+(
+	__yf_info "INF_check_digest" "$3"
+	if [ "$1" = "1" ] && [ "$2" = "0" ]; then
+		if printf "" | "$YF_SIGNIMAGE_OPENSSL" dgst -"$3" 2>&1 | grep -q "$4" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	else # newer versions provide the 'list' command and there's no need anymore to look for error messages or expected output
+		if "$YF_SIGNIMAGE_OPENSSL" list -1 -digest-commands | grep -q "^$3\$" 2>/dev/null 1>&2; then
+			show_ok
+			exit 0
+		else
+			show_error
+			exit 1
+		fi
+	fi
+)
+read_password_from_terminal()
+(
+	# parameter strings may contain ANSI sequences to format terminal output
+	__yf_info_output "$@"
+	tty_settings="$(stty -g)"
+	trap 'stty "$tty_settings" 2>/dev/null 1>&2' EXIT
+	trap 'printf "$(__yf_get_localized INF_canceled)" 1>&2; exit 1' INT
+	stty -echo
+	read -r password
+	__yf_info_output "\n"
+	printf "%s\n" "$password"
+)
+#######################################################################################################
+#                                                                                                     #
+# try to identify FRITZ!OS as runtime environment (not too sophisticated, but it should be able to    #
+# make this distinction)                                                                              #
+#                                                                                                     #
+#######################################################################################################
+is_fritzos_environment()
+(
+	hwrev_shell="$(eval "printf '%s\n' \$$hwrev_name")"
+	[ ${#hwrev_shell} -eq 0 ] && exit 1
+	[ ${#CONFIG_ENVIRONMENT_PATH} -eq 0 ] && exit 1
+	[ -d "$CONFIG_ENVIRONMENT_PATH" ] || exit 1
+	[ -f "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file" ] || exit 1
+	hwrev_loader="$(sed -n -e "s|^$hwrev_name\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	[ ${#hwrev_loader} -eq 0 ] && exit 1
+	if [ -z "$YF_SIGNIMAGE_IGNORE_HWREVISION" ] && [ "$hwrev_shell" != "$hwrev_loader" ]; then
+		__yf_emsg "ERR_hwrev_mismatch" "$hwrev_name" "$hwrev_shell" "$hwrev_loader"
+		exit 2
+	fi
+	prompt_loader="$(sed -n -e "s|^$prompt_name\t\(.*\)\$|\1|p" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	[ ${#prompt_loader} -eq 0 ] && exit 1
+	[ "$prompt_loader" != "$eva_prompt" ] && exit 1
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# compute password of private key file from /var/flash/websrv_ssl_key.pem                             #
+#                                                                                                     #
+# meanwhile the cat was let out of the bag - no needs to use privatekeypassword anymore, instead      #
+# we'll compute the hash ourself and translate it to the right string                                 #
+#                                                                                                     #
+#######################################################################################################
+box_key_password()
+(
+	is_fritzos_environment || exit 1
+	maca="$(sed -n -e "$(printf 's|^%s\\t\\(.*\\)|\\1|p' "$maca_name")" "$CONFIG_ENVIRONMENT_PATH/$urlader_environment_file")"
+	if command -v md5sum 2>/dev/null 1>&2; then
+		hash="$(printf "%s" "$maca" | md5sum)"
+	else
+		hash="$(printf "%s" "$maca" | "$YF_SIGNIMAGE_OPENSSL" dgst -md5 -r)"
+	fi
+	md5_bytes="$(printf "%s\n" "$hash" | sed -e "s|^\([0-9a-fA-F]\{16\}\).*|\1|" -e "s|..|& |g")"
+	for b in $md5_bytes; do
+		printf "%c" "$(expr 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!$' : ".\{$(( 0x$b % 64 ))\}\(.\).*")"
+	done
+	printf "\n"
+	exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# prepare a temporary directory and cleanup on exit                                                   #
+#                                                                                                     #
+#######################################################################################################
+tmp=$(__yf_mktmp -d)
+trap '[ -d "$tmp" ] && rm -r "$tmp" 2>/dev/null 1>&2' EXIT INT
+#######################################################################################################
+#                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage
+	exit $YF_GENKEY_SUCCESS
+fi
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+__yf_info "INF_license"
+#######################################################################################################
+#                                                                                                     #
+# check arguments for specified options                                                               #
+#                                                                                                     #
+#######################################################################################################
+if [ -n "$1" ]; then
+	while [ -n "$(expr "$1" : "\(-.\+\).*")" ]; do
+		if [ "$1" = "-x" ] || [ "$1" = "--extra-seed" ]; then
+			extra_seed=1
+		else
+			__yf_emsg "ERR_invalid_option" "$1"
+			exit $YF_GENKEY_INVALID_CALL
+		fi
+	done
+fi
+#######################################################################################################
+#                                                                                                     #
+# check key password on command line                                                                  #
+#                                                                                                     #
+#######################################################################################################
+if [ -n "$1" ]; then
+	keypassword="$1"
+	shift
+fi
+if [ -n "$1" ]; then
+	__yf_emsg "ERR_too_many_arguments" "$*"
+	exit $YF_GENKEY_INVALID_CALL
+fi
+#######################################################################################################
+#                                                                                                     #
+# check OpenSSL presence and version                                                                  #
+#                                                                                                     #
+#######################################################################################################
+v_number="$(show_version)" || exit $YF_GENKEY_NO_OSSL_BINARY
+eval "$v_number"
+# shellcheck disable=SC2154
+openssl_check_command "$v_major" "$v_minor" "genrsa" "^usage: genrsa" || exit $YF_GENKEY_NO_OSSL_GENRSA
+openssl_check_command "$v_major" "$v_minor" "rsa" "to load Private Key" || exit $YF_GENKEY_NO_OSSL_RSA
+#######################################################################################################
+#                                                                                                     #
+# check the special case of signing on the FRITZ!Box with the internal key                            #
+#                                                                                                     #
+#######################################################################################################
+if [ "$only_on_box" = "1" ]; then
+	is_fritzos_environment
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		[ "$rc" -lt 2 ] && __yf_emsg "ERR_no_fritzos_device"
+		exit $YF_GENKEY_NO_FRITZOS_DEVICE
+	else
+		keypassword="$(box_key_password)"
+		if [ ${#KEYPASSWORD} -eq 0 ]; then
+			__yf_emsg "ERR_box_key_password"
+			exit $YF_GENKEY_BOX_KEY_PASSWORD_ERROR
+		else
+			filename_prefix="$box_key_name"
+			private_extension=".pem"
+		fi
 	fi
 fi
-#######################################################################################
-#                                                                                     #
-# generate the RSA key first, we need a 1024 bit key (even today and even if such     #
-# keys are considered unsafe this time)                                               #
-#                                                                                     #
-#######################################################################################
-echo -en "Generating RSA key as \x1B[1m${name_prefix}.${private_extension}\x1B[0m ... " 1>&2
-export KEYPASSWORD="$KEYPASSWORD"
-"$YF_SIGNIMAGE_OPENSSL" genrsa -aes128 -passout env:KEYPASSWORD -out "${name_prefix}.${private_extension}" -rand "${name_prefix}.${seed_extension}" -f4 $key_size 2>/dev/null
+# #######################################################################################################
+#                                                                                                     #
+# get the password for the private key, if needed                                                     #
+#                                                                                                     #
+#######################################################################################################
+# if [ "$on_box" != "1" ]; then
+# 	if ! [ -f "${filename_prefix}${private_extension}" ]; then
+# 		__yf_emsg "ERR_private_key_missing" "$filename_prefix" "$private_extension"
+# 		exit $YF_GENKEY_PRIVATE_KEY_MISSING
+# 	fi
+# 	if grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
+# 		if [ -z "$KEYPASSWORD" ]; then
+# 			if [ "${#YF_SIGNIMAGE_KEYPASSWORD}" -eq 0 ]; then
+# 				if ! [ -t 0 ]; then
+# 					usage 1>&2
+# 					__yf_emsg "ERR_no_password_from_term"
+# 					exit $YF_GENKEY_WRONG_PASSWORD
+# 				else
+# 					# shellcheck disable=SC2059
+# 					KEYPASSWORD="$(read_password_from_terminal "$(printf "$(__yf_get_localized INF_enter_password)" "${filename_prefix}${private_extension}")")" || exit $YF_GENKEY_WRONG_PASSWORD
+# 				fi
+# 			else
+# 				KEYPASSWORD="$YF_SIGNIMAGE_KEYPASSWORD"
+# 			fi
+# 		fi
+# 	fi
+# fi
+#######################################################################################################
+#                                                                                                     #
+# check key password first (and key file presence)                                                    #
+#                                                                                                     #
+#######################################################################################################
+# if [ "$on_box" != "1" ]; then
+# 	if [ ${#KEYPASSWORD} -gt 0 ]; then
+# 		__yf_info "INF_check_password"
+# 		printf "%s\n" "$KEYPASSWORD" | "$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}${private_extension}" -noout -passin "stdin" 2>/dev/null 1>&2
+# 		rc=$?
+# 		if [ $rc -eq 0 ]; then
+# 			show_ok
+# 		else
+# 			show_error
+# 			exit $YF_GENKEY_WRONG_PASSWORD
+# 		fi
+# 	elif grep -q "^Proc-Type:.*ENCRYPTED\$" "${filename_prefix}${private_extension}" 2>/dev/null; then
+# 		__yf_emsg "ERR_missing_key_password" "$filename_prefix" "$private_extension"
+# 		exit $YF_GENKEY_WRONG_PASSWORD
+# 	fi
+# fi
+#######################################################################################################
+#                                                                                                     #
+# check requested key size - values 1024, 2048, 3072 and 4096 are acceptable for RSA keys based on    #
+# output will be used to get some entropy                                                             #
+#                                                                                                     #
+#######################################################################################################
+#######################################################################################################
+#                                                                                                     #
+# generate more random data to seed key generation, if requested per option - otherwise __yf_random   #
+# output will be used to get some entropy                                                             #
+#                                                                                                     #
+#######################################################################################################
+if [ "$extra_seed" = "1" ]; then
+	if ! [ -f "${filename_prefix}${seed_extension}" ]; then
+		__yf_info "INF_generate_random_seed" "$random_source"
+		i=0
+		while [ $i -lt 16 ]; do
+			dd if=/dev/random bs=16 count=1 status=none 2>/dev/null || break
+			i=$(( i + 1 ))
+			# next step for spinner
+		done > "${filename_prefix}${seed_extension}"
+		if [ $i -ne 16 ] || ! [ -f "${filename_prefix}${seed_extension}" ]; then
+			show_error
+			exit $YF_GENKEY_SEED_ERROR
+		else
+			show_ok
+		fi
+	fi
+	seed_file="${filename_prefix}${seed_extension}"
+else
+	seed_file="$(__yf_mktmp -p "$tmp")"
+	( __yf_random; __yf_random; __yf_random; __yf_random )>>"$seed_file"
+fi
+#######################################################################################################
+#                                                                                                     #
+# generate the RSA key now                                                                            #
+#                                                                                                     #
+#######################################################################################################
+__yf_info "INF_generate_rsa_key" "$key_size" "${filename_prefix}${private_extension}"
+export KEYPASSWORD="$keypassword"
+"$YF_SIGNIMAGE_OPENSSL" genrsa ${KEYPASSWORD:+-$rsa_enc} -passout "env:KEYPASSWORD" -out "${filename_prefix}${private_extension}" -rand "$seed_file" -f4 "$key_size"
 rc=$?
-export -n KEYPASSWORD
-if [ $rc -ne 0 -o ! -f "${name_prefix}.${private_extension}" ]; then
+unset KEYPASSWORD
+export KEYPASSWORD
+if [ $rc -ne 0 ] || ! [ -f "${filename_prefix}${private_extension}" ]; then
 	show_error
 	exit 1
 else
 	show_ok
 fi
-#######################################################################################
-#                                                                                     #
-# extract public key as PEM file                                                      #
-#                                                                                     #
-#######################################################################################
-echo -en "Extracting public key to \x1B[1m${name_prefix}.${public_extension}\x1B[0m ... " 1>&2
-export KEYPASSWORD="$KEYPASSWORD"
-"$YF_SIGNIMAGE_OPENSSL" rsa -passin env:KEYPASSWORD -pubout -out "${name_prefix}.${public_extension}" -in "${name_prefix}.${private_extension}" 2>/dev/null
+#######################################################################################################
+#                                                                                                     #
+# extract public key as PEM file                                                                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_info "INF_extract_public_key_pem" "${filename_prefix}${private_extension}" "${filename_prefix}${public_extension}"
+export KEYPASSWORD="$keypassword"
+"$YF_SIGNIMAGE_OPENSSL" rsa -passin "env:KEYPASSWORD" -pubout -out "${filename_prefix}${public_extension}" -outform PEM -in "${filename_prefix}${private_extension}" 2>/dev/null
 rc=$?
-export -n KEYPASSWORD
-if [ $rc -ne 0 -o ! -f "${name_prefix}.${public_extension}" ]; then
+unset KEYPASSWORD
+export KEYPASSWORD
+if [ $rc -ne 0 ] || ! [ -f "${filename_prefix}${public_extension}" ]; then
 	show_error
 	exit 1
 else
 	show_ok
 fi
-#######################################################################################
-#                                                                                     #
-# extract modulus and exponent to create the AVM formatted public key                 #
-# - the exponent was set by '-f4' and does not need to be read from file              #
-# - the modulus has to start without highest bit set (to ensure positive number)      #
-#                                                                                     #
-#######################################################################################
-echo -en "Extracting public key in AVM format to \x1B[1m${name_prefix}.${avm_extension}\x1B[0m ... " 1>&2
+#######################################################################################################
+#                                                                                                     #
+# extract modulus and exponent to create the AVM formatted public key                                 #
+# - the exponent was set by '-f4' and does not need to be read from file                              #
+# - the modulus has to start without highest bit set (to ensure positive number)                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_info "INF_extract_public_key_avm" "${filename_prefix}${public_extension}" "${filename_prefix}${avm_extension}"
 EXPONENT=010001
-eval $("$YF_SIGNIMAGE_OPENSSL" rsa -in "${name_prefix}.${public_extension}" -pubin -modulus -noout)
+MODULUS="$("$YF_SIGNIMAGE_OPENSSL" rsa -in "${filename_prefix}${public_extension}" -pubin -modulus -noout 2>/dev/null | sed -n -e "s|^Modulus=\(.*\)|\1|p")"
 rc=$?
 if [ $rc -ne 0 ]; then
 	show_error
 	exit 1
 else
-	MODULUS="$(echo "$Modulus" | tr 'A-F' 'a-f')"
-	first=${MODULUS:0:1}
-	[ "${first/[89a-f]/}" != "$first" ] && MODULUS="00$MODULUS"
-	echo $MODULUS >"${name_prefix}.${avm_extension}"
-	echo $EXPONENT >>"${name_prefix}.${avm_extension}"
+	[ -z "$(expr "$MODULUS" : "\([89A-Fa-f]\).*")" ] && MODULUS="00$MODULUS"
+	MODULUS="$(printf "%s\n" "$MODULUS" | sed -e "y/ABCDEF/abcdef/")"
+	printf "%s\n%s\n" "$MODULUS" "$EXPONENT" >"${filename_prefix}${avm_extension}"
 	show_ok
 fi
 #######################################################################################
@@ -264,23 +921,19 @@ fi
 # show some additional info                                                           #
 #                                                                                     #
 #######################################################################################
-if [ $key_size -eq 1024 ]; then
-	echo -en "\nYou should copy the file \x1B[1m${name_prefix}.${avm_extension}\x1B[0m \
-to your firmware image as \x1B[1m/etc/avm_firmware_public_key9\x1B[0m to use it for ima\
-ge verification with AVM components.\n" | fold -w 80 -s 1>&2
+if [ "$key_size" = "1024" ]; then
+	__yf_info "INF_generated_1024bit" "${filename_prefix}${avm_extension}" "${avm_pubkey_base}${avm_copy_proposal}"
 else
-	echo -en "\nThe generated key may be used to sign own TAR archives, if they will be\
- checked later without AVM components. The used key size of $key_size bits isn't suppor\
-ted yet by the original firmware.\n" | fold -w 80 -s 1>&2
+	__yf_info "INF_generated_other_size" "$key_size"
 fi
-#######################################################################################
-#                                                                                     #
-# all done                                                                            #
-#                                                                                     #
-#######################################################################################
-exit 0
-#######################################################################################
-#                                                                                     #
-# end of file                                                                         #
-#                                                                                     #
-#######################################################################################
+#######################################################################################################
+#                                                                                                     #
+# all done here                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit $YF_GENKEY_SUCCESS
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
