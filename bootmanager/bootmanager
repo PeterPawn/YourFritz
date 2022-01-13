@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.7.1                                                                          #
+# gui_bootmanager, version 0.7.0                                                                      #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -57,24 +57,15 @@
 # is_supported - returns true (exit code 0) or false (exit code 1), if the device doesn't support the #
 #                dual-boot selection                                                                  #
 # is_blocked   - check the used semaphore file, if there's already a running instance                 #
-# html_display - creates a little HTML snippet (containing JS code, too), which may be included into  #
-#                the original reboot.lua page (for FRITZ!OS versions prior to 07.08)                  #
-#              - if the second parameter is 'nocache', an existing cache file (where those data is    #
-#                stored otherwise - ready to be displayed on next call) gets ignored                  #
-#              - the data for 'get_values' is cached at the same time, if 'nocache' wasn't specified  #
 # switch_to    - switches to the 'running' or 'alternative' system (2nd parameter) and (optionally)   #
 #                sets the OEM name to the 3rd parameter (which isn't checked any further)             #
 # get_values   - provide a list of relevant values for implementers of other interfaces, without the  #
 #                needs to implement the full logic once again                                         #
 #              - if the second parameter is 'nocache', an existing cache file (where those data is    #
 #                stored otherwise - ready for output on next call) gets ignored                       #
-#              - while the call for 'html_display' creates the cache file for this function too, this #
-#                one doesn't create a cached HTML output and any later call to 'html_display' w/o the #
-#                'nocache' parameter will refresh the cached data of this function again              #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
-# clear_cache  - remove cached HTML output and/or saved data from an earlier 'html_display' or        #
-#                'get_values' call without 'nocache' argument                                         #
+# clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument       #
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
@@ -89,10 +80,8 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-readonly html_cache_file="/var/tmp/bootmanager.html"
-readonly html_cache_error="/var/tmp/bootmanager.rc"
-readonly data_cache_file="/var/tmp/bootmanager.data"
-readonly boot_cache_file="/var/tmp/bootmanager.boot"
+readonly data_cache_file="/var/tmp/gui_bootmanager.data"
+readonly boot_cache_file="/var/tmp/gui_bootmanager.boot"
 readonly urlader_environment="/proc/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
@@ -116,9 +105,8 @@ readonly loop_driver_name="loop"
 readonly backing_file_name="backing_file"
 readonly tmpdir="${TMPDIR:-/var/tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
-readonly semafile="/var/run/bootmanager.sem"
+readonly semafile="/var/run/gui_bootmanager.sem"
 readonly fdt_chosen="/proc/device-tree/chosen"
-readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
 #                                                                                                     #
 # various sources for version numbers                                                                 #
@@ -695,6 +683,7 @@ parse_date_value()
 #######################################################################################################
 get_localized_date()
 {
+	# shellcheck disable=SC2154
 	if [ "$Language" = "de" ]; then
 		date +'%d.%m.%Y, %H:%M:%S Uhr' -d @"$1"
 	else
@@ -1021,261 +1010,6 @@ cleanup()
 }
 #######################################################################################################
 #                                                                                                     #
-# generate HTML output                                                                                #
-#                                                                                                     #
-#######################################################################################################
-html()
-(
-	cmd="printf -- \"$1\""
-	shift
-	while [ $# -gt 0 ]; do
-		cmd="$cmd${cmd:+ }\"$1\""
-		shift
-	done
-	eval "$cmd"
-)
-#######################################################################################################
-#                                                                                                     #
-# output data for a select control                                                                    #
-#                                                                                                     #
-#######################################################################################################
-select_box()
-(
-	html '<select id=\"%s\" name=\"%s\">\n' "$1" "$2"
-	for value in $3; do
-		html '<option value=\"%s\"' "$value"
-		[ "$value" = "$4" ] && html ' selected=\"selected\"'
-		html '>%s</option>\n' "$value"
-	done
-	html '</select>\n'
-)
-#######################################################################################################
-#                                                                                                     #
-# HTML code generators for different languages                                                        #
-#                                                                                                     #
-#######################################################################################################
-#                                                                                                     #
-# german version                                                                                      #
-#                                                                                                     #
-#######################################################################################################
-generate_html_lang_de()
-(
-	html '<br>'
-	html '<h3>Folgende Systeme stehen auf dieser FRITZ!Box zur Auswahl bei einem Neustart:</h3>'
-	html '<br>\n'
-	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
-	html '<label for=\"radioRunning\">\n'
-	html '<b>das aktuell laufende System</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
-	html '<br><br>Version %s vom %s<br>\n' "$running_version" "$running_date"
-	[ -z "$running_modified" ] || \
-		html 'zuletzt modifiziert am %s durch \"%s\"\n' "$running_fsdate" "$running_modified"
-	html '</label>\n'
-	html '<br><br>\n'
-	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
-	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
-	html '<label for=\"radioAlternative\">\n'
-	if [ "$alternative_is_missing" -eq 0 ]; then
-		html '<b>das derzeit inaktive System</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
-		if [ -z "$alternative_version" ]; then
-			html '<br><br>Das System in den alternativen Partitionen kann nicht identifiziert werden.<br>Es verwendet entweder ein unbekanntes Dateisystem oder es k&ouml;nnte auch besch&auml;digt sein.<br>Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.\n'
-		else
-			html '<br><br>Version %s vom %s<br>\n' \
-					"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ -z "$alternative_modified" ] || \
-				html 'zuletzt modifiziert am %s durch \"%s\"\n' \
-					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
-		fi
-	else
-		html 'Die derzeit inaktiven Partitionen enthalten kein g&uuml;ltiges System.\n'
-	fi
-	html '</label>\n'
-	html '<br><br>\n'
-	html '<h4>Branding &auml;ndern</h4>\n'
-	if ! change_branding_support && [ "$running_branding_fixed" -eq 0 ] && [ "$alternative_branding_fixed" -eq 0 ]; then
-		html 'Bei diesem Ger&auml;t ist keine dauerhafte &Auml;nderung der Firmware-Version m&ouml;glich.\n'
-		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-	else
-		html '<span id=\"running_branding\">\n'
-		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des aktuell laufenden Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$running_brandings"
-		else
-			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;\n'
-				html '</label>\n'
-				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
-			else
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", diese ist im Moment auch eingestellt.\n' "$current_branding"
-				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
-			fi
-		fi
-		html '</span>\n'
-		html '<span id=\"alternative_branding\">\n'
-		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des derzeit inaktiven Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$alternative_brandings"
-		else
-			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idAlternativeBranding\">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;</label>\n'
-				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
-			else
-				if [ -z "$alternative_version" ];then
-					html 'Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Firmware-Versionen verf&uuml;gbar.\n'
-					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
-				else
-					html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", ' "$alternative_brandings"
-					if [ "$alternative_brandings" = "$current_branding" ]; then
-						html 'diese ist im Moment auch eingestellt.\n'
-					else
-						html 'im Moment ist jedoch \"<b>%s</b>\" eingestellt.<br>\n' "$current_branding"
-						html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf \"<b>%s</b>\" ge&auml;ndert.\n' "$alternative_brandings"
-					fi
-				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-				fi
-			fi
-		fi
-		html '</span>\n'
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
-# english version                                                                                     #
-#                                                                                                     #
-#######################################################################################################
-generate_html_lang_en()
-(
-	html '<br>'
-	html '<h3>The following systems are available to be booted on this device next time:</h3>'
-	html '<br>\n'
-	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
-	html '<label for=\"radioRunning\">\n'
-	html '<b>the currently running system</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
-	html '<br><br>version %s built on %s<br>\n' "$running_version" "$running_date"
-	[ -z "$running_modified" ] || \
-		html 'last modified on %s using \"%s\"\n' "$running_fsdate" "$running_modified"
-	html '</label>\n'
-	html '<br><br>\n'
-	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
-	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
-	html '<label for=\"radioAlternative\">\n'
-	if [ "$alternative_is_missing" -eq 0 ]; then
-		html '<b>the alternative system</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
-		if [ -z "$alternative_version" ]; then
-			html '<br><br>Unable to identify the installed system in the alternative partitions.<br>It may use an unknown filesystem format, it may have been damaged, it&#39;s simply missing or it has been deleted otherwise.<br>\n'
-			html 'Switching to this system may prevent your device from starting correctly.<br>You should be really sure, what you are doing in this case.\n'
-		else
-			html '<br><br>version %s built on %s<br>\n' \
-				"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ -z "$alternative_modified" ] || \
-				html 'last modified on %s using \"%s\"\n' \
-					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
-		fi
-	else
-		html 'The alternative partitions do not contain any valid system.\n'
-	fi
-	html '</label>\n'
-	html '<br><br>\n'
-	html '<h4>Change branding</h4>\n'
-	if ! change_branding_support && [ "$running_branding_fixed" -eq 0 ] && [ "$alternative_branding_fixed" -eq 0 ]; then
-		html 'Unable to change the branding permanently on this device.\n'
-		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-	else
-		html '<span id=\"running_branding\">\n'
-		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Branding of currently running system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$running_brandings"
-		else
-			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
-				html '</label>\n'
-				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
-			else
-				html 'The system selected above supports only the single OEM name \"<b>%s</b>\" and this is also the current one.\n' "$current_branding"
-				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
-			fi
-		fi
-		html '</span>\n'
-		html '<span id=\"alternative_branding\">\n'
-		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Branding of installed alternative system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$alternative_brandings"
-		else
-			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
-				html '</label>\n'
-				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
-			else
-				if [ -z "$alternative_version" ];then
-					html 'Due to problems identifying the installed alternative system, there&#39;s no idea which values are supported by this system and the value remains unchanged.\n'
-					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
-				else
-					html 'The system selected above supports only the single OEM name \"<b>%s</b>\"' "$alternative_brandings"
-					if [ "$alternative_brandings" = "$current_branding" ]; then
-						html ' and this is also the current one.\n'
-					else
-						html ', but currently \"<b>%s</b>\" is set.<br>\n' "$current_branding"
-						html 'Restarting the device now, will set the OEM name value to \"<b>%s</b>\" without any further questions.\n' "$alternative_brandings"
-					fi
-					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-				fi
-			fi
-		fi
-		html '</span>\n'
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
-# generate JS code to display and hide additional elements depending on current selection             #
-#                                                                                                     #
-#######################################################################################################
-generate_javascript()
-(
-	html '<script type=\"text/javascript\">\n'
-	html 'function onBootManagerClick(evt) {\n'
-	html 'var radioButton = jxl.evtTarget(evt);\n'
-	if change_branding_support; then
-		html 'if ( radioButton.id == \"radioRunning\" ) {\n'
-		html 'jxl.show(\"running_branding\");\n'
-		html 'jxl.hide(\"alternative_branding\");\n'
-		html '} else {\n'
-		html 'jxl.hide(\"running_branding\");\n'
-		html 'jxl.show(\"alternative_branding\");\n'
-		html '}\n'
-	fi
-	html '}\n'
-	html 'function initBootManager() {\n'
-	html 'jxl.addEventHandler(\"radioRunning\",\"click\",onBootManagerClick);\n'
-	html 'jxl.addEventHandler(\"radioAlternative\",\"click\",onBootManagerClick);\n'
-	if change_branding_support; then
-		html 'jxl.display(\"running_branding\", %s);\n' "$( [ "$show_running" -eq 1 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
-		html 'jxl.display(\"alternative_branding\", %s);\n' "$( [ "$show_running" -eq 0 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
-	fi
-	html '}\n'
-	html 'ready.onReady(initBootManager);\n'
-	html '</script>\n'
-)
-#######################################################################################################
-#                                                                                                     #
-# create HTML additions to the 'reboot.lua' page                                                      #
-#                                                                                                     #
-#######################################################################################################
-not_supported()
-(
-	if [ "$Language" = "de" ]; then
-		html '<h4>Die Umschaltung zwischen zwei installierten Systemen ist auf dieser FRITZ!Box nicht verf&uuml;gbar.</h4>\n'
-	else
-		html '<h4>Switching between alternative systems is not supported on this device.</h4>\n'
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
 # collect data from active and inactive system for further processing                                 #
 #                                                                                                     #
 #######################################################################################################
@@ -1286,18 +1020,15 @@ collect_data()
 	running_fsdate="$(get_modified_date)"
 	running_modified="$(get_modified_by)"
 	readonly running_version running_date running_fsdate running_modified
-	chg_running_branding=0
 	running_branding_fixed=0
 	if change_branding_support; then
 		current_branding="$(get_system_branding)"
 		running_brandings="$(get_brandings)"
 		[ -z "$(get_fixed_branding)" ] || running_branding_fixed=1
-		[ "$(count_of_items "$running_brandings")" -gt 1 ] && chg_running_branding=1
 	fi
 	current_system_switch=$(get_system_switch)
 	readonly current_system_switch
 	alternative_is_missing=1
-	chg_alternative_branding=0
 	alternative_branding_fixed=0
 	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 		alternative_is_missing=0
@@ -1314,21 +1045,11 @@ collect_data()
 					alternative_brandings="$(get_brandings "$mp")"
 					readonly alternative_brandings
 					[ -z "$(get_fixed_branding "$mp")" ] && alternative_branding_fixed=0 || alternative_branding_fixed=1
-					[ "$(count_of_items "$alternative_brandings")" -gt 1 ] && chg_alternative_branding=1
 				fi
 			fi
 			dismount_alternative_system
 		fi
 		spinlock release
-	fi
-	if is_switched && [ $alternative_is_missing -eq 0 ]; then
-		running_checked=""
-		alternative_checked=" $radio_button_checked"
-		show_running=0
-	else
-		running_checked=" $radio_button_checked"
-		alternative_checked=""
-		show_running=1
 	fi
 }
 #######################################################################################################
@@ -1474,42 +1195,7 @@ case "$1" in
 			rc=1
 		fi
 		;;
-	("html_display")
-		skip_generate=0
-		if ! [ "$2" = "nocache" ]; then
-			if [ -f "$html_cache_file" ] && [ -f "$html_cache_error" ]; then
-				cat "$html_cache_file" 2>/dev/null
-				rc="$(cat "$html_cache_error" 2>/dev/null)"
-				skip_generate=1
-			fi
-		fi
-		if [ $skip_generate -eq 0 ]; then
-			if ! [ "$2" = "nocache" ]; then
-				exec 4>&1
-				exec 1>"$html_cache_file"
-			fi
-			if is_dualboot_supported; then
-				[ "$Language" = "de" ] || Language="en"
-				spinlock_pid=$$
-				collect_data
-				[ "$2" = "nocache" ] || get_values >"$data_cache_file"
-				eval generate_html_lang_$Language
-				generate_javascript
-				rc=$?
-			else
-				not_supported
-				rc=1
-			fi
-			if ! [ "$2" = "nocache" ]; then
-				exec 1>&-
-				exec 1>&4
-				printf -- "%u" "$rc" >"$html_cache_error"
-				cat "$html_cache_file"
-			fi
-		fi
-		;;
 	("clear_cache")
-		[ -f "$html_cache_file" ] && rm "$html_cache_file" "$html_cache_error" 2>/dev/null
 		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>/dev/null
 		rc=0
 		;;
