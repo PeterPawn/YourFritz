@@ -1272,7 +1272,7 @@ not_supported()
 )
 #######################################################################################################
 #                                                                                                     #
-# create HTML additions to the 'reboot.lua' page                                                      #
+# collect data from active and inactive system for further processing                                 #
 #                                                                                                     #
 #######################################################################################################
 collect_data()
