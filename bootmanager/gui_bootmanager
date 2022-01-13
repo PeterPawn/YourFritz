@@ -745,7 +745,7 @@ find_device_of_mountpoint()
 )
 #######################################################################################################
 #                                                                                                     #
-# check, if the specified mountpoint is from a loop device                                            #
+# find device's major and minor ID for the specified mountpoint                                       #
 #                                                                                                     #
 #######################################################################################################
 get_ids_of_mountpoint()
@@ -933,7 +933,6 @@ get_mkfs_time()
 # get date of last modification from specified system root                                            #
 # - take the date and time from any existing modification file or                                     #
 # - take date and time from SquashFS image, if it's a file (mounted via a loop device)                #
-#                                                                                                     #
 #                                                                                                     #
 # $1 - mounted system root directory (optional)                                                       #
 #                                                                                                     #
