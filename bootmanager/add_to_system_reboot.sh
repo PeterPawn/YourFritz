@@ -1,177 +1,232 @@
-#! /bin/sh
+#! /bin/false
+# vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later
-[ -z "$TARGET_BRANDING" ] && printf "TARGET_BRANDING value is not set.\a\n" 1>&2 && exit 1
-[ -z "$TMP" ] && TMP=$TMPDIR
-[ -z "$TMP" ] && printf "No TMPDIR or TMP setting found at environment, set it to a writable location.\a\n" 1>&2 && exit 1
-TargetDir="${TARGET_DIR:+$TARGET_DIR/}"
+#
+# - set TMP or TMPDIR, TARGET_DIR (default value is '/'), TARGET_SYSTEM_VERSION and optionally TARGET_BRANDING to correct
+#   and useful values prior to calling this script
+# - if TARGET_BRANDING is missing, all existing brandings are processed at once - but the detection of all values may fail
+#   under some circumstances (where structures below /etc are unusual)
+# - if TARGET_SYSTEM_VERSION is set to "autodetect", the value TARGET_SYSTEM_VERSION_DETECTOR has to be set to a script (or
+#   any other executable), which has to provide a line starting with "Version=..." and containing the detected version
+#
+# definitions
+#
+# shellcheck disable=SC2034
+JsFile='usr/www/%s/system/reboot.js'
+# shellcheck disable=SC2034
+LuaFile='usr/www/%s/system/reboot.lua'
+#
+# patches
+#
+get_patches()
+(
+cat <<endofpatches
+# Lua file patch for versions prior to 07.08
+sed:1:0:0:7:8:\$LuaFile:./lua_patch_pre0708.sed
+# Lua file patch for versions starting with 07.08
+sed:1:7:8:999:999:\$LuaFile:./lua_patch_0708.sed
+# JS file patch for versions starting with 07.08
+sed:1:7:8:999:999:\$JsFile:./js_patch_0708.sed
+# copy gui_bootmanager HTML generator for versions up to 07.08
+cp:0:0:0:7:8:./gui_bootmanager_html:usr/bin/gui_bootmanager_html:0:0:555
+# copy gui_bootmanager messages for versions since 07.08
+cp:0:7:8:999:999:./gui_bootmanager.msg:usr/bin/gui_bootmanager.msg:0:0:444
+# copy gui_bootmanager script for all versions
+cp:0:0:0:999:999:./gui_bootmanager:usr/bin/gui_bootmanager:0:0:555
+endofpatches
+)
+#
+# functions
+#
+compare_version()
+(
+	major=$(expr "$1" : "0*\([1-9]*[0-9]\)")
+	minor=$(expr "$2" : "0*\([1-9]*[0-9]\)")
+	wanted_major=$(expr "$3" : "0*\([1-9]*[0-9]\)")
+	wanted_minor=$(expr "$4" : "0*\([1-9]*[0-9]\)")
 
-JsFile="usr/www/$TARGET_BRANDING/system/reboot.js"
-LuaFile="usr/www/$TARGET_BRANDING/system/reboot.lua"
-
-check_version()
-{
-	local major=$(expr "$1" : "0*\([1-9]*[0-9]\)")
-	local minor=$(expr "$2" : "0*\([1-9]*[0-9]\)")
-	local wanted_major=$(expr "$3" : "0*\([1-9]*[0-9]\)")
-	local wanted_minor=$(expr "$4" : "0*\([1-9]*[0-9]\)")
-
-	[ $major -lt $wanted_major ] && return 0
-	[ $major -gt $wanted_major ] && return 1
-	[ $minor -lt $wanted_minor ] && return 0
+	[ "$major" -lt "$wanted_major" ] && exit 0
+	[ "$major" -gt "$wanted_major" ] && exit 1
+	[ "$minor" -lt "$wanted_minor" ] && exit 0
 	return 1
-}
-
+)
+has_to_be_applied()
+(
+	if [ "$1" -lt "$5" ] || { [ "$1" -eq "$5" ] && [ "$2" -le "$6" ]; }; then
+		if [ "$3" -gt "$5" ] || { [ "$3" -eq "$5" ] && [ "$4" -gt "$6" ]; }; then
+			exit 0
+		else # maximum version is greater or equal to current version
+			exit 1
+		fi
+	else # minimum version greater than current version
+		exit 1
+	fi
+)
+get_all_brandings()
+(
+	for d in "${1}/etc/default."[!0-9]*/*; do
+		[ -d "$d" ] && printf "%s " "${d##*/}"
+	done
+	printf "\n"
+)
+get_produkt_value()
+(
+	for d in "${1}etc/default."[!0-9]*; do
+		[ -d "$d" ] && printf "%s\n" "${d##*/}"
+	done
+)
+run_sed_for_file()
+(
+	sed -f "$2" "$1" > "${1}.patched"
+	if ! cmp -s "$1" "${1}.patched" 2>/dev/null; then
+		mv "${1}.patched" "$1" 2>/dev/null
+		exit 0
+	else
+		rm -f "${1}.patched" 2>/dev/null
+		exit 1
+	fi
+)
+run_cp_for_file()
+(
+	cp -a "$2" "$1" 2>/dev/null || exit 1
+	cmp -s "$2" "$1" 2>/dev/null || exit 1
+	if [ -n "$5" ]; then
+		chmod "$5" "$1" 2>/dev/null || exit 1
+	fi
+	if [ -n "$3" ] && [ -n "$4" ]; then
+		chown "$3" "$1" 2>/dev/null || exit 1
+		chgrp "$4" "$1" 2>/dev/null || exit 1
+	fi
+	exit 0
+)
+get_target_file_name()
+(
+	if [ "$(expr "$1" : '.*\(\$\).*')" = '$' ]; then
+		# shellcheck disable=SC2059
+		printf "$(eval printf "%s" "$1")" "$2"
+	else
+		printf "%s\n" "$1"
+	fi
+)
+#
+# check temporary and target directory
+#
+[ -z "$TMP" ] && TMP=$TMPDIR
+[ -z "$TMP" ] && printf "\033[31;1mNo TMPDIR or TMP setting found at environment, set it to a writable location.\033[0m\a\n" 1>&2 && exit 1
+target_dir="${TARGET_DIR:+$TARGET_DIR/}"
+#
+# detect target system version, if needed
+#
 if [ "$TARGET_SYSTEM_VERSION" = "autodetect" ]; then
-	[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "TARGET_SYSTEM_VERSION_DETECTOR value is not set.\a\n" 1>&2 && exit 1
-	TARGET_SYSTEM_VERSION="$($TARGET_SYSTEM_VERSION_DETECTOR $TARGET_DIR -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
-	printf "Autodetection of target system version: %s\n" "$TARGET_SYSTEM_VERSION" 1>&2
+	if [ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && [ -x "./extract_version_values" ]; then
+		TARGET_SYSTEM_VERSION_DETECTOR="./extract_version_values"
+	else
+		[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "\033[31;1mTARGET_SYSTEM_VERSION_DETECTOR value is not set.\033[0m\a\n" 1>&2 && exit 1
+	fi
+	TARGET_SYSTEM_VERSION="$("$TARGET_SYSTEM_VERSION_DETECTOR" "$target_dir" -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
+	printf "\033[34;1mAutodetection of target system version (from '%s'): %s\033[0m\n" "$target_dir" "$TARGET_SYSTEM_VERSION" 1>&2
 fi
-
 [ -z "$TARGET_SYSTEM_VERSION" ] && printf "TARGET_SYSTEM_VERSION value is not set.\a\n" 1>&2 && exit 1
 major=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.0*\([1-9]*[0-9]\)\.[0-9]*") + 0 ))
 minor=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.[0-9]*\.0*\([1-9]*[0-9]\)") + 0 ))
-[ "$major" -eq 0 ] && [ "$minor" -eq 0 ] && printf "TARGET_SYSTEM_VERSION value is invalid.\a\n" 1>&2 && exit 1
-
-getJsPatchText_0708()
-{
-cat <<'EndOfPatch'
-/^\(const \)\?TableCalls/i \
-function onChangeLinuxFsStart(e){var s=jsl.evtTarget(e).id.substr("uiLinux_fs_start-".length);if(!s)return;jsl.show(s+"_branding");jsl.hide(("running"==s?"alternative":"running")+"_branding")}\
-function buildBootmanager(data){function gv(src,id){var r=src.filter(function(e){return e.id===id});if(r.length>0)return r[0].value}function nl(frag,cnt=1){while(cnt--)html2.add(frag,html2.br())}var m=data.filter(function(d){return"messages"===d.name})[0].obj;var v=data.filter(function(d){return"values"===d.name})[0].obj;var r=html2.fragment();if(0==v.length){html2.add(r,html2.h3({},gv(m,"nodata")));return r}html2.add(r,html2.h3({},gv(m,"headline")));nl(r);var ct=html2.span();var at=html2.span();var cs=gv(v,"current_switch_value");html2.add(ct,html2.strong({style:gv(m,"style_caption")},gv(m,"currsys")));html2.add(ct,html2.printf(gv(m,"switchvalue"),cs));nl(ct,2);html2.add(ct,html2.printf(gv(m,"version"),gv(v,"active_version"),gv(v,"active_date")));if(gv(v,"active_modified_at")){nl(ct);html2.add(ct,html2.printf(gv(m,"modified"),gv(v,"active_modified_at"),gv(v,"active_modified_by")))}nl(ct,2);html2.add(at,html2.strong({style:gv(m,"style_caption")},gv(m,"altsys")));html2.add(at,html2.printf(gv(m,"switchvalue"),cs?((parseInt(cs)+1)%2).toString():"0"));nl(at,2);var inactive=gv(v,"inactive_version");if("missing"!=inactive)if(inactive.length>0){html2.add(at,html2.printf(gv(m,"version"),gv(v,"inactive_version"),gv(v,"inactive_date")));if(gv(v,"inactive_modified_at")){nl(at);html2.add(at,html2.printf(gv(m,"modified"),gv(v,"inactive_modified_at"),gv(v,"inactive_modified_by")))}}else gv(m,"altinv").split("\\n").forEach(function(l){html2.add(at,l);nl(at)});else html2.add(at,gv(m,"altmiss"));nl(at,2);var radios=html2.radios({name:"linux_fs_start",selected:"true"==gv(v,"system_is_switched")?"alternative":"running",attr:{disabled:"missing"==inactive?true:false,onClick:onChangeLinuxFsStart},options:[{value:"running",text:ct},{value:"alternative",text:at}]});html2.add(r,radios);html2.add(r,html2.h4({},gv(m,"brndhead")));var cb=gv(v,"switch_branding_support");if("false"==cb){html2.add(r,html2.span({},gv(m,"brndunsupp")));html2.add(r,html2.hiddenInput({name:"alternative_branding",value:gv(v,"current_branding")}))}else{var rb=html2.span({id:"running_branding",style:"true"==gv(v,"system_is_switched")?"display: none":""});if("both_fixed"==cb||"running_fixed"==cb){html2.add(rb,html2.printf(gv(m,"brndcurrfixed"),html2.strong({},gv(v,"current_branding"))));html2.add(r,html2.hiddenInput({name:"running_branding",value:gv(v,"current_branding")}))}else if(gv(v,"active_brandings").split(" ").length>1){html2.add(rb,html2.printf(gv(m,"brndmulti"),html2.strong({},gv(v,"current_branding"))));nl(rb);var sb=html2.selectBoxPlain?html2.selectBoxPlain({id:"uiRunningBranding",name:"running_branding"}):html2.selectBox({id:"uiRunningBranding",name:"running_branding"});gv(v,"active_brandings").split(" ").forEach(function(o){sb.options.add(html2.option({value:o,selected:gv(v,"current_branding")==o?true:false},o))});html2.add(rb,html2.label({for:"uiRunningBranding",style:gv(m,"style_sblbl")},gv(m,"brndset")));html2.add(rb,sb)}else{html2.add(rb,html2.printf(gv(m,"brndcurrsingle"),html2.strong({},gv(v,"current_branding"))));html2.add(r,html2.hiddenInput({name:"running_branding",value:gv(v,"current_branding")}))}html2.add(r,rb);var ab=html2.span({id:"alternative_branding",style:"true"==gv(v,"system_is_switched")?"":"display: none"});if("missing"!=inactive)if(inactive.length>0)if("both_fixed"==cb||"alternative_fixed"==cb){html2.add(ab,html2.printf(gv(m,"brndaltfixed"),html2.strong({},gv(v,"inactive_brandings"))));html2.add(r,html2.hiddenInput({name:"alternative_branding",value:gv(v,"alternative_branding")}))}else if(gv(v,"inactive_brandings").split(" ").length>1){html2.add(ab,html2.printf(gv(m,"brndmulti"),html2.strong({},gv(v,"current_branding"))));nl(ab);var asb=html2.selectBoxPlain?html2.selectBoxPlain({id:"uiAlternativeBranding",name:"alternative_branding",style:gv(m,"style_selbrand")}):html2.selectBox({id:"uiAlternativeBranding",name:"alternative_branding",style:gv(m,"style_selbrand")});gv(v,"inactive_brandings").split(" ").forEach(function(o){asb.options.add(html2.option({value:o,selected:gv(v,"current_branding")==o?true:false},o))});if(0==asb.selectedOptions.length)asb.options.forEach(function(o){if(o.value==gv(v,"current_branding"))o.selected=true});html2.add(ab,html2.label({for:"uiAlternativeBranding",style:gv(m,"style_sblbl")},gv(m,"brndset")));html2.add(ab,asb)}else{html2.add(ab,html2.printf(gv(m,"brndaltsingle"),html2.strong({},gv(v,"inactive_brandings"))));if(gv(v,"inactive_brandings")==gv(v,"current_branding"))html2.add(ab,gv(m,"brndaltnochg"));else{html2.add(ab,html2.printf(gv(m,"brndaltset"),html2.strong({},gv(v,"current_branding"))));nl(ab);html2.add(ab,html2.printf(gv(m,"brndaltnew"),html2.strong({},gv(v,"inactive_brandings"))))}html2.add(r,html2.hiddenInput({name:"alternative_branding",value:gv(v,"inactive_brandings")}))}else html2.add(ab,gv(m,"brndaltinv"));html2.add(r,ab)}return r}
-/^if(data.actions)/i \
-if(data.bootmanager){html2.add(content,buildBootmanager(data.bootmanager));}
-s/\(html2.add(content,drawHints());\)\(html2.add(content,drawFoot());\)/\1if(data.bootmanager){html2.add(content,buildBootmanager(data.bootmanager));};\2/
-s/\(activeCalls:TYPES.OBJECT,\)\(timestamp:TYPES.NUMBER\)/\1bootmanager:TYPES.OBJECT,\2/
-EndOfPatch
-}
-getLuaPatchText_0708()
-{
-cat <<'EndOfPatch'
-/^return data$/i \
-local function data_bootmanager()\
-local line\
-local values = {}\
-local service = io.open("/var/run/bootmanager/output")\
-if service then\
-for line in service:lines() do\
-table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
-end\
-table.insert(values, { id = "hasService", value = "1" } )\
-service:close()\
-else\
-local pipe = io.popen("/usr/bin/bootmanager get_values")\
-for line in pipe:lines() do\
-table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
-end\
-table.insert(values, { id = "hasService", value = "0" } )\
-pipe:close()\
-end\
-local messages = {}\
---\
--- ToDo: consider to separate the message tables from rest of code, best in an extra file\
---\
-if config.language == "de" then\
-table.insert(messages, { id = "headline", value = "Folgende Systeme stehen auf dieser FRITZ!Box zur Auswahl bei einem Neustart:" })\
-table.insert(messages, { id = "currsys", value = "das aktuell laufende System" })\
-table.insert(messages, { id = "altsys", value = "das derzeit inaktive System" })\
-table.insert(messages, { id = "switchvalue", value = "(linux_fs_start=%1%switch%)" })\
-table.insert(messages, { id = "version", value = "Version %1%version% vom %2%date%" })\
-table.insert(messages, { id = "modified", value = "zuletzt modifiziert am %1%date% durch \\"%2%framework%\\"" })\
-table.insert(messages, { id = "altinv", value = "Das System in den alternativen Partitionen kann nicht identifiziert werden.\\nEs verwendet entweder ein unbekanntes Dateisystem oder es könnte auch beschädigt sein.\\nEine Umschaltung auf dieses System sollte nur ausgeführt werden, wenn man sich wirklich sehr sicher ist, was man da tut." })\
-table.insert(messages, { id = "altmiss", value = "Die derzeit inaktiven Partitionen enthalten kein gültiges System." })\
-table.insert(messages, { id = "brndhead", value = "Branding ändern" })\
-table.insert(messages, { id = "brndunsupp", value = "Bei diesem Gerät ist keine dauerhafte Änderung der Firmware-Version möglich." })\
-table.insert(messages, { id = "brndcurrfixed", value = "Die Firmware-Version des aktuell laufenden Systems ist fest auf \\"%1%fixed%\\" eingestellt und kann nicht geändert werden." })\
-table.insert(messages, { id = "brndcurrsingle", value = "Das oben ausgewählte System unterstützt nur die Firmware-Version \\"%1%current%\\", diese ist im Moment auch eingestellt." })\
-table.insert(messages, { id = "brndmulti", value = "Das oben ausgewählte System unterstützt mehrere Firmware-Versionen, im Moment ist \\"%1%current%\\" eingestellt." })\
-table.insert(messages, { id = "brndset", value = "Beim nächsten Start wird folgender Wert gesetzt und bis zur nächsten Änderung verwendet:" })\
-table.insert(messages, { id = "brndaltinv", value = "Da das alternative System nicht identifiziert werden konnte, ist auch keine Information über dort enthaltene Firmware-Versionen verfügbar." })\
-table.insert(messages, { id = "brndaltfixed", value = "Die Firmware-Version des derzeit nicht aktiven Systems ist fest auf \\"%1%fixed%\\" eingestellt und kann nicht geändert werden." })\
-table.insert(messages, { id = "brndaltsingle", value = "Das oben ausgewählte System unterstützt nur die Firmware-Version \\"%1%alternative%\\"" })\
-table.insert(messages, { id = "brndaltnochg", value = ", diese ist im Moment auch eingestellt." })\
-table.insert(messages, { id = "brndaltset", value = ", im Moment ist jedoch \\"%1%current%\\" eingestellt." })\
-table.insert(messages, { id = "brndaltnew", value = "Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf \\"%1%alternative%\\" geändert." })\
-table.insert(messages, { id = "nodata", value = "Fehler im Boot-Manager: Es wurden keine Daten für die Anzeige erzeugt." })\
-else\
-table.insert(messages, { id = "headline", value = "The following systems are available to be booted on this device next time:" })\
-table.insert(messages, { id = "currsys", value = "the currently running system" })\
-table.insert(messages, { id = "altsys", value = "the alternative system" })\
-table.insert(messages, { id = "switchvalue", value = "(linux_fs_start=%1%switch%)" })\
-table.insert(messages, { id = "version", value = "version %1%version% built on %2%date%" })\
-table.insert(messages, { id = "modified", value = "last modified on %1%date% using \\"%2%framework%\\"" })\
-table.insert(messages, { id = "altinv", value = "Unable to identify the installed system in the alternative partitions.\\nIt may use an unknown filesystem format, it may have been damaged, it's simply missing or it has been deleted otherwise.\\nSwitching to this system may prevent your device from starting correctly.\\nYou should be really sure, what you are doing in this case." })\
-table.insert(messages, { id = "altmiss", value = "The alternative partitions do not contain any valid system." })\
-table.insert(messages, { id = "brndhead", value = "Change branding" })\
-table.insert(messages, { id = "brndunsupp", value = "Unable to change the branding permanently on this device." })\
-table.insert(messages, { id = "brndcurrfixed", value = "Branding of currently running system was set to a fixed value of \\"%1%fixed%\\" and can not be changed." })\
-table.insert(messages, { id = "brndcurrsingle", value = "The system selected above supports only the single OEM name \\"%1%current%\\" and this is also the current one." })\
-table.insert(messages, { id = "brndmulti", value = "The system selected above supports different OEM names, currently the value \\"%1%current%\\" is set." })\
-table.insert(messages, { id = "brndset", value = "Restarting the device now, will set this name to the following value (until it's changed once more):" })\
-table.insert(messages, { id = "brndaltinv", value = "Due to problems identifying the installed alternative system, there's no idea, which values are supported by this system and the value remains unchanged." })\
-table.insert(messages, { id = "brndaltfixed", value = "Branding of installed alternative system was set to a fixed value of \\"%1%fixed%\\" and can not be changed." })\
-table.insert(messages, { id = "brndaltsingle", value = "The system selected above supports only the single OEM name \\"%1%alternative\\"" })\
-table.insert(messages, { id = "brndaltnochg", value = " and this is also the current one." })\
-table.insert(messages, { id = "brndaltset", value = ", but currently \\"%1%current%\\" is set." })\
-table.insert(messages, { id = "brndaltnew", value = "Restarting the device now, will set the OEM name value to \\"%1%alternative%\\" without any further questions." })\
-table.insert(messages, { id = "nodata", value = "Error from boot-manager script: No data to display." })\
-end\
-table.insert(messages, { id = "style_caption", value = "padding-right: 8px;" })\
-table.insert(messages, { id = "style_sblbl", value = "padding-right: 8px;" })\
--- end of messages\
-local bootmanager = {}\
-table.insert(bootmanager, { name = "values", obj = values })\
-table.insert(bootmanager, { name = "messages", obj = messages })\
-return bootmanager\
-end\
-\
-data.bootmanager = data_bootmanager()
-
-/^local savecookie *= *{}/a \
-if box.post.linux_fs_start then\
-local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")\
-local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""\
-local service = io.open("/var/run/bootmanager/input","w")\
-if service then\
-service:write("switch_to "..linux_fs_start.." "..branding.."\\n")\
-service:close()\
-else\
-os.execute("/usr/bin/bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
-end\
-end
-EndOfPatch
-}
-getLuaPatchText_pre0708()
-{
-cat <<'EndOfPatch'
-/^local savecookie = {}/a \
-if box.post.linux_fs_start then\
-local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")\
-local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""\
-os.execute("/usr/bin/bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
-end
-
-/^<form action=.*>/a \
-<div id="managed_reboot" class="reboot_managed">\
-<?lua\
-pipe = io.popen("/usr/bin/bootmanager html_display")\
-line = pipe:read("*a")\
-pipe:close()\
-box.out(line)\
-?>\
-</div>
-EndOfPatch
-}
-if check_version $major $minor 7 8; then
-	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
-	getLuaPatchText_pre0708 > "$TMP/bootmanager_0_7_tmp"
-	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
-	rm "$TMP/bootmanager_0_7_tmp"
-else
-	printf "      Patching file '%s' ...\n" "$JsFile" 1>&2
-	getJsPatchText_0708 > $TMP/bootmanager_0_7_tmp
-	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$JsFile" >"$TargetDir$JsFile.new" && mv "$TargetDir$JsFile.new" "$TargetDir$JsFile"
-	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
-	getLuaPatchText_0708 > $TMP/bootmanager_0_7_tmp
-	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
-	rm "$TMP/bootmanager_0_7_tmp"
-fi
+[ "$major" -eq 0 ] && [ "$minor" -eq 0 ] && printf "\033[31;1mTARGET_SYSTEM_VERSION value is invalid.\033[0m\a\n" 1>&2 && exit 1
+target_produkt="$(get_produkt_value "$target_dir")"
+#
+# process patch files for target version
+#
+i=0
+problems="$(get_patches | while read -r line; do
+	i=$(( i + 1 ))
+	[ "$(expr "$line" : "\(.\).*")" = "#" ] && continue
+	oifs="$IFS"
+	IFS=":"
+	# shellcheck disable=SC2086
+	set -- $line
+	IFS="$oifs"
+	per_branding="$2"
+	from_major="$3"
+	from_minor="$4"
+	to_major="$5"
+	to_minor="$6"
+	if ! has_to_be_applied "$from_major" "$from_minor" "$to_major" "$to_minor" "$major" "$minor"; then
+		printf "\033[33;1mAction from line %u of patch definitions skipped due to version settings: not below %02u.%02u, but below %02u.%02u ('%s' for '%s').\033[0m\n" "$i" "$from_major" "$from_minor" "$to_major" "$to_minor" "$1" "$7" 1>&2
+		continue
+	fi
+	case "$1" in
+		('sed')
+			command_file="$8"
+			if [ "$per_branding" = "1" ]; then
+				target_file_mask="$7"
+				if [ -z "$TARGET_BRANDING" ]; then
+					for branding in $(get_all_brandings "$target_dir"); do
+						target_file="$(get_target_file_name "$target_file_mask" "$branding")"
+						if run_sed_for_file "$target_dir$target_file" "$command_file"; then
+							printf "\033[32;1mAction ('%s' with commands from file '%s') from line %u of patch definitions applied to '%s'.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+						else
+							printf "\033[31;1mAction ('%s' with commands from file '%s') from line %u of patch definitions failed on '%s'.\033[0m\a\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+							printf "problem on line %u\n" "$i"
+						fi
+					done
+				else
+					target_file="$(get_target_file_name "$target_file_mask" "$TARGET_BRANDING")"
+					if run_sed_for_file "$target_dir$target_file" "$command_file"; then
+						printf "\033[32;1mAction ('%s' with commands from file '%s') from line %u of patch definitions applied to '%s'.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+					else
+						printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+						printf "problem on line %u\n" "$i"
+					fi
+				fi
+			else
+				target_file="$7"
+				if run_sed_for_file "$target_dir$target_file" "$command_file"; then
+					printf "\033[32;1mAction ('%s' with commands from file '%s') from line %u of patch definitions applied to '%s'.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+				else
+					printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+					printf "problem on line %u\n" "$i"
+				fi
+			fi
+			;;
+		('cp')
+			source_file="$7"
+			if [ "$per_branding" = "1" ]; then
+				target_file_mask="$8"
+				if [ -z "$TARGET_BRANDING" ]; then
+					for branding in $(get_all_brandings "$target_dir"); do
+						target_file="$(get_target_file_name "$target_file_mask" "$branding")"
+						if run_cp_for_file "$target_dir$target_file" "$source_file" "$9" "${10}" "${11}"; then
+							printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+						else
+							printf "\033[31;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions failed.\033[0m\a\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+							printf "problem on line %u\n" "$i"
+						fi
+					done
+				else
+					target_file="$(get_target_file_name "$target_file_mask" "$TARGET_BRANDING")"
+					if run_cp_for_file "$target_dir$target_file" "$source_file" "$9" "${10}" "${11}"; then
+						printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+					else
+						printf "\033[31;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions failed.\033[0m\a\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+						printf "problem on line %u\n" "$i"
+					fi
+				fi
+			else
+				target_file="$8"
+				if run_cp_for_file "$target_dir$target_file" "$source_file" "$9" "${10}" "${11}"; then
+					printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+				else
+					printf "\033[31;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions failed.\033[0m\a\n" "$1" "$source_file" "$target_dir$target_file" "$i" 1>&2
+					printf "problem on line %u\n" "$i"
+				fi
+			fi
+			;;
+		(*)
+			printf "\033[37;1mUnknown operation '%s' on line %u of patch definitions.\033[0m\a\n" "$1" "$i" 1>&2
+			printf "problem on line %u\n" "$i"
+			;;
+	esac
+done | wc -l)"
+[ "$problems" -gt 0 ] && rc=1 || rc=0
+#
+# all done here
+#
+exit "$rc"
