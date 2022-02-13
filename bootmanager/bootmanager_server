@@ -34,7 +34,7 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# variant 1                                                                                           #
+# variant 2                                                                                           #
 #                                                                                                     #
 # Script will listen for commands on /var/run/bootmanager/input, supported commands:                  #
 #                                                                                                     #
@@ -47,14 +47,12 @@
 # switch_to <"running"|"alternative"> [<branding>]                                                    #
 # - change settings according to specified values                                                     #
 #                                                                                                     #
-# get_values                                                                                          #
-# - collect and output data needed by frontends                                                       #
-# - data will be written to /var/run/bootmanager/output and MUST be read by caller up to EOF or the   #
-#   wrapper will get stuck                                                                            #
-# - data will be collected live, no cache file(s) used                                                #
+# clear_cache                                                                                         #
+# - clean up cached data and collect new values                                                       #
 #                                                                                                     #
-# Don't forget to append a newline character at the end of a command line, otherwise data written to  #
-# FIFO get collected until the next newline was found.                                                #
+# At the same time, data collected by 'get_values' command of bootmanager will be provided via a FIFO #
+# /var/run/bootmanager/output - each time this file is opened by a client, data from cache file of    #
+# bootmanager will be written to it. Read the whole file content and close it after reading.          #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -66,6 +64,7 @@ rundir="/var/run/$basename"
 input="$rundir/input"
 output="$rundir/output"
 reader_pid="$rundir/reader.pid"
+writer_pid="$rundir/writer.pid"
 #######################################################################################################
 #                                                                                                     #
 # cleanup on exit of service                                                                          #
@@ -81,10 +80,11 @@ cleanup()
 		kill -0 "$p" 2>/dev/null && kill "$p" 2>/dev/null && sleep 1 && return 1
 	}
 	[ -z "$rundir" ] && return
-	kill_pid "$reader_pid" || return
+	kill_pid "$writer_pid"
+	kill_pid "$reader_pid"
 	[ -p "$output" ] && rm -f "$output" 2>/dev/null
 	[ -p "$input" ] && rm -f "$input" 2>/dev/null
-	rm -r "$rundir" 2>/dev/null
+	[ -d "$rundir" ] && rm -r "$rundir" 2>/dev/null
 }
 #######################################################################################################
 #                                                                                                     #
@@ -98,12 +98,11 @@ reader()
 	while read -r cmd p1 p2; do
 		case "$cmd" in
 			("switch_to")
-				/usr/bin/gui_bootmanager switch_to "$p1" "$p2" 2>/dev/null 1>&2
+				/usr/bin/$basename switch_to "$p1" "$p2" 2>/dev/null 1>&2
 				;;
-			("get_values")
-				exec 1>"$2"
-				/usr/bin/gui_bootmanager get_values nocache 2>/dev/null
-				exec 1>&-
+			("clear_cache")
+				/usr/bin/$basename clear_cache 2>/dev/null 1>&2
+				/usr/bin/$basename get_values 2>/dev/null 1>&2
 				;;
 			("stop")
 				break
@@ -119,6 +118,18 @@ reader()
 }
 #######################################################################################################
 #                                                                                                     #
+# data writer                                                                                         #
+#                                                                                                     #
+#######################################################################################################
+writer()
+{
+	trap - INT EXIT
+	while /bin/true; do
+		cat "/var/tmp/$basename.data" >"$1" 2>/dev/null
+	done
+}
+#######################################################################################################
+#                                                                                                     #
 # prepare FIFOs to communicate with clients                                                           #
 #                                                                                                     #
 #######################################################################################################
@@ -128,9 +139,14 @@ mkdir -p "$rundir" 2>/dev/null
 mknod "$input" p
 mknod "$output" p
 ( [ -p "$input" ] && [ -p "$output" ] ) || exit 1
-reader "$input" "$output" &
-printf "%u\n" "$!" >"$reader_pid"
-wait "$!"
+reader "$input" &
+rd_pid="$!"
+printf "%u\n" "$rd_pid" >"$reader_pid"
+/usr/bin/$basename clear_cache 2>/dev/null 1>&2
+/usr/bin/$basename get_values 2>/dev/null 1>&2
+writer "$output" &
+printf "%u\n" "$!" >"$writer_pid"
+wait "$rd_pid"
 #######################################################################################################
 #                                                                                                     #
 # finish and regular exit                                                                             #
