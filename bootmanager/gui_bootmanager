@@ -8,13 +8,13 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# gui_bootmanager, version 0.6.5                                                                      #
+# gui_bootmanager, version 0.7.0                                                                      #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
 ###################################################################################################CPY#
 #                                                                                                     #
-# Copyright (C) 2014-2020 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+# Copyright (C) 2014-2022 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
 #                                                                                                     #
 ###################################################################################################LIC#
 #                                                                                                     #
@@ -531,12 +531,14 @@ switch_system()
 #######################################################################################################
 switch_system_to()
 (
+	rc=1
 	if is_switched; then
-		[ "$1" = "running" ] && switch_system
+		[ "$1" = "running" ] && switch_system && rc=0
 	else
-		[ "$1" = "alternative" ] && switch_system
+		[ "$1" = "alternative" ] && switch_system && rc=0
 	fi
 	[ -z "$2" ] || change_branding "$2"
+	exit $rc
 )
 #######################################################################################################
 #                                                                                                     #
