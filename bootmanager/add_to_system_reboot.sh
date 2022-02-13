@@ -49,13 +49,23 @@ getLuaPatchText_0708()
 cat <<'EndOfPatch'
 /^return data$/i \
 local function data_bootmanager()\
-local values = {}\
-local pipe = io.popen("/usr/bin/gui_bootmanager get_values")\
 local line\
+local values = {}\
+local service = io.open("/var/run/bootmanager/output")\
+if service then\
+for line in service:lines() do\
+table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\"?(.-)\"?$") } )\
+end\
+table.insert(values, { id = "hasService", value = "1" } )\
+service:close()\
+else\
+local pipe = io.popen("/usr/bin/bootmanager get_values")\
 for line in pipe:lines() do\
 table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
 end\
+table.insert(values, { id = "hasService", value = "0" } )\
 pipe:close()\
+end\
 local messages = {}\
 --\
 -- ToDo: consider to separate the message tables from rest of code, best in an extra file\
@@ -120,7 +130,13 @@ data.bootmanager = data_bootmanager()
 if box.post.linux_fs_start then\
 local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")\
 local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""\
-os.execute("/usr/bin/gui_bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
+local service = io.open("/var/run/bootmanager/input","w")\
+if service then\
+service:write("switch_to "..linux_fs_start.." "..branding.."\n")\
+service:close()\
+else\
+os.execute("/usr/bin/bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
+end\
 end
 EndOfPatch
 }
@@ -131,13 +147,13 @@ cat <<'EndOfPatch'
 if box.post.linux_fs_start then\
 local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")\
 local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""\
-os.execute("/usr/bin/gui_bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
+os.execute("/usr/bin/bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
 end
 
 /^<form action=.*>/a \
 <div id="managed_reboot" class="reboot_managed">\
 <?lua\
-pipe = io.popen("/usr/bin/gui_bootmanager html_display")\
+pipe = io.popen("/usr/bin/bootmanager html_display")\
 line = pipe:read("*a")\
 pipe:close()\
 box.out(line)\
@@ -147,15 +163,15 @@ EndOfPatch
 }
 if check_version $major $minor 7 8; then
 	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
-	getLuaPatchText_pre0708 > "$TMP/gui_bootmanager_0_6_tmp"
-	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
-	rm "$TMP/gui_bootmanager_0_6_tmp"
+	getLuaPatchText_pre0708 > "$TMP/bootmanager_0_7_tmp"
+	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
+	rm "$TMP/bootmanager_0_7_tmp"
 else
 	printf "      Patching file '%s' ...\n" "$JsFile" 1>&2
-	getJsPatchText_0708 > $TMP/gui_bootmanager_0_6_tmp
-	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$JsFile" >"$TargetDir$JsFile.new" && mv "$TargetDir$JsFile.new" "$TargetDir$JsFile"
+	getJsPatchText_0708 > $TMP/bootmanager_0_7_tmp
+	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$JsFile" >"$TargetDir$JsFile.new" && mv "$TargetDir$JsFile.new" "$TargetDir$JsFile"
 	printf "      Patching file '%s' ...\n" "$LuaFile" 1>&2
-	getLuaPatchText_0708 > $TMP/gui_bootmanager_0_6_tmp
-	sed -f "$TMP/gui_bootmanager_0_6_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
-	rm "$TMP/gui_bootmanager_0_6_tmp"
+	getLuaPatchText_0708 > $TMP/bootmanager_0_7_tmp
+	sed -f "$TMP/bootmanager_0_7_tmp" "$TargetDir$LuaFile" >"$TargetDir$LuaFile.new" && mv "$TargetDir$LuaFile.new" "$TargetDir$LuaFile"
+	rm "$TMP/bootmanager_0_7_tmp"
 fi
