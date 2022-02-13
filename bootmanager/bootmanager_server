@@ -138,7 +138,11 @@ trap 'cleanup' EXIT INT HUP
 mkdir -p "$rundir" 2>/dev/null
 mknod "$input" p
 mknod "$output" p
+<<<<<<< HEAD
 { [ -p "$input" ] && [ -p "$output" ]; } || exit 1
+=======
+( [ -p "$input" ] && [ -p "$output" ] ) || exit 1
+>>>>>>> b773e34 (bootmanager: rename 'gui_bootmanager' to 'bootmanager')
 reader "$input" &
 rd_pid="$!"
 printf "%u\n" "$rd_pid" >"$reader_pid"
@@ -146,14 +150,21 @@ printf "%u\n" "$rd_pid" >"$reader_pid"
 /usr/bin/$basename get_values 2>/dev/null 1>&2
 writer "$output" &
 printf "%u\n" "$!" >"$writer_pid"
+<<<<<<< HEAD
 svctl notify $basename
+=======
+>>>>>>> b773e34 (bootmanager: rename 'gui_bootmanager' to 'bootmanager')
 wait "$rd_pid"
 #######################################################################################################
 #                                                                                                     #
 # finish and regular exit                                                                             #
 #                                                                                                     #
 #######################################################################################################
+<<<<<<< HEAD
 exit
+=======
+exit $rc
+>>>>>>> b773e34 (bootmanager: rename 'gui_bootmanager' to 'bootmanager')
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
