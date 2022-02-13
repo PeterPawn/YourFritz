@@ -1,12 +1,8 @@
-![GUI_Bootmanager](GUI_Bootmanager.png)
+![Bootmanager](Bootmanager.png)
 
 # Files in this folder
 
 `bootmanager`
-
-It's a meanwhile outdated shell script to switch the active operating system on a FRITZ!Box device from command line. This one was able to manage different sets of settings for each system.
-
-`gui_bootmanager`
 
 It's a shell script, intended to be called on a FRITZ!Box device with VR9/GRX500/Puma6 chipset, which has the ability to switch between two different installed operating systems. It's at the same time an attempt to equalize the special needs of each of these models, how to manage the installed filesystem images in SquashFS format.
 
@@ -20,17 +16,25 @@ German and English messages are included in the script, the default language is 
 
 The code checks, if any of the present systems was modified by a supported framework (```YourFritz```, ```Freetz``` or ```modfs```) and shows the date and time of last update, if it detects any of these frameworks. Finally, it's simply looking for the various version files and uses the file date and time of them to display the values.
 
-To install it to your own firmware image, best copy it to location ```/usr/bin/gui_bootmanager``` and set the wanted attributes and owner/group ID. The other files from here expect it there ... if you put it elsewhere, you probably have to change the location in other files, too.
+To install it to your own firmware image, best copy it to location ```/usr/bin/bootmanager``` and set the wanted attributes and owner/group ID. The other files from here expect it there ... if you put it elsewhere, you probably have to change the location in other files, too.
+
+`bootmanager_server`
+
+A shell wrapper script to provide access to `bootmanager` functions using simple file I/O functions (open/close, read and write). It provides output from `bootmanager get_values` via a FIFO at `/var/run/bootmanager/output` and reads     simple 'commands' from another FIFO at `/var/run/bootmanager/input`. An existing directory `/var/run/bootmanager` may be used as detector whether the server is running or not. For a list of supported 'server commands' have a look onto the header of this file. This file has to be copied to `/usr/bin/bootmanager_server` if the service definition file below should be used.
+
+`bootmanager.service`
+
+A service definition file for AVM's `supervisor` service, which runs the `bootmanager_server` from above. This file has to be copied to `/lib/systemd/system/bootmanager.service` in your own FRITZ!OS image.
 
 `add_to_system_reboot.sh`
 
-A shell script, which adds the needed code to AVM's files to integrate `gui_bootmanager` into the 'Reboot' page from GUI. It supports the pre-07.08 approach, where HTML code is emitted from `reboot.lua` and also the newer one, where only JSON data gets generated.
+A shell script, which adds the needed code to AVM's files to integrate `bootmanager` into the 'Reboot' page from GUI. It supports the pre-07.08 approach, where HTML code is emitted from `reboot.lua` and also the newer one, where only JSON data gets generated. The injected Lua code prefers the usage of an existing `bootmanager_server` instance and if such one can't be found, it tries a fallback using `io.popen` and `os.execute`.
 
 If your firmware image contains more than a single *branding*, you'll probably need to apply the patch to more than one sub-tree below ```/usr/www```.
 
 The use of `sed` to change the original content forecloses any protection against double invocation for the same file and it's the caller's business to prevent errors from double-patch attempts.
 
-You have to set the environment variables 
+You have to set the environment variables
 
 - `TARGET_BRANDING` (e.g. `avm`)
 - `TARGET_SYSTEM_VERSION` (e.g. `113.07.08`)

@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# gui_bootmanager, version 0.7.0                                                                      #
+# bootmanager, version 0.7.1                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -58,7 +58,7 @@
 #                dual-boot selection                                                                  #
 # is_blocked   - check the used semaphore file, if there's already a running instance                 #
 # html_display - creates a little HTML snippet (containing JS code, too), which may be included into  #
-#                the original reboot.lua page (tested up to version 07.01)                            #
+#                the original reboot.lua page (for FRITZ!OS versions prior to 07.08)                  #
 #              - if the second parameter is 'nocache', an existing cache file (where those data is    #
 #                stored otherwise - ready to be displayed on next call) gets ignored                  #
 #              - the data for 'get_values' is cached at the same time, if 'nocache' wasn't specified  #
@@ -89,10 +89,10 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-readonly html_cache_file="/var/tmp/gui_bootmanager.html"
-readonly html_cache_error="/var/tmp/gui_bootmanager.rc"
-readonly data_cache_file="/var/tmp/gui_bootmanager.data"
-readonly boot_cache_file="/var/tmp/gui_bootmanager.boot"
+readonly html_cache_file="/var/tmp/bootmanager.html"
+readonly html_cache_error="/var/tmp/bootmanager.rc"
+readonly data_cache_file="/var/tmp/bootmanager.data"
+readonly boot_cache_file="/var/tmp/bootmanager.boot"
 readonly urlader_environment="/proc/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
@@ -116,7 +116,7 @@ readonly loop_driver_name="loop"
 readonly backing_file_name="backing_file"
 readonly tmpdir="${TMPDIR:-/var/tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
-readonly semafile="/var/run/gui_bootmanager.sem"
+readonly semafile="/var/run/bootmanager.sem"
 readonly fdt_chosen="/proc/device-tree/chosen"
 readonly radio_button_checked=" checked=\\\"checked\\\""
 #######################################################################################################
