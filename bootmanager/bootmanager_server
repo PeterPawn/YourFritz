@@ -146,6 +146,7 @@ printf "%u\n" "$rd_pid" >"$reader_pid"
 /usr/bin/$basename get_values 2>/dev/null 1>&2
 writer "$output" &
 printf "%u\n" "$!" >"$writer_pid"
+svctl notify $basename
 wait "$rd_pid"
 #######################################################################################################
 #                                                                                                     #

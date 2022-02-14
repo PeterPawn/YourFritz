@@ -224,7 +224,7 @@ has_fdt_environment()
 }
 #######################################################################################################
 #                                                                                                     #
-# check, if the host system supports branding changes via environment writes                          #
+# check, whether the host system supports branding changes via write operations to environment        #
 #                                                                                                     #
 #######################################################################################################
 change_branding_support()
