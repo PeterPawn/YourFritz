@@ -1410,6 +1410,7 @@ rc=127
 # check parameters and call requested function                                                        #
 #                                                                                                     #
 #######################################################################################################
+save_environment
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -1467,7 +1468,6 @@ case "$1" in
 			fi
 			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>/dev/null
 			rc=0
-			save_environment
 		else
 			rc=1
 		fi
@@ -1504,7 +1504,6 @@ case "$1" in
 				printf -- "%u" "$rc" >"$html_cache_error"
 				cat "$html_cache_file"
 			fi
-			save_environment
 		fi
 		;;
 	("clear_cache")
