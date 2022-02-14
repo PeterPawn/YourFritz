@@ -211,7 +211,9 @@ is_puma_based_device()
 printf_ss()
 (
 	# shellcheck disable=SC2059
-	printf -- "$(printf -- '%s' "$1")" "$*"
+	mask="$1"
+	shift
+	printf -- "$(printf -- '%s' "$mask")" "$*"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -264,7 +266,7 @@ get_mtd_partition()
 (
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
 	if [ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ]; then
-		printf_ss "$mtdblock_mask" "$(get_mtd_number "$(printf -- "\${mtd_%s_name_%s}" "$1" "$2")")"
+		printf_ss "$mtdblock_mask" "$(eval get_mtd_number "$(printf -- "\${mtd_%s_name_%s}" "$1" "$2")")"
 		exit 0
 	fi
 	exit 1
