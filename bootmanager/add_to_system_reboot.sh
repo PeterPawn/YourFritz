@@ -54,7 +54,7 @@ local values = {}\
 local service = io.open("/var/run/bootmanager/output")\
 if service then\
 for line in service:lines() do\
-table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\"?(.-)\"?$") } )\
+table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
 end\
 table.insert(values, { id = "hasService", value = "1" } )\
 service:close()\
@@ -132,7 +132,7 @@ local linux_fs_start = string.gsub(box.post.linux_fs_start, "'", "")\
 local branding = box.post[linux_fs_start.."_branding"] ~= nil and string.gsub(box.post[linux_fs_start.."_branding"], "'", "") or ""\
 local service = io.open("/var/run/bootmanager/input","w")\
 if service then\
-service:write("switch_to "..linux_fs_start.." "..branding.."\n")\
+service:write("switch_to "..linux_fs_start.." "..branding.."\\n")\
 service:close()\
 else\
 os.execute("/usr/bin/bootmanager switch_to '"..linux_fs_start.."' '"..branding.."'")\
