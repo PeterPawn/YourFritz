@@ -138,7 +138,7 @@ trap 'cleanup' EXIT INT HUP
 mkdir -p "$rundir" 2>/dev/null
 mknod "$input" p
 mknod "$output" p
-( [ -p "$input" ] && [ -p "$output" ] ) || exit 1
+{ [ -p "$input" ] && [ -p "$output" ]; } || exit 1
 reader "$input" &
 rd_pid="$!"
 printf "%u\n" "$rd_pid" >"$reader_pid"
@@ -153,7 +153,7 @@ wait "$rd_pid"
 # finish and regular exit                                                                             #
 #                                                                                                     #
 #######################################################################################################
-exit $rc
+exit
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
