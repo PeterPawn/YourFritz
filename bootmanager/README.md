@@ -18,6 +18,10 @@ The code checks, if any of the present systems was modified by a supported frame
 
 To install it to your own firmware image, best copy it to location ```/usr/bin/bootmanager``` and set the wanted attributes and owner/group ID. The other files from here expect it there ... if you put it elsewhere, you probably have to change the location in other files, too.
 
+`bootmanager.msg`
+
+This file contains the text snippets used to display data collected by `bootmanager` to the user. Have a look at the file for the used format - if you want to supply another language, you may add the needed snippets to this file. A translation has to use its phrases in the same order - only the text parts will be replaced and format and order of variable parts isn't changeable here.
+
 `bootmanager_server`
 
 A shell wrapper script to provide access to `bootmanager` functions using simple file I/O functions (open/close, read and write). It provides output from `bootmanager get_values` via a FIFO at `/var/run/bootmanager/output` and reads     simple 'commands' from another FIFO at `/var/run/bootmanager/input`. An existing directory `/var/run/bootmanager` may be used as detector whether the server is running or not. For a list of supported 'server commands' have a look onto the header of this file. This file has to be copied to `/usr/bin/bootmanager_server` if the service definition file below should be used.
@@ -33,6 +37,8 @@ A shell script, which adds the needed code to AVM's files to integrate `bootmana
 If your firmware image contains more than a single *branding*, you'll probably need to apply the patch to more than one sub-tree below ```/usr/www```.
 
 The use of `sed` to change the original content forecloses any protection against double invocation for the same file and it's the caller's business to prevent errors from double-patch attempts.
+
+Starting with version 0.8 this installation script copies the supplemantory files `bootmanager_server`, `bootmanager.service`, `bootmanager_html` (for FRITZ!OS versions below 07.08) and `bootmanager.msg` to the FRITZ!OS file structure specified by `$TARGET_DIR`.
 
 You have to set the environment variables
 
