@@ -1,5 +1,6 @@
 /^return data$/i \
 local function data_bootmanager()\
+local bootmanager = {}\
 local line\
 local values = {}\
 local service = io.open("/var/run/bootmanager/output")\
@@ -16,17 +17,51 @@ table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"
 end\
 table.insert(values, { id = "hasService", value = "0" } )\
 pipe:close()\
+end\
+local messages = {}\
+local clang = config.language\
 local msgs = io.open("/usr/bin/bootmanager.msg")\
-for line in msgs.lines() do\
-table.insert(messages, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
+if msgs then\
+local lang, id, value, usedLanguage\
+local languagesChecked = false\
+for line in msgs:lines() do\
+if line:sub(1, 1) ~= "#" then\
+if line:match("^[Ll]anguages (%l%l)%s?(.-)$") and not languagesChecked then\
+local deflang, addlangs, lng\
+languagesChecked = true\
+deflang, addlangs = line:match("^[Ll]anguages (%l%l)(.-)$")\
+if deflang ~= clang then\
+for lng in addlangs:gmatch(" ?(%l%l ?)") do\
+if lng:match("^%s-(.-)%s-$") == clang then\
+usedLanguage = clang\
+break\
 end\
-msgs:close()
-local bootmanager = {}\
-table.insert(bootmanager, { name = "values", obj = values })\
-table.insert(bootmanager, { name = "messages", obj = messages })\
+end\
+if not usedLanguage then\
+usedLanguage = deflang\
+end\
+else\
+usedLanguage = clang\
+end\
+else\
+lang, id, value = line:match("^([^:]-):([^=]-)=(.-)$")\
+if lang and id and value then\
+if usedLanguage == lang or "any" == lang then\
+table.insert(messages, { id = id, value = string.gsub(value, "\\\\n", "\\n"), lang = lang } )\
+end\
+end\
+end\
+end\
+end\
+msgs:close()\
+table.insert(bootmanager, {name = "values", obj = values})\
+table.insert(bootmanager, {name = "messages", obj = messages})\
 return bootmanager\
+else\
+local empty = {}\
+return empty\
 end\
-\
+end\
 data.bootmanager = data_bootmanager()
 
 /^local savecookie *= *{}/a \
