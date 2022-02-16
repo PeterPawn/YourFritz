@@ -51,3 +51,21 @@ to the correct values, before you call this script.
 
 Alternatively you may set `TARGET_SYSTEM_VERSION` to `autodetect`, as long as you specify the path to a script - usable as such a detector - in a variable named `TARGET_SYSTEM_VERSION_DETECTOR`. This script has to be interface-compatible to the provided script, which was placed in this directory via a symbolic link (`extract_version_values`) to the file, that is used in the `signimage` sub-directory to extract version values from a FRITZ!OS tree, needed for generation of a database with AVM's firmware signing keys.
 But the used interface is _very_ simple - the script has to accept the path to the FRITZ!OS root directory as first parameter and has to handle or ignore a `-m` as the second parameter. The output is expected on STDOUT and has to contain a line starting with `Version="nnn.nn.nn"`, where the version number (nnn.nn.nn) may be extracted from.
+
+`add_change_oem.sh`
+
+This is a small shell script to inject code into a file from AVM's FRITZ!OS, which is responsible for most of actions regarding the "firmware branding" settings (via shell environment variable `OEM`). The added code checks the kernel command line for an entry `oem=<value>` and if it exists, the specified `<value>` is compared to every value supported by the running FRITZ!OS firmware. If a match was found, the specified value replaces the one read from urlader environment.
+
+This script is an alternative approach to a 'fixed replacement', where the value is changed, but has to be specified at build time already. With this solution, you may add the needed entry to `kernel_args` or `kernel_arg1` in the urlader environment settings of AVM's EVA bootloader.
+
+But be aware, that the loader of some models (especially the DOCSIS routers) limits the acceptable settings from these two variables - make sure first, that your device supports additional entries. After setting an own entry using the FTP server of EVA, you may verify the used kernel command-line at the support data file, if you get it soon enough after a restart to catch the very first kernel messages with the output of `dmesg`:
+
+```
+[...]
+[    0.000000] PERCPU: Embedded 7 pages/cpu @81a06000 s7392 r8192 d13088 u32768
+[    0.000000] Kernel command line: oem=avm console=ttyS0,115200n8r nor_size=0MB sflash_size=1024KB nand_size=512MB ethaddr=08:96:D7:XX:XX:XX  audit=1
+[    0.000000] [NAND] nand_size = 0x20000000
+[...]
+```
+
+If there's already a solution to change an - otherwise 'unchangeable', because the bootloader restores the original value at every start again - branding, what's the gain of another approach? Now - at first it's not a 'fixed' value any longer and it's planned, that future versions of `bootmanager` will support this solution, too, and then it will be possible again to select the `<value>` for the `oem` entry using the `bootmanager` interface in AVM's GUI.
