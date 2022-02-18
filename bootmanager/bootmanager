@@ -1191,7 +1191,7 @@ generate_html_lang_en()
 				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
 				html '<br>\n'
 				html '<label for=\"idRunningBranding\">\n'
-				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
+				html 'Restarting the device now, will set this name to the following value (until it&apos;s changed once more):&nbsp;\n'
 				html '</label>\n'
 				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
 			else
@@ -1207,8 +1207,8 @@ generate_html_lang_en()
 			if [ "$chg_alternative_branding" -eq 1 ]; then
 				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
 				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
+				html '<label for=\"idAlternativeBranding\">'
+				html 'Restarting the device now, will set this name to the following value (until it&apos;s changed once more):&nbsp;'
 				html '</label>\n'
 				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
 			else
