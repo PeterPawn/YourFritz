@@ -348,6 +348,14 @@ rc=1
 # check parameters and call requested function                                                        #
 #                                                                                                     #
 #######################################################################################################
+current_switch_value=0
+active_version=""
+inactive_version=""
+switch_branding_support=false
+current_branding=""
+active_brandings=""
+inactive_brandings=""
+system_is_switched=false
 eval "$(get_values)"
 if $bootmanager is_supported; then
 	case "$switch_branding_support" in
