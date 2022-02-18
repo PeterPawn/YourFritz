@@ -200,7 +200,7 @@ generate_html()
 	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
 	html '<label for=\"radioAlternative\">\n'
 	if ! [ "$inactive_version" = "missing" ]; then
-		html '<b>%s</b> %s\n' "$(get_localized "altsys")" "$(html "$(get_localized "switch_value")" "$(( ( current_switch_value + 1 ) % 2 ))")"
+		html '<b>%s</b> %s\n' "$(get_localized "altsys")" "$(html "$(get_localized "switchvalue")" "$(( ( current_switch_value + 1 ) % 2 ))")"
 		if [ -z "$inactive_version" ]; then
 			html '<br><br>%s\n' "$(get_localized "altinv")"
 		else
