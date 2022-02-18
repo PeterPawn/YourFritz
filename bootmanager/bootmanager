@@ -710,17 +710,6 @@ get_system_date()
 )
 #######################################################################################################
 #                                                                                                     #
-# get system build date from specified root as a string value with localization                       #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_localized_system_date()
-(
-	get_localized_date "$(get_system_date "$1")"
-)
-#######################################################################################################
-#                                                                                                     #
 # get fixed brandings string from specified system root                                               #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
@@ -989,7 +978,7 @@ get_modified_date()
 		fi
 	fi
 	[ -z "$v" ] && exit 1
-	get_localized_date "$v"
+	printf -- "%u\n" "$v"
 	exit 0
 )
 #######################################################################################################
@@ -1016,8 +1005,10 @@ cleanup()
 collect_data()
 {
 	running_version="$(get_system_version)"
-	running_date="$(get_localized_system_date)"
-	running_fsdate="$(get_modified_date)"
+	running_date_epoch="$(get_system_date)"
+	running_date="$(get_localized_date "$running_date_epoch")"
+	running_fsdate_epoch="$(get_modified_date)"
+	running_fsdate="$(get_localized_date "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
 	readonly running_version running_date running_fsdate running_modified
 	running_branding_fixed=0
@@ -1037,8 +1028,10 @@ collect_data()
 			alternative_version="$(get_system_version "$mp")"
 			readonly alternative_version
 			if [ -n "$alternative_version" ]; then
-				alternative_date="$(get_localized_system_date "$mp")"
-				alternative_fsdate="$(get_modified_date "$mp")"
+				alternative_date_epoch="$(get_system_date "$mp")"
+				alternative_date="$(get_localized_date "$alternative_date_epoch")"
+				alternative_fsdate_epoch="$(get_modified_date "$mp")"
+				alternative_fsdate="$(get_localized_date "$alternative_fsdate_epoch")"
 				alternative_modified="$(get_modified_by "$mp")"
 				readonly alternative_date alternative_fsdate alternative_modified
 				if change_branding_support; then
@@ -1060,16 +1053,20 @@ collect_data()
 get_values()
 {
 	printf -- "active_version=\"%s\"\n" "$running_version"
+	printf -- "active_date_epoch=\"%s\"\n" "$running_date_epoch"
 	printf -- "active_date=\"%s\"\n" "$running_date"
 	printf -- "active_modified_by=\"%s\"\n" "$running_modified"
+	printf -- "active_modified_at_epoch=\"%s\"\n" "$running_fsdate_epoch"
 	printf -- "active_modified_at=\"%s\"\n" "$running_fsdate"
 	printf -- "active_brandings=\"%s\"\n" "$running_brandings"
 	if [ $alternative_is_missing -eq 1 ]; then
 		printf -- "inactive_version=\"%s\"\n" "missing"
 	else
 		printf -- "inactive_version=\"%s\"\n" "$alternative_version"
+		printf -- "inactive_date_epoch=\"%s\"\n" "$alternative_date_epoch"
 		printf -- "inactive_date=\"%s\"\n" "$alternative_date"
 		printf -- "inactive_modified_by=\"%s\"\n" "$alternative_modified"
+		printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
 		printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
 		printf -- "inactive_brandings=\"%s\"\n" "$alternative_brandings"
 	fi
@@ -1150,8 +1147,10 @@ case "$1" in
 		printf -- "active kernel = %s\n" "$(get_partition "$kernel_name" "$active_name")"
 		printf -- "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
 		printf -- "active system version = %s\n" "$(get_system_version)"
-		printf -- "active system date = %s\n" "$(get_localized_system_date)"
-		printf -- "active system modification date = %s\n" "$(get_modified_date)"
+		value="$(get_system_date)"
+		printf -- "active system date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+		value="$(get_modified_date)"
+		printf -- "active system modification date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
 		printf -- "active system modification source = %s\n" "$(get_modified_by)"
 		printf -- "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf -- '%s' " (fixed)")"
 		printf -- "inactive kernel = %s\n" "$(get_partition "$kernel_name" "$inactive_name")"
@@ -1163,8 +1162,10 @@ case "$1" in
 			printf -- "inactive filesystem mounted on %s\n" "$mp"
 			if [ -n "$mp" ]; then
 				printf -- "inactive system version = %s\n" "$(get_system_version "$mp")"
-				printf -- "inactive system date = %s\n" "$(get_localized_system_date "$mp")"
-				printf -- "inactive system modification date = %s\n" "$(get_modified_date "$mp")"
+				value="$(get_system_date "$mp")"
+				printf -- "inactive system date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+				value="$(get_modified_date "$mp")"
+				printf -- "inactive system modification date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
 				printf -- "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
 				printf -- "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf -- '%s' " (fixed)")"
 				dismount_alternative_system
