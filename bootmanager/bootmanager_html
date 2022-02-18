@@ -129,8 +129,8 @@ encode_html_entities()
 		-e 's|Ü|\&Uuml;|g' \
 		-e 's|ß|\&szlig;|g' \
 		-e 's|\\n|<br/>|g' \
-		-e 's|%[0-9]\+%[^%]\+%|%s|g' \
-		-e 's|ä|\&auml;|g' \
+		-e 's|%[0-9]\+%date%|{date}|g' \
+		-e 's|%[0-9]\+%[^%]\+%|%s|g'
 )
 #######################################################################################################
 #                                                                                                     #
@@ -181,6 +181,34 @@ get_localized()
 )
 #######################################################################################################
 #                                                                                                     #
+# prepare a localized date/time string                                                                #
+#                                                                                                     #
+#######################################################################################################
+localized_datetime()
+(
+	eval var="\$$1"
+	if [ -z "$var" ]; then
+		get_localized "unknowndate"
+	else
+		eval epoch_var="\$$1_epoch"
+		[ -z "$epoch_var" ] && printf -- "%s\n" "$var" && exit 0
+		mask="$(get_localized "datetime")"
+		[ -z "$mask" ] && printf -- "%s\n" "$var" && exit 0
+		date "+$mask" -d @"$epoch_var"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# get text snippets for the selected language and replace '{date}' with a localized string format     #
+#                                                                                                     #
+#######################################################################################################
+get_localized_date()
+(
+	msg="$(get_localized "$1")"
+	printf "%s%s%s\n" "$(expr "$msg" : "\(.*\){date}.*")" "$(localized_datetime "$2")" "$(expr "$msg" : ".*{date}\(.*\)")"
+)
+#######################################################################################################
+#                                                                                                     #
 # generate HTML snippet according to data read from cache of bootmanager                              #
 #                                                                                                     #
 #######################################################################################################
@@ -192,8 +220,8 @@ generate_html()
 	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
 	html '<label for=\"radioRunning\">\n'
 	html '<b>%s</b> %s\n' "$(get_localized "currsys")" "$(html "$(get_localized "switchvalue")" "$current_switch_value")"
-	html '<br><br>%s<br>\n' "$(html "$(get_localized "version")" "$active_version" "$active_date")"
-	[ -z "$active_modified_by" ] || html '%s\n' "$(html "$(get_localized "modified")" "$active_modified_at" "$active_modified_by")"
+	html '<br><br>%s<br>\n' "$(html "$(get_localized_date "version" "active_date")" "$active_version")"
+	[ -z "$active_modified_by" ] || html '%s\n' "$(html "$(get_localized_date "modified" "active_modified_at")" "$active_modified_by")"
 	html '</label>\n'
 	html '<br><br>\n'
 	[ "$inactive_version" = "missing" ] && disabled=" disabled" || disabled=""
@@ -204,8 +232,8 @@ generate_html()
 		if [ -z "$inactive_version" ]; then
 			html '<br><br>%s\n' "$(get_localized "altinv")"
 		else
-			html '<br><br>%s<br>\n' "$(html "$(get_localized "version")" "${inactive_version:-$(get_localized "unknown")}" "${inactive_date:-$(get_localized "unknown")}")"
-			[ -z "$inactive_modified_by" ] || html '%s\n' "$(html "$(get_localized "modified")" "${inactive_modified_at:-$(get_localized "unknown")}" "${inactive_modified_by:-$(get_localized "unknown")}")"
+			html '<br><br>%s<br>\n' "$(html "$(get_localized_date "version" "inactive_date")" "${inactive_version:-$(get_localized "unknown")}")"
+			[ -z "$inactive_modified_by" ] || html '%s\n' "$(html "$(get_localized_date "modified" "inactive_modified_at")" "${inactive_modified_by:-$(get_localized "unknown")}")"
 		fi
 	else
 		html '%s\n' "$(get_localized "altmiss")"
@@ -385,18 +413,3 @@ exit $rc
 # end of script                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-active_version="113.07.29"
-active_date="05.11.2021, 11:15:11 Uhr"
-active_modified_by="modfs"
-active_modified_at="16.02.2022, 03:10:27 Uhr"
-active_brandings="1und1 avm avme"
-inactive_version="113.07.29"
-inactive_date="05.11.2021, 11:15:11 Uhr"
-inactive_modified_by="modfs"
-inactive_modified_at="14.02.2022, 10:38:19 Uhr"
-inactive_brandings="1und1 avm avme"
-current_branding="1und1"
-switch_branding_support=true
-current_switch_value=0
-system_is_switched=false
-
