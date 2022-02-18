@@ -50,9 +50,9 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-readonly data_cache_file="/var/tmp/bootmanager.data"
-readonly bootmanager="/usr/bin/bootmanager"
-readonly messages_file="/usr/bin/bootmanager.msg"
+#readonly data_cache_file="/var/tmp/bootmanager.data"
+#readonly bootmanager="/usr/bin/bootmanager"
+#readonly messages_file="/usr/bin/bootmanager.msg"
 readonly system_select_name="linux_fs_start"
 readonly radio_button_checked=' checked="checked"'
 #######################################################################################################
@@ -320,6 +320,9 @@ rc=1
 # check parameters and call requested function                                                        #
 #                                                                                                     #
 #######################################################################################################
+data_cache_file="./data.cached"
+messages_file="./bootmanager.msg"
+bootmanager="/bin/true"
 eval "$(get_values)"
 if $bootmanager is_supported; then
 	case "$switch_branding_support" in
@@ -382,3 +385,18 @@ exit $rc
 # end of script                                                                                       #
 #                                                                                                     #
 #######################################################################################################
+active_version="113.07.29"
+active_date="05.11.2021, 11:15:11 Uhr"
+active_modified_by="modfs"
+active_modified_at="16.02.2022, 03:10:27 Uhr"
+active_brandings="1und1 avm avme"
+inactive_version="113.07.29"
+inactive_date="05.11.2021, 11:15:11 Uhr"
+inactive_modified_by="modfs"
+inactive_modified_at="14.02.2022, 10:38:19 Uhr"
+inactive_brandings="1und1 avm avme"
+current_branding="1und1"
+switch_branding_support=true
+current_switch_value=0
+system_is_switched=false
+
