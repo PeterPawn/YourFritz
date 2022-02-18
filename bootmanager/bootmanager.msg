@@ -26,6 +26,8 @@ en:brndaltnochg= and this is also the current one.
 en:brndaltset=, but currently "%1%current%" is set.
 en:brndaltnew=Restarting the device now, will set the OEM name value to "%1%alternative%" without any further questions.
 en:nodata=Error from 'bootmanager' script: No data to display.
+en:unknown=unknown
+en:unsupported=Switching between alternative systems is not supported on this device.
 #
 # message fragments for german language
 #
@@ -50,8 +52,10 @@ de:brndaltnochg=, diese ist im Moment auch eingestellt.
 de:brndaltset=, im Moment ist jedoch "%1%current%" eingestellt.
 de:brndaltnew=Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf "%1%alternative%" geändert.
 de:nodata=Fehler im Boot-Manager: Es wurden keine Daten für die Anzeige erzeugt.
+de:unknown=unbekannt
+de:unsupported=Die Umschaltung zwischen zwei installierten Systemen ist auf dieser FRITZ!Box nicht verfügbar.
 #
 # language independent strings
 #
-any:style_caption=padding-right: 8px;"
+any:style_caption=padding-right: 8px;
 any:style_sblbl=padding-right: 8px;
