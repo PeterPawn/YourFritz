@@ -1068,7 +1068,7 @@ generate_html_lang_de()
 	html '<b>das aktuell laufende System</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
 	html '<br><br>Version %s vom %s<br>\n' "$running_version" "$running_date"
 	[ -z "$running_modified" ] || \
-		html 'zuletzt modifiziert am %s durch \"%s\"\n' "$running_fsdate" "$running_modified"
+		html 'zuletzt modifiziert am %s durch &quot;%s&quot;\n' "$running_fsdate" "$running_modified"
 	html '</label>\n'
 	html '<br><br>\n'
 	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
@@ -1082,7 +1082,7 @@ generate_html_lang_de()
 			html '<br><br>Version %s vom %s<br>\n' \
 					"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
 			[ -z "$alternative_modified" ] || \
-				html 'zuletzt modifiziert am %s durch \"%s\"\n' \
+				html 'zuletzt modifiziert am %s durch &quot;%s&quot;\n' \
 					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
 		fi
 	else
@@ -1097,27 +1097,27 @@ generate_html_lang_de()
 	else
 		html '<span id=\"running_branding\">\n'
 		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des aktuell laufenden Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$running_brandings"
+			html 'Die Firmware-Version des aktuell laufenden Systems ist fest auf &quot;<b>%s</b>&quot; eingestellt und kann nicht ge&auml;ndert werden.\n' "$running_brandings"
 		else
 			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist &quot;<b>%s</b>&quot; eingestellt.\n' "$current_branding"
 				html '<br>\n'
 				html '<label for=\"idRunningBranding\">\n'
 				html 'Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;\n'
 				html '</label>\n'
 				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
 			else
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", diese ist im Moment auch eingestellt.\n' "$current_branding"
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version &quot;<b>%s</b>&quot;, diese ist im Moment auch eingestellt.\n' "$current_branding"
 				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
 			fi
 		fi
 		html '</span>\n'
 		html '<span id=\"alternative_branding\">\n'
 		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des derzeit inaktiven Systems ist fest auf \"<b>%s</b>\" eingestellt und kann nicht ge&auml;ndert werden.\n' "$alternative_brandings"
+			html 'Die Firmware-Version des derzeit inaktiven Systems ist fest auf &quot;<b>%s</b>&quot; eingestellt und kann nicht ge&auml;ndert werden.\n' "$alternative_brandings"
 		else
 			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist \"<b>%s</b>\" eingestellt.\n' "$current_branding"
+				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist &quot;<b>%s</b>&quot; eingestellt.\n' "$current_branding"
 				html '<br>\n'
 				html '<label for=\"idAlternativeBranding\">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;</label>\n'
 				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
@@ -1126,12 +1126,12 @@ generate_html_lang_de()
 					html 'Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Firmware-Versionen verf&uuml;gbar.\n'
 					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
 				else
-					html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version \"<b>%s</b>\", ' "$alternative_brandings"
+					html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version &quot;<b>%s</b>&quot;, ' "$alternative_brandings"
 					if [ "$alternative_brandings" = "$current_branding" ]; then
 						html 'diese ist im Moment auch eingestellt.\n'
 					else
-						html 'im Moment ist jedoch \"<b>%s</b>\" eingestellt.<br>\n' "$current_branding"
-						html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf \"<b>%s</b>\" ge&auml;ndert.\n' "$alternative_brandings"
+						html 'im Moment ist jedoch &quot;<b>%s</b>&quot; eingestellt.<br>\n' "$current_branding"
+						html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf &quot;<b>%s</b>&quot; ge&auml;ndert.\n' "$alternative_brandings"
 					fi
 				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 				fi
@@ -1155,7 +1155,7 @@ generate_html_lang_en()
 	html '<b>the currently running system</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
 	html '<br><br>version %s built on %s<br>\n' "$running_version" "$running_date"
 	[ -z "$running_modified" ] || \
-		html 'last modified on %s using \"%s\"\n' "$running_fsdate" "$running_modified"
+		html 'last modified on %s using &quot;%s&quot;\n' "$running_fsdate" "$running_modified"
 	html '</label>\n'
 	html '<br><br>\n'
 	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
@@ -1170,7 +1170,7 @@ generate_html_lang_en()
 			html '<br><br>version %s built on %s<br>\n' \
 				"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
 			[ -z "$alternative_modified" ] || \
-				html 'last modified on %s using \"%s\"\n' \
+				html 'last modified on %s using &quot;%s&quot;\n' \
 					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
 		fi
 	else
@@ -1185,27 +1185,27 @@ generate_html_lang_en()
 	else
 		html '<span id=\"running_branding\">\n'
 		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Branding of currently running system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$running_brandings"
+			html 'Branding of currently running system was set to a fixed value of &quot;<b>%s</b>&quot; and can not be changed.\n' "$running_brandings"
 		else
 			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
+				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
 				html '<br>\n'
 				html '<label for=\"idRunningBranding\">\n'
 				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
 				html '</label>\n'
 				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
 			else
-				html 'The system selected above supports only the single OEM name \"<b>%s</b>\" and this is also the current one.\n' "$current_branding"
+				html 'The system selected above supports only the single OEM name &quot;<b>%s</b>&quot; and this is also the current one.\n' "$current_branding"
 				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
 			fi
 		fi
 		html '</span>\n'
 		html '<span id=\"alternative_branding\">\n'
 		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Branding of installed alternative system was set to a fixed value of \"<b>%s</b>\" and can not be changed.\n' "$alternative_brandings"
+			html 'Branding of installed alternative system was set to a fixed value of &quot;<b>%s</b>&quot; and can not be changed.\n' "$alternative_brandings"
 		else
 			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value \"<b>%s</b>\" is set.\n' "$current_branding"
+				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
 				html '<br>\n'
 				html '<label for=\"idRunningBranding\">\n'
 				html 'Restarting the device now, will set this name to the following value (until it&#39;s changed once more):&nbsp;\n'
@@ -1216,12 +1216,12 @@ generate_html_lang_en()
 					html 'Due to problems identifying the installed alternative system, there&#39;s no idea which values are supported by this system and the value remains unchanged.\n'
 					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
 				else
-					html 'The system selected above supports only the single OEM name \"<b>%s</b>\"' "$alternative_brandings"
+					html 'The system selected above supports only the single OEM name &quot;<b>%s</b>&quot;' "$alternative_brandings"
 					if [ "$alternative_brandings" = "$current_branding" ]; then
 						html ' and this is also the current one.\n'
 					else
-						html ', but currently \"<b>%s</b>\" is set.<br>\n' "$current_branding"
-						html 'Restarting the device now, will set the OEM name value to \"<b>%s</b>\" without any further questions.\n' "$alternative_brandings"
+						html ', but currently &quot;<b>%s</b>&quot; is set.<br>\n' "$current_branding"
+						html 'Restarting the device now, will set the OEM name value to &quot;<b>%s</b>&quot; without any further questions.\n' "$alternative_brandings"
 					fi
 					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 				fi
@@ -1323,10 +1323,10 @@ collect_data()
 	fi
 	if is_switched && [ $alternative_is_missing -eq 0 ]; then
 		running_checked=""
-		alternative_checked=" $radio_button_checked"
+		alternative_checked="$radio_button_checked"
 		show_running=0
 	else
-		running_checked=" $radio_button_checked"
+		running_checked="$radio_button_checked"
 		alternative_checked=""
 		show_running=1
 	fi
