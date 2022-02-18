@@ -50,9 +50,9 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-#readonly data_cache_file="/var/tmp/bootmanager.data"
-#readonly bootmanager="/usr/bin/bootmanager"
-#readonly messages_file="/usr/bin/bootmanager.msg"
+readonly data_cache_file="/var/tmp/bootmanager.data"
+readonly bootmanager="/usr/bin/bootmanager"
+readonly messages_file="/usr/bin/bootmanager.msg"
 readonly system_select_name="linux_fs_start"
 readonly radio_button_checked=' checked="checked"'
 #######################################################################################################
@@ -348,9 +348,6 @@ rc=1
 # check parameters and call requested function                                                        #
 #                                                                                                     #
 #######################################################################################################
-data_cache_file="./data.cached"
-messages_file="./bootmanager.msg"
-bootmanager="/bin/true"
 eval "$(get_values)"
 if $bootmanager is_supported; then
 	case "$switch_branding_support" in
