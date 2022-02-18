@@ -36,7 +36,7 @@ cp:0:0:0:999:999:./bootmanager:usr/bin/bootmanager:0:0:555
 # copy bootmanager_server script for versions since 07.08
 cp:0:7:8:999:999:./bootmanager_server:usr/bin/bootmanager_server:0:0:555
 # copy bootmanager.service script for versions since 07.08
-cp:0:7:8:999:999:./bootmanager.service:lib/systemd/system/bootmanager.service:0:0:555
+cp:0:7:8:999:999:./bootmanager.service:lib/systemd/system/bootmanager.service:0:0:444
 endofpatches
 )
 #
@@ -118,6 +118,7 @@ get_target_file_name()
 [ -z "$TMP" ] && TMP=$TMPDIR
 [ -z "$TMP" ] && printf "\033[31;1mNo TMPDIR or TMP setting found at environment, set it to a writable location.\033[0m\a\n" 1>&2 && exit 1
 target_dir="${TARGET_DIR:+$TARGET_DIR/}"
+printf "\033[31;1mTarget directory: %s\033[0m\n" "$target_dir" 1>&2
 #
 # detect target system version, if needed
 #
@@ -128,7 +129,9 @@ if [ "$TARGET_SYSTEM_VERSION" = "autodetect" ]; then
 		[ -z "$TARGET_SYSTEM_VERSION_DETECTOR" ] && printf "\033[31;1mTARGET_SYSTEM_VERSION_DETECTOR value is not set.\033[0m\a\n" 1>&2 && exit 1
 	fi
 	TARGET_SYSTEM_VERSION="$("$TARGET_SYSTEM_VERSION_DETECTOR" "$target_dir" -m | sed -n -e 's|^Version="\(.*\)"|\1|p')"
-	printf "\033[34;1mAutodetection of target system version (from '%s'): %s\033[0m\n" "$target_dir" "$TARGET_SYSTEM_VERSION" 1>&2
+	printf "\033[31;1mAutodetection of target system version (from '%s'): %s\033[0m\n" "$target_dir" "$TARGET_SYSTEM_VERSION" 1>&2
+else
+	[ -n "$TARGET_SYSTEM_VERSION" ] && printf "\033[34;1mTarget system version: %s\033[0m\n" "$TARGET_SYSTEM_VERSION" 1>&2
 fi
 [ -z "$TARGET_SYSTEM_VERSION" ] && printf "TARGET_SYSTEM_VERSION value is not set.\a\n" 1>&2 && exit 1
 major=$(( $(expr "$TARGET_SYSTEM_VERSION" : "[0-9]*\.0*\([1-9]*[0-9]\)\.[0-9]*") + 0 ))
