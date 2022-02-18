@@ -80,6 +80,7 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
+readonly messages_file="${0}.msg"
 readonly data_cache_file="/var/tmp/bootmanager.data"
 readonly boot_cache_file="/var/tmp/bootmanager.boot"
 readonly urlader_environment="/proc/sys/urlader/environment"
@@ -678,18 +679,57 @@ parse_date_value()
 )
 #######################################################################################################
 #                                                                                                     #
+# initialize text snippets from external message definition file (bootmanager.msg)                    #
+#                                                                                                     #
+#######################################################################################################
+get_localized()
+(
+	set -x
+	clang="$1"
+	id="$2"
+	line="$(sed -n -e "s|^[ \t]*[Ll]anguages \(.*\)|\1|p" "$messages_file")"
+	[ -z "$line" ] && exit 1
+	# shellcheck disable=SC2086
+	set -- $line
+	if ! [ "$clang" = "$1" ]; then
+		deflang="$1"
+		shift
+		while [ -n "$1" ]; do
+			if [ "$1" = "$clang" ]; then
+				usedLanguage="$1"
+				break
+			fi
+			shift
+		done
+		[ -z "$1" ] && usedLanguage="$deflang"
+	else
+		usedLanguage="$1"
+	fi
+	sed -n -e "s/^\($usedLanguage\|any\):\($id\)=\(.*\)/\3/p" "$messages_file"
+	set +x
+)
+#######################################################################################################
+#                                                                                                     #
+# get localized date string                                                                           #
+#                                                                                                     #
+#######################################################################################################
+get_localized_datetime_mask()
+(
+	set -x
+	mask="$(get_localized "${Language:-de}" "datetime")"
+	[ -z "$mask" ] && mask="%c"
+	printf -- "%s" "$mask"
+)
+#######################################################################################################
+#                                                                                                     #
 # get localized date string                                                                           #
 #                                                                                                     #
 #######################################################################################################
 get_localized_date()
-{
-	# shellcheck disable=SC2154
-	if [ "$Language" = "de" ]; then
-		date +'%d.%m.%Y, %H:%M:%S Uhr' -d @"$1"
-	else
-		date +'%m/%d/%Y %r' -d @"$1"
-	fi
-}
+(
+	mask="$1"
+	date "+$mask" -d @"$2"
+)
 #######################################################################################################
 #                                                                                                     #
 # get system build date from specified root, it's a file modification time in the newer versions      #
@@ -1004,11 +1044,12 @@ cleanup()
 #######################################################################################################
 collect_data()
 {
+	datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 	running_version="$(get_system_version)"
 	running_date_epoch="$(get_system_date)"
-	running_date="$(get_localized_date "$running_date_epoch")"
+	running_date="$(get_localized_date "$datetime_mask" "$running_date_epoch")"
 	running_fsdate_epoch="$(get_modified_date)"
-	running_fsdate="$(get_localized_date "$running_fsdate_epoch")"
+	running_fsdate="$(get_localized_date "$datetime_mask" "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
 	readonly running_version running_date running_fsdate running_modified
 	running_branding_fixed=0
@@ -1029,9 +1070,9 @@ collect_data()
 			readonly alternative_version
 			if [ -n "$alternative_version" ]; then
 				alternative_date_epoch="$(get_system_date "$mp")"
-				alternative_date="$(get_localized_date "$alternative_date_epoch")"
+				alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
 				alternative_fsdate_epoch="$(get_modified_date "$mp")"
-				alternative_fsdate="$(get_localized_date "$alternative_fsdate_epoch")"
+				alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
 				alternative_modified="$(get_modified_by "$mp")"
 				readonly alternative_date alternative_fsdate alternative_modified
 				if change_branding_support; then
@@ -1139,6 +1180,7 @@ case "$1" in
 		[ -f $semafile ] && rc=1 || rc=0
 		;;
 	("debug")
+		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 		is_puma_based_device && printf -- "system type = Puma6/7\n" || printf -- "system type = %s\n" "$(get_system_type)"
 		printf -- "system selector = %u\n" "$(get_system_switch)"
 		printf -- "system is switched = %s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
@@ -1148,9 +1190,9 @@ case "$1" in
 		printf -- "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
 		printf -- "active system version = %s\n" "$(get_system_version)"
 		value="$(get_system_date)"
-		printf -- "active system date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+		printf -- "active system date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 		value="$(get_modified_date)"
-		printf -- "active system modification date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+		printf -- "active system modification date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 		printf -- "active system modification source = %s\n" "$(get_modified_by)"
 		printf -- "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf -- '%s' " (fixed)")"
 		printf -- "inactive kernel = %s\n" "$(get_partition "$kernel_name" "$inactive_name")"
@@ -1163,9 +1205,9 @@ case "$1" in
 			if [ -n "$mp" ]; then
 				printf -- "inactive system version = %s\n" "$(get_system_version "$mp")"
 				value="$(get_system_date "$mp")"
-				printf -- "inactive system date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+				printf -- "inactive system date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 				value="$(get_modified_date "$mp")"
-				printf -- "inactive system modification date = %s (epoch: %s)\n" "$(get_localized_date "$value")" "$value"
+				printf -- "inactive system modification date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 				printf -- "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
 				printf -- "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf -- '%s' " (fixed)")"
 				dismount_alternative_system
