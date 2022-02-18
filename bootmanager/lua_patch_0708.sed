@@ -1,23 +1,32 @@
 /^return data$/i \
-local function data_bootmanager()\
-local bootmanager = {}\
-local line\
+local function data_bm()\
+local bm = {}\
+local empty = {}\
+local function bm_values()\
 local values = {}\
-local service = io.open("/var/run/bootmanager/output")\
-if service then\
-for line in service:lines() do\
-table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
+local data = io.open("/var/run/bootmanager/output")\
+if not data then\
+data = io.popen("/usr/bin/bootmanager get_values")\
+hasServ = false\
+if not data then\
+return empty\
 end\
-table.insert(values, { id = "hasService", value = "1" } )\
-service:close()\
 else\
-local pipe = io.popen("/usr/bin/bootmanager get_values")\
-for line in pipe:lines() do\
-table.insert(values, { id = line:match("^([^=]-)="), value = line:match("^.-=\\"?(.-)\\"?$") } )\
+hasServ = true\
 end\
-table.insert(values, { id = "hasService", value = "0" } )\
-pipe:close()\
+values["hasService"] = hasServ\
+for line in data:lines() do\
+local id, value\
+id, value = line:match('^([^=]-)="?(.-)"?$')\
+if value == "true" or value == "false" then\
+value = ( value == "true" )\
 end\
+values[id] = value\
+end\
+data:close()\
+return values\
+end\
+local function bm_msgs()\
 local messages = {}\
 local clang = config.language\
 local msgs = io.open("/usr/bin/bootmanager.msg")\
@@ -43,26 +52,28 @@ end\
 else\
 usedLanguage = clang\
 end\
+messages["usedLanguage"] = usedLanguage\
 else\
 lang, id, value = line:match("^([^:]-):([^=]-)=(.-)$")\
 if lang and id and value then\
 if usedLanguage == lang or "any" == lang then\
-table.insert(messages, { id = id, value = string.gsub(value, "\\\\n", "\\n"), lang = lang } )\
+messages[id] = string.gsub(value, "\\\\n", "\\n")\
 end\
 end\
 end\
 end\
 end\
 msgs:close()\
-table.insert(bootmanager, {name = "values", obj = values})\
-table.insert(bootmanager, {name = "messages", obj = messages})\
-return bootmanager\
 else\
-local empty = {}\
-return empty\
+messages = empty\
 end\
+return messages\
 end\
-data.bootmanager = data_bootmanager()
+bm["values"] = bm_values()\
+bm["localized"] = bm_msgs()\
+return bm\
+end\
+data.bm = data_bm()
 
 /^local savecookie *= *{}/a \
 if box.post.linux_fs_start then\
