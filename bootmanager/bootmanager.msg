@@ -28,6 +28,7 @@ en:brndaltnew=Restarting the device now, will set the OEM name value to "%1%alte
 en:nodata=Error from 'bootmanager' script: No data to display.
 en:unknown=unknown
 en:unsupported=Switching between alternative systems is not supported on this device.
+en:datetime=%m/%d/%Y %r
 #
 # message fragments for german language
 #
@@ -54,6 +55,7 @@ de:brndaltnew=Bei der Umschaltung des zu verwendenden Systems wird daher auch gl
 de:nodata=Fehler im Boot-Manager: Es wurden keine Daten für die Anzeige erzeugt.
 de:unknown=unbekannt
 de:unsupported=Die Umschaltung zwischen zwei installierten Systemen ist auf dieser FRITZ!Box nicht verfügbar.
+de:datetime=%d.%m.%Y, %H:%M:%S Uhr
 #
 # language independent strings
 #
