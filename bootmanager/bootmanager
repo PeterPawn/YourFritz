@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.0                                                                          #
+# bootmanager, version 0.8.2                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -206,23 +206,48 @@ printf_ss()
 )
 #######################################################################################################
 #                                                                                                     #
-# check, if the host system has a FDT based environment - then we'll never try to switch the branding #
+# check for and get (if any) a fixed branding value from specified system root                        #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
 #                                                                                                     #
 #######################################################################################################
-has_fdt_environment()
-{
-	[ -d "$fdt_chosen" ] && return 0 || return 1
-}
+get_fixed_branding()
+(
+	path="${1:-/}${1:+/}$avm_rcconf"
+	b="$(sed -n -e 's|^export OEM\(=\"\?\(.*\)\"\?\)\?$|\2|p' "$path")"
+	printf -- '%s' "$b"
+	[ -z "$b" ] && exit 1 || exit 0
+)
 #######################################################################################################
 #                                                                                                     #
-# check, whether the host system supports branding changes via write operations to environment        #
+# check, whether the host system supports branding changes                                            #
+#                                                                                                     #
+# checks in order of relevance:                                                                       #
+# - check for a 'fixed branding' using 'export OEM=<value>' from /etc/init.d/rc.conf                  #
+# - check for a 'semi-fixed branding' using 'oem=<value>' from kernel command line (requires a marker #
+#   in file /etc/init.d/rc.conf -> see script 'add_change_oem.sh' in 'bootmanager' folder of          #
+#   YourFritz repository)                                                                             #
+# - check for existence of 'yf_custom_environment.sh' in any directory from current PATH value; if    #
+#   it's found, the presence of the used TFFS minor node is checked next (it has to contain at least  #
+#   one line) and if this condition is met, too, in a last step the '/etc/inittab' file is checked,   #
+#   whether a call to the shell script above exists here                                              #
+# - as a last resort the configuration area from AVM's bootloader (EVA) will be located, dissected    #
+#   and checked, whether the 'firmware_version' setting is located in the table of 'immutable         #
+#   settings'                                                                                         #
+# - if the check above results in an 'immutable value' (in this case, any changes to the setting will #
+#   be ignored/reset on next system boot), no changes to the current branding are supported           #
 #                                                                                                     #
 #######################################################################################################
 change_branding_support()
-{
-	has_fdt_environment && return 1
-	return 0
-}
+(
+	rc=1
+	get_fixed_branding >/dev/null && printf -- "fixed_export" && exit 0
+#	check_oem_kernel_cmdline && printf -- "kernel_cmdline" && exit 0
+#	check_custom_environment && printf -- "custom_environment" && exit 0
+#	check_urlader_configuration && printf -- "changeable" && exit 0
+	printf -- "immutable"
+	exit "$rc"
+)
 #######################################################################################################
 #                                                                                                     #
 # find system type or model name                                                                      #
@@ -441,13 +466,54 @@ compare_strings()
 )
 #######################################################################################################
 #                                                                                                     #
-# get branding from environment                                                                       #
+# return maximum value of numbers specified as parameters                                             #
 #                                                                                                     #
 #######################################################################################################
+max()
+(
+	m=0
+	while [ -n "$1" ]; do
+		[ "$1" -gt "$m" ] && m="$1"
+		shift
+	done
+	printf "%d\n" "$m"
+)
+#######################################################################################################
+#                                                                                                     #
+# get branding for the specified system                                                               #
+#                                                                                                     #
+# $1 - root of system to use, empty string (or "/") for running system                                #
+# $2 - value of 'change_branding_support' function, if it's missing, a new call to function will be   #
+#      made                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+# TODO: implement kernel_cmdline and custom_environment
 get_system_branding()
 (
-	fixed="$(get_fixed_branding)" && printf -- '%s' "$fixed" && exit 0
-	sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
+	[ -z "$2" ] && cbs="$(change_branding_support "$1")" || cbs="$2"
+	case "$cbs" in
+		("fixed_export")
+			get_fixed_branding "$2"
+			;;
+#		("kernel_cmdline")
+#			get_oem_kernel_cmdline
+#			;;
+#		("custom_environment")
+#			get_custom_env_branding
+#			;;
+		(*)
+			printf -- "%s\n" "$OEM"
+			;;
+	esac
+)
+#######################################################################################################
+#                                                                                                     #
+# get branding from urlader environment                                                               #
+#                                                                                                     #
+#######################################################################################################
+get_device_branding()
+(
+        sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -567,18 +633,31 @@ get_version_major()
 # get the contained brandings from the directory with system defaults                                 #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
+# $2 - output of 'change_branding_support' for system from $1; if empty, function will be called      #
+#      (possibly again/multiple times) to get data                                                    #
 #                                                                                                     #
 #######################################################################################################
 get_brandings()
 (
-	fixed="$(get_fixed_branding "$1")" && printf -- '%s' "$fixed" && exit 0
+	[ -z "$2" ] && cbs="$(change_branding_support "$1")" || cbs="$2"
+	if [ "$cbs" = "fixed_export" ]; then
+		get_fixed_branding "$1"
+		exit 0
+	fi
 	if [ -z "$1" ] || [ "$1" = "/" ]; then
 		eval PRODUKT="\$$avm_product_name"
 	else
 		PRODUKT="$(get_product_name "$1")"
 	fi
 	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
-	find "$path" -type d -maxdepth 1 2>/dev/null | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
+	space=""
+	for name in "$path"/*; do
+		if [ -d "$name" ]; then
+			printf -- "%s%s" "$space" "${name##*/}"
+			space=" "
+		fi
+	done
+	printf -- "\n"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1048,17 +1127,13 @@ collect_data()
 	running_fsdate_epoch="$(get_modified_date)"
 	running_fsdate="$(get_localized_date "$datetime_mask" "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
-	readonly running_version running_date running_fsdate running_modified
-	running_branding_fixed=0
-	if change_branding_support; then
-		current_branding="$(get_system_branding)"
-		running_brandings="$(get_brandings)"
-		[ -z "$(get_fixed_branding)" ] || running_branding_fixed=1
-	fi
+	readonly running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified
+	running_cbs="$(change_branding_support)"
+	running_branding="$(get_system_branding "" "$running_cbs")"
+	running_brandings="$(get_brandings "" "$running_cbs")"
 	current_system_switch=$(get_system_switch)
-	readonly current_system_switch
+	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
-	alternative_branding_fixed=0
 	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 		alternative_is_missing=0
 		spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
@@ -1071,12 +1146,11 @@ collect_data()
 				alternative_fsdate_epoch="$(get_modified_date "$mp")"
 				alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
 				alternative_modified="$(get_modified_by "$mp")"
-				readonly alternative_date alternative_fsdate alternative_modified
-				if change_branding_support; then
-					alternative_brandings="$(get_brandings "$mp")"
-					readonly alternative_brandings
-					[ -z "$(get_fixed_branding "$mp")" ] && alternative_branding_fixed=0 || alternative_branding_fixed=1
-				fi
+				readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+				alternative_cbs="$(change_branding_support "$mp")"
+				alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
+				alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
+				readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
 			fi
 			dismount_alternative_system
 		fi
@@ -1097,6 +1171,8 @@ get_values()
 	printf -- "active_modified_at_epoch=\"%s\"\n" "$running_fsdate_epoch"
 	printf -- "active_modified_at=\"%s\"\n" "$running_fsdate"
 	printf -- "active_brandings=\"%s\"\n" "$running_brandings"
+	printf -- "active_branding=\"%s\"\n" "$running_branding"
+	printf -- "active_change_branding_support=\"%\"\n" "$running_cbs"
 	if [ $alternative_is_missing -eq 1 ]; then
 		printf -- "inactive_version=\"%s\"\n" "missing"
 	else
@@ -1107,27 +1183,26 @@ get_values()
 		printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
 		printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
 		printf -- "inactive_brandings=\"%s\"\n" "$alternative_brandings"
+		printf -- "inactive_branding=\"%s\"\n" "$alternative_branding"
+		printf -- "inactive_change_branding_support=\"%s\"\n" "$alternative_cbs"
 	fi
-	printf -- "current_branding=\"%s\"\n" "$current_branding"
-	cb_support=$(( alternative_branding_fixed + running_branding_fixed ))
-	if [ $cb_support -eq 2 ]; then
-		cb_supported="both_fixed"
+	# printf -- "current_branding=\"%s\"\n" "$current_branding"
+	#
+	# the value of 'switch_branding_support' is kept stable for older frontends, but it may be removed
+	# in future versions
+	#
+	if [ "$running_cbs" = "immutable" ] && [ "$alternative_cbs" = "immutable" ]; then
+		cb_support="false"
+	elif [ "$running_cbs" = "fixed_export" ] && ! [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="running_fixed"
+	elif ! [ "$running_cbs" = "fixed_export" ] && [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="alternative_fixed"
+	elif [ "$running_cbs" = "fixed_export" ] && [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="both_fixed"
 	else
-		if change_branding_support; then
-			if [ $cb_support -eq 1 ]; then
-				if [ $running_branding_fixed -eq 1 ]; then
-					cb_supported="running_fixed"
-				else
-					cb_supported="alternative_fixed"
-				fi
-			else
-				cb_supported="true"
-			fi
-		else
-			cb_supported="false"
-		fi
+		cb_support="true"
 	fi
-	printf -- "switch_branding_support=%s\n" "$cb_supported"
+	printf -- "switch_branding_support=%s\n" "$cb_support"
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
 }
@@ -1154,6 +1229,92 @@ save_environment()
 )
 #######################################################################################################
 #                                                                                                     #
+# display debug line with optional colorization                                                       #
+#                                                                                                     #
+#######################################################################################################
+debug()
+(
+	if [ "$color" -eq 1 ]; then
+		line_start="$(printf -- "\033[32;1m")"
+		line_end="$(printf -- "\033[0m")"
+		header_end=""
+		case "$2" in
+			("red")
+				c=31
+				;;
+			("green")
+				c=32
+				;;
+			("yellow")
+				c=33
+				;;
+			("blue")
+				c=34
+				;;
+			(*)
+				c=37
+				;;
+		esac
+		value_start="$(printf -- "\033[%s;1m" "$c")"
+	else
+		line_start=""
+		line_end=""
+		header_end=""
+		value_start=""
+	fi
+	mask="$(printf -- "%s%s%s%s%s%s\\\\n" "$line_start" "$1" "$header_end" "$value_start" "$3" "$line_end")"
+	shift 3
+	# shellcheck disable=SC2059
+	printf -- "$mask" "$@"
+)
+#######################################################################################################
+#                                                                                                     #
+# display delimiter line to format verbose debug output                                               #
+#                                                                                                     #
+#######################################################################################################
+debug_delim()
+(
+	if [ "$color" -eq 1 ]; then
+		c="$1"
+		v="$2"
+		shift 2
+		left="$(dd if=/dev/zero bs=1 count=$(( ( max_delim - ${#1} ) / 2 )) 2>/dev/null | tr '\000' '>')"
+		right="$(dd if=/dev/zero bs=1 count=$(( max_delim - ${#1} - ${#left} )) 2>/dev/null | tr '\000' '<')"
+		mask="$(printf -- "{white}%s%s {%s}%s {white}%s%s{reset}" ">>>>>>>>>>" "$left" "$c" "$v" "$right" "<<<<<<<<<<")"
+		# shellcheck disable=SC2059
+		printf -- "$mask\n" "$@" | colorize
+	else
+		shift 2
+		printf -- ">>>>>>>>>> %s <<<<<<<<<<\n" "$*" | \
+		sed -e "s|{[^}]}||g"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# display delimiter line to format verbose debug output                                               #
+#                                                                                                     #
+#######################################################################################################
+colorize()
+(
+	[ "$color" -eq 0 ] && cat - && exit
+	color() { printf -- "\033[%s;1m" "$1"; }
+	red="$(color 31)"
+	red_bg="$(color "37;101")"
+	yellow="$(color 33)"
+	green="$(color 32)"
+	blue="$(color 34)"
+	white="$(color 37)"
+	reset="$(printf -- "\033[0m")"
+	sed -e "s|{red}|$red|g" \
+		-e "s|{red_bg}|$red_bg|g" \
+		-e "s|{yellow}|$yellow|g" \
+		-e "s|{green}|$green|g" \
+		-e "s|{blue}|$blue|g" \
+		-e "s|{white}|$white|g" \
+		-e "s|{reset}|$reset|g"
+)
+#######################################################################################################
+#                                                                                                     #
 # prepare a temporary directory and a clean exit routine                                              #
 #                                                                                                     #
 #######################################################################################################
@@ -1177,44 +1338,79 @@ case "$1" in
 		[ -f $semafile ] && rc=1 || rc=0
 		;;
 	("debug")
+		shift
+		verbose=0
+		while [ -n "$1" ]; do
+			if [ "$1" = "verbose" ]; then
+				verbose=1
+			elif [ "$1" = "color" ]; then
+				color=1
+			elif [ "$1" = "nocolor" ]; then
+				color=0
+			fi
+			shift
+		done
+		if [ -z "$color" ] && [ -t 1 ]; then
+			color=1
+		fi
+		delim_1="debug output of bootmanager script"
+		delim_2="running system"
+		delim_3="alternative system"
+		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
+		set | grep "^delim_[0-9]*=" | \
+		while read -r ln; do
+			lv="$(expr "$ln" : "[^=]*='\(.*\)'")"
+			[ "${#lv}" -gt $max_delim ] && max_delim=${#lv}
+		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
-		is_puma_based_device && printf -- "system type = Puma6/7\n" || printf -- "system type = %s\n" "$(get_system_type)"
-		printf -- "system selector = %u\n" "$(get_system_switch)"
-		printf -- "system is switched = %s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "system branding = %s\n" "$(get_system_branding)"
-		printf -- "system branding is changeable = %s\n" "$(change_branding_support && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "active kernel = %s\n" "$(get_partition "$kernel_name" "$active_name")"
-		printf -- "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
-		printf -- "active system version = %s\n" "$(get_system_version)"
+		is_puma_based_device && system_type="Puma6/7" || system_type="$(get_system_type)"
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
+		debug "system type = " "yellow" "%s" "$system_type"
+		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
+		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
+		debug "device branding = " "yellow" "%s" "$(get_device_branding)"
+		cbs="$(change_branding_support)"
+		if [ "$cbs" = "changeable" ]; then
+			display="true"
+		else
+			display="false"
+		fi
+		debug "device branding is changeable = " "yellow" "%s" "$display"
+		debug "current branding = " "yellow" "%s" "$OEM"
+		debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+		debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+		debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
+		debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		value="$(get_system_date)"
-		printf -- "active system date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+		debug "active system date = " "yellow" "$(printf "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 		value="$(get_modified_date)"
-		printf -- "active system modification date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-		printf -- "active system modification source = %s\n" "$(get_modified_by)"
-		printf -- "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf -- '%s' " (fixed)")"
-		printf -- "inactive kernel = %s\n" "$(get_partition "$kernel_name" "$inactive_name")"
-		printf -- "inactive system is installed = %s\n" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "inactive filesystem = %s\n" "$(get_partition "$filesystem_name" "$inactive_name")"
+		debug "active system modification date = " "yellow" "$(printf "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+		debug "active system modification source = " "yellow" "%s" "$(get_modified_by)"
+		debug "brandings supported on active system = " "yellow" "%s (%s)" "$(get_brandings)" "$cbs"
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
+		debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+		debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
 		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 			spinlock_pid=$$
 			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
-			printf -- "inactive filesystem mounted on %s\n" "$mp"
+			[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf "inactive filesystem mounted on %s" "$mp")"
 			if [ -n "$mp" ]; then
-				printf -- "inactive system version = %s\n" "$(get_system_version "$mp")"
+				debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
 				value="$(get_system_date "$mp")"
-				printf -- "inactive system date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				debug "inactive system date = " "yellow" "$(printf "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 				value="$(get_modified_date "$mp")"
-				printf -- "inactive system modification date = %s (epoch: %s)\n" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				printf -- "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
-				printf -- "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf -- '%s' " (fixed)")"
+				debug "inactive system modification date = " "yellow" "$(printf "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				debug "inactive system modification source = " "yellow" "%s" "$(get_modified_by "$mp")"
+				debug "brandings supported on inactive system = " "yellow" "%s (%s)" "$(get_brandings "$mp")" "$cbs"
 				dismount_alternative_system
-				printf -- "inactive filesystem dismounted\n"
+				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "inactive filesystem dismounted"
 			else
-				printf -- "inactive filesystem could not be mounted\n"
+				debug "" "red" "%s" "inactive filesystem could not be mounted"
 			fi
 			spinlock release
 		else
-			printf -- "inactive system checks skipped\n"
+			debug "" "red" "%s" "inactive system checks skipped"
 		fi
 		rc=0
 		;;
