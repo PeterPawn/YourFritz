@@ -684,7 +684,6 @@ parse_date_value()
 #######################################################################################################
 get_localized()
 (
-	set -x
 	clang="$1"
 	id="$2"
 	line="$(sed -n -e "s|^[ \t]*[Ll]anguages \(.*\)|\1|p" "$messages_file")"
@@ -706,7 +705,6 @@ get_localized()
 		usedLanguage="$1"
 	fi
 	sed -n -e "s/^\($usedLanguage\|any\):\($id\)=\(.*\)/\3/p" "$messages_file"
-	set +x
 )
 #######################################################################################################
 #                                                                                                     #
@@ -715,7 +713,6 @@ get_localized()
 #######################################################################################################
 get_localized_datetime_mask()
 (
-	set -x
 	mask="$(get_localized "${Language:-de}" "datetime")"
 	[ -z "$mask" ] && mask="%c"
 	printf -- "%s" "$mask"
