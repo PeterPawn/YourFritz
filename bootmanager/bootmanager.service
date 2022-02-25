@@ -1,0 +1,7 @@
+[Service]
+After=net.service
+ExecStart=/usr/bin/bootmanager_server
+ExecStop=/bin/sh -c "printf 'stop\n' >/var/run/bootmanager/input; sleep 2"
+Type=notify
+[Install]
+WantedBy=multi-user.target

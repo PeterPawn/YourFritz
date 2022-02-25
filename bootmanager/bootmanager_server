@@ -1,0 +1,161 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# wrapper script to implement a FIFO-based service usable with pure file I/O from Lua code            #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# bootmanager_wrapper, version 0.7.1                                                                  #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2014-2022 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# "FRITZ!Box" and "FRITZ!" are registered word marks and "AVM" is a registered word and figurative    #
+# mark of:                                                                                            #
+#                                                                                                     #
+# AVM Computersysteme Vertriebs GmbH, 10559, Berlin, DE.                                              #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# variant 2                                                                                           #
+#                                                                                                     #
+# Script will listen for commands on /var/run/bootmanager/input, supported commands:                  #
+#                                                                                                     #
+# start                                                                                               #
+# - do nothing                                                                                        #
+#                                                                                                     #
+# stop                                                                                                #
+# - stop the wrapper script (and every spawned child process)                                         #
+#                                                                                                     #
+# switch_to <"running"|"alternative"> [<branding>]                                                    #
+# - change settings according to specified values                                                     #
+#                                                                                                     #
+# clear_cache                                                                                         #
+# - clean up cached data and collect new values                                                       #
+#                                                                                                     #
+# At the same time, data collected by 'get_values' command of bootmanager will be provided via a FIFO #
+# /var/run/bootmanager/output - each time this file is opened by a client, data from cache file of    #
+# bootmanager will be written to it. Read the whole file content and close it after reading.          #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+basename="bootmanager"
+rundir="/var/run/$basename"
+input="$rundir/input"
+output="$rundir/output"
+reader_pid="$rundir/reader.pid"
+writer_pid="$rundir/writer.pid"
+#######################################################################################################
+#                                                                                                     #
+# cleanup on exit of service                                                                          #
+#                                                                                                     #
+#######################################################################################################
+cleanup()
+{
+	kill_pid()
+	{
+		[ -r "$1" ] || return 0
+		p="$(cat "$1")"
+		rm -f "$1" 2>/dev/null
+		kill -0 "$p" 2>/dev/null && kill "$p" 2>/dev/null && sleep 1 && return 1
+	}
+	[ -z "$rundir" ] && return
+	kill_pid "$writer_pid"
+	kill_pid "$reader_pid"
+	[ -p "$output" ] && rm -f "$output" 2>/dev/null
+	[ -p "$input" ] && rm -f "$input" 2>/dev/null
+	[ -d "$rundir" ] && rm -r "$rundir" 2>/dev/null
+}
+#######################################################################################################
+#                                                                                                     #
+# command reader                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+reader()
+{
+	trap - INT EXIT
+	exec 0<"$1"
+	while read -r cmd p1 p2; do
+		case "$cmd" in
+			("switch_to")
+				/usr/bin/$basename switch_to "$p1" "$p2" 2>/dev/null 1>&2
+				;;
+			("clear_cache")
+				/usr/bin/$basename clear_cache 2>/dev/null 1>&2
+				/usr/bin/$basename get_values 2>/dev/null 1>&2
+				;;
+			("stop")
+				break
+				;;
+			("start")
+				;;
+		esac
+		exec 0<&-
+		exec 0<"$1"
+	done
+	exec 0<&-
+	rm -f "$reader_pid" 2>/dev/null
+}
+#######################################################################################################
+#                                                                                                     #
+# data writer                                                                                         #
+#                                                                                                     #
+#######################################################################################################
+writer()
+{
+	trap - INT EXIT
+	while /bin/true; do
+		cat "/var/tmp/$basename.data" >"$1" 2>/dev/null
+	done
+}
+#######################################################################################################
+#                                                                                                     #
+# prepare FIFOs to communicate with clients                                                           #
+#                                                                                                     #
+#######################################################################################################
+cleanup # clean-up any remaining files from a previous instance
+trap 'cleanup' EXIT INT HUP
+mkdir -p "$rundir" 2>/dev/null
+mknod "$input" p
+mknod "$output" p
+{ [ -p "$input" ] && [ -p "$output" ]; } || exit 1
+reader "$input" &
+rd_pid="$!"
+printf "%u\n" "$rd_pid" >"$reader_pid"
+/usr/bin/$basename clear_cache 2>/dev/null 1>&2
+/usr/bin/$basename get_values 2>/dev/null 1>&2
+writer "$output" &
+printf "%u\n" "$!" >"$writer_pid"
+svctl notify $basename
+wait "$rd_pid"
+#######################################################################################################
+#                                                                                                     #
+# finish and regular exit                                                                             #
+#                                                                                                     #
+#######################################################################################################
+exit
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################)
