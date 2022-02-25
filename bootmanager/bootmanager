@@ -481,96 +481,6 @@ check_urlader_configuration()
 			h2b "$(printf "%08x" "$start")" | append
 			h2b "$(printf "%08x" "$size")" | append
 		fi
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
-# switch system selection variable to alternative value                                               #
-#                                                                                                     #
-#######################################################################################################
-switch_system()
-(
-	printf -- '%s\t%d%s\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) "$(get_system_switch "$urlader_environment" 1)" >"$urlader_environment"
-)
-#######################################################################################################
-#                                                                                                     #
-# switch next boot time selection to specified system, if action is really needed                     #
-#                                                                                                     #
-# $1 - 'running' / 'alternative' to switch to the specified system based on the running version       #
-#                                                                                                     #
-#######################################################################################################
-switch_system_to()
-(
-	rc=1
-	if is_switched; then
-		[ "$1" = "running" ] && switch_system && rc=0
-	else
-		[ "$1" = "alternative" ] && switch_system && rc=0
-	fi
-	[ -z "$2" ] || change_branding "$2"
-	exit $rc
-)
-#######################################################################################################
-#                                                                                                     #
-# replace branding, if necessary                                                                      #
-#                                                                                                     #
-#######################################################################################################
-change_branding()
-(
-	[ "$1" = "$(get_system_branding)" ] || printf -- '%s\t%s' "$branding_name" "$1" >"$urlader_environment"
-)
-#######################################################################################################
-#                                                                                                     #
-# get product name value from AVM's rc.conf file                                                      #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_product_name()
-(
-	sed -n -e "s|^[ \t]*export $avm_product_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
-)
-#######################################################################################################
-#                                                                                                     #
-# get major version from AVM's rc.conf file                                                           #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_version_major()
-(
-	sed -n -e "s|^[ \t]*export $avm_version_major_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
-)
-#######################################################################################################
-#                                                                                                     #
-# get the contained brandings from the directory with system defaults                                 #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_brandings()
-(
-	fixed="$(get_fixed_branding "$1")" && printf -- '%s' "$fixed" && exit 0
-	if [ -z "$1" ] || [ "$1" = "/" ]; then
-		eval PRODUKT="\$$avm_product_name"
-	else
-		PRODUKT="$(get_product_name "$1")"
-	fi
-	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
-	find "$path" -type d -maxdepth 1 2>/dev/null | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
-)
-#######################################################################################################
-#                                                                                                     #
-# extract firmware variables from AVM's firmware info source                                          #
-#                                                                                                     #
-# $1 - info source file                                                                               #
-# $2 - values prefix in this file                                                                     #
-#                                                                                                     #
-#######################################################################################################
-get_version_main_values()
-(
-	for v in $avm_version_main_components; do
-		sed -n -e "s|^[ \t]*export $2$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1" | sed -n -e \$p
 	done
 	found=0
 	if [ $found -eq 0 ] && [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>$null 1>&2; then
@@ -979,7 +889,6 @@ spinlock()
 					if [ -d "/proc" ]; then
 						rm "$semafile" 2>$null
 					fi
-					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 				fi
 			done
 			printf -- '%d' "$spinlock_pid" >"$semafile"
