@@ -1,0 +1,420 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
+# installed systems on devices with 'dual boot' support                                               #
+#                                                                                                     #
+# This is a supplementary script to generate HTML payload from data provided by 'bootmanager'. It     #
+# will be used only with FRITZ!OS versions below 07.08.                                               #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# bootmanager_html, version 0.8.0                                                                     #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2014-2022 P.Haemmerlein (peterpawn@yourfritz.de)                                      #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# "FRITZ!Box" and "FRITZ!" are registered word marks and "AVM" is a registered word and figurative    #
+# mark of:                                                                                            #
+#                                                                                                     #
+# AVM Computersysteme Vertriebs GmbH, 10559, Berlin, DE.                                              #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script creates a little HTML snippet (containing JS code, too), which may be included into     #
+# the original reboot.lua page (for FRITZ!OS versions prior to 07.08).                                #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# common values                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+readonly data_cache_file="/var/tmp/bootmanager.data"
+readonly bootmanager="/usr/bin/bootmanager"
+readonly messages_file="/usr/bin/bootmanager.msg"
+readonly system_select_name="linux_fs_start"
+readonly radio_button_checked=' checked="checked"'
+#######################################################################################################
+#                                                                                                     #
+# sub-functions                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# get the count of words in the specified string                                                      #
+#                                                                                                     #
+# $* - items to count                                                                                 #
+#                                                                                                     #
+#######################################################################################################
+count_of_items()
+(
+	# shellcheck disable=SC2048,SC2086
+	set -- $*
+	printf -- '%u' $#
+)
+#######################################################################################################
+#                                                                                                     #
+# generate HTML output                                                                                #
+#                                                                                                     #
+#######################################################################################################
+html()
+(
+	mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "$mask" "$@"
+)
+#######################################################################################################
+#                                                                                                     #
+# apply HTML bold attribute (<b>...</b>) to specified text                                            #
+#                                                                                                     #
+#######################################################################################################
+bold()
+(
+	printf "<b>%s</b>" "$@"
+)
+#######################################################################################################
+#                                                                                                     #
+# output data for a select control                                                                    #
+#                                                                                                     #
+#######################################################################################################
+select_box()
+(
+	html '<select id=\"%s\" name=\"%s\">\n' "$1" "$2"
+	for value in $3; do
+		html '<option value=\"%s\"' "$value"
+		[ "$value" = "$4" ] && html ' selected=\"selected\"'
+		html '>%s</option>\n' "$value"
+	done
+	html '</select>\n'
+)
+#######################################################################################################
+#                                                                                                     #
+# encode common HTML entities in specified text and substitute placeholders for simple 'printf'       #
+#                                                                                                     #
+#######################################################################################################
+encode_html_entities()
+(
+	# shellcheck disable=SC2016
+	printf "%s\n" "$1" | \
+	sed	-e 's|<|\$lt;|g' \
+		-e 's|>|\&gt;|g' \
+		-e "s|'|\&apos;|g" \
+		-e 's|\"|\&quot;|g' \
+		-e 's|ä|\&auml;|g' \
+		-e 's|Ä|\&Auml;|g' \
+		-e 's|ö|\&ouml;|g' \
+		-e 's|Ö|\&Ouml;|g' \
+		-e 's|ü|\&uuml;|g' \
+		-e 's|Ü|\&Uuml;|g' \
+		-e 's|ß|\&szlig;|g' \
+		-e 's|\\n|<br/>|g' \
+		-e 's|%[0-9]\+%date%|{date}|g' \
+		-e 's|%[0-9]\+%[^%]\+%|%s|g'
+)
+#######################################################################################################
+#                                                                                                     #
+# initialize text snippets from external message definition file (bootmanager.msg)                    #
+#                                                                                                     #
+#######################################################################################################
+init_localization()
+(
+	clang="$1"
+	line="$(sed -n -e "s|^[ \t]*[Ll]anguages \(.*\)|\1|p" "$messages_file")"
+	[ -z "$line" ] && exit 1
+	# shellcheck disable=SC2086
+	set -- $line
+	if ! [ "$clang" = "$1" ]; then
+		deflang="$1"
+		shift
+		while [ -n "$1" ]; do
+			if [ "$1" = "$clang" ]; then
+				usedLanguage="$1"
+				break
+			fi
+			shift
+		done
+		[ -z "$1" ] && usedLanguage="$deflang"
+	else
+		usedLanguage="$1"
+	fi
+	printf "__msg_usedLanguage=\"%s\"\n" "$usedLanguage"
+	sed -n -e "s/^\($usedLanguage\|any\):\([^=]*\)=\(.*\)/\1 \2 \3/p" "$messages_file" | \
+		while read -r line; do
+			id="$(expr "$line" : "[^ ]* \([^ ]*\) .*")"
+			value="$(encode_html_entities "$(expr "$line" : "[^ ]* [^ ]* \(.*\)")")"
+			printf "__msg_%s=\"%s\"\n" "$id" "$value"
+		done
+)
+#######################################################################################################
+#                                                                                                     #
+# get text snippets for the selected language                                                         #
+#                                                                                                     #
+#######################################################################################################
+get_localized()
+(
+	[ -z "$__msg_usedLanguage" ] && eval "$(init_localization "${Language:-de}")"
+	name="$(printf "__msg_%s" "$1")"
+	if set | grep -q "^$name=\(.*\)\$" 2>/dev/null; then
+		printf "%s\n" "$(set | sed -n -e "s|^$name=\(.*\)\$|\1|p" | sed -e "s|'\?\([^']*\)'\?\$|\1|")"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# prepare a localized date/time string                                                                #
+#                                                                                                     #
+#######################################################################################################
+localized_datetime()
+(
+	eval var="\$$1"
+	if [ -z "$var" ]; then
+		get_localized "unknowndate"
+	else
+		eval epoch_var="\$$1_epoch"
+		[ -z "$epoch_var" ] && printf -- "%s\n" "$var" && exit 0
+		mask="$(get_localized "datetime")"
+		[ -z "$mask" ] && printf -- "%s\n" "$var" && exit 0
+		date "+$mask" -d @"$epoch_var"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# get text snippets for the selected language and replace '{date}' with a localized string format     #
+#                                                                                                     #
+#######################################################################################################
+get_localized_date()
+(
+	msg="$(get_localized "$1")"
+	printf "%s%s%s\n" "$(expr "$msg" : "\(.*\){date}.*")" "$(localized_datetime "$2")" "$(expr "$msg" : ".*{date}\(.*\)")"
+)
+#######################################################################################################
+#                                                                                                     #
+# generate HTML snippet according to data read from cache of bootmanager                              #
+#                                                                                                     #
+#######################################################################################################
+generate_html()
+(
+	html '<br>'
+	html '<h3>%s</h3>' "$(get_localized "headline")"
+	html '<br>\n'
+	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
+	html '<label for=\"radioRunning\">\n'
+	html '<b>%s</b> %s\n' "$(get_localized "currsys")" "$(html "$(get_localized "switchvalue")" "$current_switch_value")"
+	html '<br><br>%s<br>\n' "$(html "$(get_localized_date "version" "active_date")" "$active_version")"
+	[ -z "$active_modified_by" ] || html '%s\n' "$(html "$(get_localized_date "modified" "active_modified_at")" "$active_modified_by")"
+	html '</label>\n'
+	html '<br><br>\n'
+	[ "$inactive_version" = "missing" ] && disabled=" disabled" || disabled=""
+	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
+	html '<label for=\"radioAlternative\">\n'
+	if ! [ "$inactive_version" = "missing" ]; then
+		html '<b>%s</b> %s\n' "$(get_localized "altsys")" "$(html "$(get_localized "switchvalue")" "$(( ( current_switch_value + 1 ) % 2 ))")"
+		if [ -z "$inactive_version" ]; then
+			html '<br><br>%s\n' "$(get_localized "altinv")"
+		else
+			html '<br><br>%s<br>\n' "$(html "$(get_localized_date "version" "inactive_date")" "${inactive_version:-$(get_localized "unknown")}")"
+			[ -z "$inactive_modified_by" ] || html '%s\n' "$(html "$(get_localized_date "modified" "inactive_modified_at")" "${inactive_modified_by:-$(get_localized "unknown")}")"
+		fi
+	else
+		html '%s\n' "$(get_localized "altmiss")"
+	fi
+	html '</label>\n'
+	html '<br><br>\n'
+	html '<h4>%s</h4>\n' "$(get_localized "brndhead")"
+	if [ "$change_branding_support" -eq 0 ] && [ "$running_branding_fixed" -eq 0 ] && [ "$alternative_branding_fixed" -eq 0 ]; then
+		html '%s\n' "$(get_localized "brndunsupp")"
+		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$inactive_brandings"
+	else
+		html '<span id=\"running_branding\">\n'
+		if [ "$running_branding_fixed" -eq 1 ]; then
+			html '%s\n' "$(html "$(get_localized "brndcurrfixed")" "$(bold "$current_branding")")"
+		else
+			if [ "$chg_running_branding" -eq 1 ]; then
+				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$current_branding")")"
+				html '<br>\n'
+				html '<label for=\"idRunningBranding\">\n'
+				html '%s&nbsp;\n' "$(get_localized "brndset")"
+				html '</label>\n'
+				select_box 'idRunningBranding' 'running_branding' "$active_brandings" "$current_branding"
+			else
+				html '%s\n' "$(html "$(get_localized "brndcurrsingle")" "$(bold "$current_branding")")"
+				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+			fi
+		fi
+		html '</span>\n'
+		html '<span id=\"alternative_branding\">\n'
+		if [ "$alternative_branding_fixed" -eq 1 ]; then
+			html '%s\n' "$(html "$(get_localized "brndaltfixed")" "$(bold "$inactive_brandings")")"
+		else
+			if [ "$chg_alternative_branding" -eq 1 ]; then
+				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$current_branding")")"
+				html '<br>\n'
+				html '<label for=\"idAlternativeBranding\">%s&nbsp;</label>\n' "$(get_localized "brndset")"
+				select_box 'idAlternativeBranding' 'alternative_branding' "$inactive_brandings" "$current_branding"
+			else
+				if [ -z "$inactive_version" ];then
+					html '%s\n' "$(get_localized "brndaltinv")"
+					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
+				else
+					html '%s\n' "$(html "$(get_localized "brndaltsingle")" "$(bold "$inactive_brandings")")"
+					if [ "$inactive_brandings" = "$current_branding" ]; then
+						html '%s\n' "$(html "$(get_localized "brndaltnochg")" "$(bold "$current_branding")")"
+					else
+						html '%s\n' "$(html "$(get_localized "brndaltset")" "$(bold "$current_branding")")"
+						html '%s\n' "$(html "$(get_localized "brndaltnew")" "$(bols "$inactive_brandings")")"
+					fi
+				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$inactive_brandings"
+				fi
+			fi
+		fi
+		html '</span>\n'
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# generate JS code to display and hide additional elements depending on current selection             #
+#                                                                                                     #
+#######################################################################################################
+generate_javascript()
+(
+	html '<script type=\"text/javascript\">\n'
+	html 'function onBootManagerClick(evt) {\n'
+	html 'var radioButton = jxl.evtTarget(evt);\n'
+	if [ "$change_branding_support" -eq 1 ]; then
+		html 'if ( radioButton.id == \"radioRunning\" ) {\n'
+		html 'jxl.show(\"running_branding\");\n'
+		html 'jxl.hide(\"alternative_branding\");\n'
+		html '} else {\n'
+		html 'jxl.hide(\"running_branding\");\n'
+		html 'jxl.show(\"alternative_branding\");\n'
+		html '}\n'
+	fi
+	html '}\n'
+	html 'function initBootManager() {\n'
+	html 'jxl.addEventHandler(\"radioRunning\",\"click\",onBootManagerClick);\n'
+	html 'jxl.addEventHandler(\"radioAlternative\",\"click\",onBootManagerClick);\n'
+	if [ "$change_branding_support" -eq 1 ]; then
+		html 'jxl.display(\"running_branding\", %s);\n' "$( [ "$show_running" -eq 1 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
+		html 'jxl.display(\"alternative_branding\", %s);\n' "$( [ "$show_running" -eq 0 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
+	fi
+	html '}\n'
+	html 'ready.onReady(initBootManager);\n'
+	html '</script>\n'
+)
+#######################################################################################################
+#                                                                                                     #
+# get system's data from cache file of 'bootmanager', create a new cache file, if it's missing yet    #
+#                                                                                                     #
+#######################################################################################################
+get_values()
+{
+	if ! [ -f "$data_cache_file" ]; then
+		"$bootmanager" clear_cache
+		"$bootmanager" get_values
+	fi
+	[ -s "$data_cache_file" ] || return 1
+	cat "$data_cache_file" 2>/dev/null
+	return 0
+}
+#######################################################################################################
+#                                                                                                     #
+# prepare a temporary directory and a clean exit routine                                              #
+#                                                                                                     #
+#######################################################################################################
+exec 2>&1
+rc=1
+#######################################################################################################
+#                                                                                                     #
+# check parameters and call requested function                                                        #
+#                                                                                                     #
+#######################################################################################################
+current_switch_value=0
+active_version=""
+inactive_version=""
+switch_branding_support=false
+current_branding=""
+active_brandings=""
+inactive_brandings=""
+system_is_switched=false
+eval "$(get_values)"
+if $bootmanager is_supported; then
+	case "$switch_branding_support" in
+		("false")
+			change_branding_support=0
+			running_branding_fixed=0
+			alternative_branding_fixed=0
+			;;
+		("true")
+			change_branding_support=1
+			running_branding_fixed=0
+			alternative_branding_fixed=0
+			;;
+		("running_fixed")
+			change_branding_support=1
+			running_branding_fixed=1
+			alternative_branding_fixed=0
+			;;
+		("alternative_fixed")
+			change_branding_support=1
+			running_branding_fixed=0
+			alternative_branding_fixed=1
+			;;
+		(*)
+			change_branding_support=0
+			running_branding_fixed=0
+			alternative_branding_fixed=0
+			;;
+	esac
+	if [ "$running_branding_fixed" -eq 0 ]; then
+		[ "$(count_of_items "$active_brandings")" -gt 1 ] && chg_running_branding=1 || chg_running_branding=0
+	fi
+	if [ "$alternative_branding_fixed" -eq 0 ]; then
+		[ "$(count_of_items "$inactive_brandings")" -gt 1 ] && chg_alternative_branding=1 || chg_alternative_branding=0
+	fi
+	if [ "$system_is_switched" = "true" ] && ! [ "$inactive_version" = "missing" ]; then
+		running_checked=""
+		alternative_checked="$radio_button_checked"
+		show_running=0
+	else
+		running_checked="$radio_button_checked"
+		alternative_checked=""
+		show_running=1
+	fi
+	eval "$(init_localization "${Language:-de}")"
+	generate_html
+	generate_javascript
+else
+	html '<h4>%s</h4>\n' "$(get_localized "unsupported")"
+	rc=1
+fi
+#######################################################################################################
+#                                                                                                     #
+# finish and regular exit                                                                             #
+#                                                                                                     #
+#######################################################################################################
+exit $rc
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################

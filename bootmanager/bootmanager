@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.7.1                                                                          #
+# bootmanager, version 0.8.2                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -57,24 +57,15 @@
 # is_supported - returns true (exit code 0) or false (exit code 1), if the device doesn't support the #
 #                dual-boot selection                                                                  #
 # is_blocked   - check the used semaphore file, if there's already a running instance                 #
-# html_display - creates a little HTML snippet (containing JS code, too), which may be included into  #
-#                the original reboot.lua page (for FRITZ!OS versions prior to 07.08)                  #
-#              - if the second parameter is 'nocache', an existing cache file (where those data is    #
-#                stored otherwise - ready to be displayed on next call) gets ignored                  #
-#              - the data for 'get_values' is cached at the same time, if 'nocache' wasn't specified  #
 # switch_to    - switches to the 'running' or 'alternative' system (2nd parameter) and (optionally)   #
 #                sets the OEM name to the 3rd parameter (which isn't checked any further)             #
 # get_values   - provide a list of relevant values for implementers of other interfaces, without the  #
 #                needs to implement the full logic once again                                         #
 #              - if the second parameter is 'nocache', an existing cache file (where those data is    #
 #                stored otherwise - ready for output on next call) gets ignored                       #
-#              - while the call for 'html_display' creates the cache file for this function too, this #
-#                one doesn't create a cached HTML output and any later call to 'html_display' w/o the #
-#                'nocache' parameter will refresh the cached data of this function again              #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
-# clear_cache  - remove cached HTML output and/or saved data from an earlier 'html_display' or        #
-#                'get_values' call without 'nocache' argument                                         #
+# clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument       #
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
@@ -89,36 +80,49 @@
 # common values                                                                                       #
 #                                                                                                     #
 #######################################################################################################
-readonly html_cache_file="/var/tmp/bootmanager.html"
-readonly html_cache_error="/var/tmp/bootmanager.rc"
-readonly data_cache_file="/var/tmp/bootmanager.data"
-readonly boot_cache_file="/var/tmp/bootmanager.boot"
-readonly urlader_environment="/proc/sys/urlader/environment"
+readonly messages_file="${0}.msg"
+readonly tmpfs="/var"
+readonly procfs="/proc"
+readonly devtmpfs="/dev"
+readonly sysfs="/sys"
+readonly tmp="$tmpfs/tmp"
+readonly null="$devtmpfs/null"
+readonly zeros="$devtmpfs/zero"
+readonly data_cache_file="$tmp/bootmanager.data"
+readonly boot_cache_file="$tmp/bootmanager.boot"
+readonly device_cache_file="$tmp/bootmanager.dev"
+readonly urlader_environment="$procfs/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
 readonly inactive_name="inactive"
 readonly branding_name="firmware_version"
-readonly proc_mtd="/proc/mtd"
-readonly proc_devices="/proc/devices"
+readonly kernel_args="kernel_args"
+readonly kernel_args1="kernel_args1"
+readonly proc_mtd="$procfs/mtd"
+readonly proc_devices="$procfs/devices"
+readonly tffs_device_name="tffs"
 # shellcheck disable=SC2034
 readonly mtd_prefix="mtd"
-readonly mtdblock_prefix="/dev/mtdblock"
+readonly mtdblock_prefix="$devtmpfs/mtdblock"
 readonly mtdblock_mask="${mtdblock_prefix}%u"
-readonly proc_cpuinfo="/proc/cpuinfo"
-readonly proc_mountinfo="/proc/self/mountinfo"
+readonly proc_cpuinfo="$procfs/cpuinfo"
+readonly proc_mountinfo="$procfs/self/mountinfo"
+readonly urlader_name="urlader"
 readonly kernel_name="kernel"
 readonly filesystem_name="filesystem"
 readonly reserved_prefix="reserved"
 readonly alt_root_mount_name="alt_root"
 readonly defaults_dir="etc/default.%s"
-readonly sysfs_block_dir="/sys/block"
+readonly sysfs_block_dir="$sysfs/block"
 readonly loop_driver_name="loop"
 readonly backing_file_name="backing_file"
-readonly tmpdir="${TMPDIR:-/var/tmp}"
+readonly tmpdir="${TMPDIR:-$tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
-readonly semafile="/var/run/bootmanager.sem"
-readonly fdt_chosen="/proc/device-tree/chosen"
-readonly radio_button_checked=" checked=\\\"checked\\\""
+readonly semafile="$tmpfs/run/bootmanager.sem"
+readonly fdt_chosen="$procfs/device-tree/chosen"
+readonly yf_change_oem_marker="# YF_CHANGE_OEM"
+readonly yf_change_oem_script="etc/init.d/yf_change_oem.sh"
+readonly yf_custom_environment_script="yf_custom_environment.sh"
 #######################################################################################################
 #                                                                                                     #
 # various sources for version numbers                                                                 #
@@ -196,7 +200,7 @@ is_puma_based_device()
 	[ -f "$puma_helper" ] || exit 1
 	# shellcheck disable=SC1090
 	. "$puma_helper"
-	if type is_puma7 2>/dev/null 1>&2; then
+	if type is_puma7 2>$null 1>&2; then
 		[ "$IS_ATOM" = "y" ] || exit 1
 	else
 		is_puma_atom || exit 1
@@ -210,30 +214,596 @@ is_puma_based_device()
 #######################################################################################################
 printf_ss()
 (
-	# shellcheck disable=SC2059
 	mask="$1"
 	shift
+	# shellcheck disable=SC2059
 	printf -- "$(printf -- '%s' "$mask")" "$*"
 )
 #######################################################################################################
 #                                                                                                     #
-# check, if the host system has a FDT based environment - then we'll never try to switch the branding #
+# get TFFS major device ID from /proc/devices                                                         #
 #                                                                                                     #
 #######################################################################################################
-has_fdt_environment()
-{
-	[ -d "$fdt_chosen" ] && return 0 || return 1
-}
+get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1|p" "$proc_devices"; )
 #######################################################################################################
 #                                                                                                     #
-# check, whether the host system supports branding changes via write operations to environment        #
+# provide a shellcheck compatible use of printf with variable mask values                             #
+#                                                                                                     #
+#######################################################################################################
+get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2>$null; )
+#######################################################################################################
+#                                                                                                     #
+# check urlader configuration of host device                                                          #
+#                                                                                                     #
+#######################################################################################################
+check_urlader_configuration()
+(
+	msg() { [ "$verbose" -eq 1 ] || return; printf_ss "$@" 1>&2; }
+	append() { cat - >>"$ut/config_header"; }
+	env() { get_environment "$1"; }
+	fsize() { wc -c <"$1" 2>$null | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
+	chkgrep() { [ "$(printf "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC")" = "$(printf "ABC\nABC\n")" ] && return 0 || return 1; }
+	h2b() {
+		h2b_ro()
+		{
+			i=1; h=1; z=0
+			# shellcheck disable=SC2034
+			while read -r p _ o; do
+				[ "$i" -lt "$p" ] && return 1
+				i=$(( i + 1 ))
+				if [ "$o" -ge 60 ] && [ "$o" -le 67 ]; then
+					c=$(( o - 60 ))
+				elif [ "$o" -ge 70 ] && [ "$o" -le 71 ]; then
+					c=$(( o - 62 ))
+				elif [ "$o" -ge 101 ] && [ "$o" -le 106 ]; then
+					c=$(( o - 91 ))
+				elif [ "$o" -ge 141 ] && [ "$o" -le 146 ]; then
+					c=$(( o - 131 ))
+				else
+					return 1
+				fi
+				if [ $h -eq 0 ]; then
+					v=$(( v + c ))
+					if [ $v -eq 0 ]; then
+						z=$(( z + 1 ))
+					else
+						if [ $z -gt 0 ]; then
+							dd if="$zeros" bs=$z count=1 2>$null
+							z=0
+						fi
+						printf "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+					fi
+					h=1
+				else
+					v=$(( c * 16 ))
+					h=0
+				fi
+			done
+			[ $z -gt 0 ] && dd if="$zeros" bs=$z count=1 2>$null
+			return 0
+		}
+		if [ -n "$1" ]; then
+			printf "%s" "$1" | h2b
+			return $?
+		fi
+		cmp -l -- "$zeros" - 2>$null | h2b_ro
+		return $?
+	}
+	b2d_be() (
+		b2d_ro()
+		{
+			i=1; l=0; v=0; s=-8; ff=0
+			while read -r p _ rt; do
+				if [ "$ff" -eq 1 ]; then
+					v=$(( v * 256 ))
+					ff=255
+					v=$(( v + ff ))
+					i=$(( i + 1 ))
+					ff=0
+				fi
+				while [ "$i" -lt "$p" ]; do
+					v=$(( v * 256 ))
+					i=$(( i + 1 ))
+				done
+				if [ "$rt" = 377 ] && [ $ff -eq 0 ]; then
+					ff=1
+					continue
+				fi
+				v=$(( v * 256 ))
+				rt=$(( 0$rt ))
+				v=$(( v + rt ))
+				i=$(( p + 1 ))
+			done
+			printf "%d" $v
+		}
+		( cat; printf "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | b2d_ro
+		return 0
+	)
+	str() (
+		strlen()
+		{
+			s=1
+			while read -r p l _; do
+				[ "$p" -ne "$s" ] && printf "%u\n" "$(( s - 1 ))" && return
+				s=$(( s + 1 ))
+			done
+			return 1
+		}
+		l="$(dd if="$1" bs=1 skip="$2" 2>$null | cmp -l -- - "$zeros" 2>$null | strlen)"
+		[ -n "$l" ] && dd if="$1" bs=1 skip="$2" count="$l" 2>$null
+	)
+	chkcfg() {
+		_f="$1"
+		[ "$(dd if="$_f" bs=2 count=1 skip=$(( 0x8E / 2 )) 2>$null | base64)" = "ZAk=" ] || return 1
+		_kv=0
+		dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>$null
+		# shellcheck disable=SC2050
+		while [ 1 -eq 1 ]; do
+			dd if="$_f" bs=8 count=1 skip=$(( ( 0x98 / 8 ) + _kv )) 2>$null | cmp -s -- - "$ut/8zeros" 2>$null && break
+			_kv=$(( _kv + 1 ))
+			[ "$_kv" -gt 256 ] && return 1
+		done
+		_dp=$(dd if="$_f" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | b2d_be)
+		_do=$(( ( ( 0x98 / 8 ) + _kv + 1 ) * 8 ))
+		_cb=$(( _dp - _do ))
+		_e=0
+		while [ "$_e" -lt "$_kv" ]; do
+			_vp=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) )) 2>$null | b2d_be)
+			_np=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) + 1 )) 2>$null | b2d_be)
+			[ "$_vp" -lt "$_cb" ] && return 1
+			[ "$_np" -lt "$_cb" ] && return 1
+			[ $(( _vp - _cb )) -gt 1023 ] && return 1
+			[ $(( _np - _cb )) -gt 1023 ] && return 1
+			_e=$(( _e + 1 ))
+		done
+		grep -q -ao "00:04:0E:FF:FF:01" "$_f" 2>$null 1>&2 && return 1
+		printf -- "%u\n" "$_kv"
+		return 0
+	}
+	geteva() {
+		if ! [ -d "$procfs" ]; then
+			msg "'%s' missing.\n" "$procfs"
+			exit 1
+		fi
+		if ! [ -f "$proc_mtd" ]; then
+			msg "'%s' missing.\n" "$proc_mtd"
+			exit 1
+		fi
+		urlader="$(sed -n -e "s|^\(mtd[0-9]\?\):\([ \t]\+[0-9a-fA-F]*\)\{2\}[ \t]\?\"$urlader_name\"\$|\1|p" "$proc_mtd")"
+		if [ -z "$urlader" ]; then
+			msg "'%s' partition not found.\n" "$urlader_name"
+			exit 1
+		fi
+		if ! [ -c "$devtmpfs/$urlader" ]; then
+			msg "'%s' is not a character device.\n" "$devtmpfs/$urlader"
+			exit 1
+		fi
+		cat "$devtmpfs/$urlader" 2>$null
+	}
+	sblk() (
+		h=$(( $3 / 2 ))
+		s=$(( $4 / h ))
+		mo="$(dd if="$2" count=1 bs="$3" skip=$(( $4 / $3 )) 2>$null | grep -ao "$1" 2>$null)"
+		[ -z "$mo" ] && printf "(not found)" && exit 1
+		if ! dd if="$2" count=1 bs="$h" skip="$s" 2>$null | grep -q -ao "$1" 2>$null; then
+			if [ "$(dd if="$2" count=1 bs="$h" skip=$(( s + 1 )) 2>$null | grep -ao "$1")" = "$mo" ]; then
+				lwr=1
+			else
+				printf "%u\n" "$(( $4 + h - 16 ))"
+				exit 0
+			fi
+		else
+			lwr=0
+		fi
+		if [ "$h" -eq 16 ]; then
+			[ "$lwr" -eq 0 ] && printf "%u\n" "$(( s * h ))" || printf "%u\n" "$(( ( s + 1 ) * h ))"
+			exit 0
+		fi
+		sblk "$1" "$2" "$(( h ))" "$(( $4 + ( lwr * h ) ))"
+	)
+	fndo() (
+		f="$1"; l="$2"; ch="$3"
+		fo="$(sblk "$l" "$f" "$(fsize "$f")" 0)"
+		[ "$fo" = "(not found)" ] && printf "%s" "$fo" && exit 1
+		s=$(( fo - ( fo % 4096 ) - 4096 ))
+		[ "$s" -lt 0 ] && s=0
+		dd if="$f" of="$ut/try_here" bs=4096 count=2 skip=$(( s / 4096 )) 2>$null
+		sz=$(( $(fsize "$ch") / 4 ))
+		fnd=0
+		o=$(( fo - s ))
+		while [ "$o" -gt 0 ]; do
+			if dd if="$ut/try_here" bs=4 skip=$(( o / 4 )) count="$sz" 2>$null | cmp -s -- - "$ch" 2>$null; then
+				fnd=1
+				break
+			fi
+			o=$(( o - 16 ))
+		done
+		if [ "$fnd" -eq 1 ]; then
+			dd if="$f" of="$ut/check_this" bs=16 count=64 skip=$(( ( s + o ) / 16 )) 2>$null
+			if chkcfg "$ut/check_this" 1>$null; then
+				printf "%u\n" "$(( s + o ))"
+				exit 0
+			fi
+		fi
+		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>$null
+		fndo "$f" "$l" "$ch"
+	)
+	env_name="$1"
+	trap 'rm -rf "$ut" 2>$null' EXIT
+	if ! command -v grep 2>$null 1>&2; then
+		msg "Missing command '%s'.\n" "grep"
+		exit 1
+	fi
+	if ! chkgrep; then
+		msg "The found '%s' command behaves unexpected.\n" "grep"
+		exit 1
+	fi
+	ut="$tempdir/urlader"
+	rm -rf "$ut" 2>$null
+	mkdir -p "$ut" 2>$null
+	geteva >"$ut/dump" || exit 1
+	usize="$(fsize "$ut/dump")"
+	pow2=1
+	while [ "$pow2" -lt "$usize" ]; do pow2=$(( pow2 * 2 )); done
+	if [ "$pow2" -ne "$usize" ]; then
+		msg "Urlader dump size isn't a power of two.\n"
+		exit 1
+	fi
+	memsize=""
+	# shellcheck disable=SC2034
+	mtd0=""
+	maca=""
+	wlan_key=""
+	for value in memsize mtd0 maca wlan_key; do
+		env_value="$(env "$value")"
+		if [ -z "$env_value" ]; then
+			msg "Missing '%s' value from urlader environment.\n" "$value"
+			exit 1
+		fi
+		eval $value="$env_value"
+	done
+	touch "$ut/config_header" 2>$null
+	printf "\000\000\000\003" | append
+	[ "$(get_system_type)" = "Puma6/7" ] && memsize=$(( memsize / 2 ))
+	h2b "$(printf "%08x" "$memsize")" | append
+	printf "\000\000\000\000" | append
+	i=0
+	while [ $i -lt 16 ]; do
+		mtd=$(printf "mtd%u" "$i")
+		i=$(( i + 1 ))
+		val="$(env "$mtd")"
+		if [ -z "$val" ]; then
+			printf "\000\000\000\000\000\000\000\000" | append
+		else
+			start="$(expr "$val" : "\(0[xX][0-9a-fA-F]*\),.*")"
+			end="$(expr "$val" : "[^,]*,\(0[xX][0-9a-fA-F]*\)")"
+			size=$(( end - start ))
+			h2b "$(printf "%08x" "$start")" | append
+			h2b "$(printf "%08x" "$size")" | append
+		fi
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# switch system selection variable to alternative value                                               #
+#                                                                                                     #
+#######################################################################################################
+switch_system()
+(
+	printf -- '%s\t%d%s\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) "$(get_system_switch "$urlader_environment" 1)" >"$urlader_environment"
+)
+#######################################################################################################
+#                                                                                                     #
+# switch next boot time selection to specified system, if action is really needed                     #
+#                                                                                                     #
+# $1 - 'running' / 'alternative' to switch to the specified system based on the running version       #
+#                                                                                                     #
+#######################################################################################################
+switch_system_to()
+(
+	rc=1
+	if is_switched; then
+		[ "$1" = "running" ] && switch_system && rc=0
+	else
+		[ "$1" = "alternative" ] && switch_system && rc=0
+	fi
+	[ -z "$2" ] || change_branding "$2"
+	exit $rc
+)
+#######################################################################################################
+#                                                                                                     #
+# replace branding, if necessary                                                                      #
+#                                                                                                     #
+#######################################################################################################
+change_branding()
+(
+	[ "$1" = "$(get_system_branding)" ] || printf -- '%s\t%s' "$branding_name" "$1" >"$urlader_environment"
+)
+#######################################################################################################
+#                                                                                                     #
+# get product name value from AVM's rc.conf file                                                      #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_product_name()
+(
+	sed -n -e "s|^[ \t]*export $avm_product_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
+)
+#######################################################################################################
+#                                                                                                     #
+# get major version from AVM's rc.conf file                                                           #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_version_major()
+(
+	sed -n -e "s|^[ \t]*export $avm_version_major_name=\"\?\([^\"]*\)\"\?\$|\1|p" "${1:-/}${1:+/}$avm_version_file" | sed -n -e \$p
+)
+#######################################################################################################
+#                                                                                                     #
+# get the contained brandings from the directory with system defaults                                 #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_brandings()
+(
+	fixed="$(get_fixed_branding "$1")" && printf -- '%s' "$fixed" && exit 0
+	if [ -z "$1" ] || [ "$1" = "/" ]; then
+		eval PRODUKT="\$$avm_product_name"
+	else
+		PRODUKT="$(get_product_name "$1")"
+	fi
+	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
+	find "$path" -type d -maxdepth 1 2>/dev/null | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
+)
+#######################################################################################################
+#                                                                                                     #
+# extract firmware variables from AVM's firmware info source                                          #
+#                                                                                                     #
+# $1 - info source file                                                                               #
+# $2 - values prefix in this file                                                                     #
+#                                                                                                     #
+#######################################################################################################
+get_version_main_values()
+(
+	for v in $avm_version_main_components; do
+		sed -n -e "s|^[ \t]*export $2$v=\"\?\([^\"]*\)\"\?\$|$v=\"\1\"|p" "$1" | sed -n -e \$p
+	done
+	found=0
+	if [ $found -eq 0 ] && [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>$null 1>&2; then
+		co="$(fndo "$ut/dump" "$wlan_key" "$ut/config_header")"
+		[ "$co" = "(not found)" ] && unset config_offset
+		if [ -z "$co" ]; then
+			msg "Unable to locate configuration area in urlader dump file.\n"
+			exit 1
+		fi
+		found=1
+	fi
+	if [ $found -eq 0 ] && grep -q -ao "maca" "$ut/dump" 2>$null 1>&2; then
+		[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
+		co="$(fndo "$ut/dump" "maca" "$ut/config_header")"
+		[ "$co" = "(not found)" ] && unset config_offset
+		if [ -z "$co" ]; then
+			msg "Unable to locate configuration area in urlader dump file.\n"
+			exit 1
+		fi
+		found=1
+	fi
+	[ $found -eq 0 ] && exit 1
+	dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>$null
+	rm -f "$ut/dump" "$ut/try_here" "$ut/check_this" "$ut/config_header" "$ut/8zeros" 2>$null
+	kvs=$(( 0x98 / 8 ))
+	kvc=0
+	dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>$null
+	# shellcheck disable=SC2050
+	while [ 1 -eq 1 ]; do
+		dd if="$ut/config" bs=8 count=1 skip=$(( kvs )) 2>$null | cmp -s -- - "$ut/8zeros" 2>$null && break
+		kvc=$(( kvc + 1 ))
+		kvs=$(( kvs + 1 ))
+		[ "$kvc" -gt 256 ] && exit 1
+	done
+	defptr=$(dd if="$ut/config" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | b2d_be)
+	defoff=$(( ( kvs + 1 ) * 8 ))
+	cb=$(( defptr - defoff ))
+	kvs=$(( 0x98 / 4 ))
+	ent=0
+	while [ "$ent" -lt "$kvc" ]; do
+		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>$null | b2d_be)"
+		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>$null | b2d_be)"
+		nm="$(str "$ut/config" "$(( kn - cb ))")"
+		val="$(str "$ut/config" "$(( kv - cb ))")"
+		kvs=$(( kvs + 2 ))
+		ent=$(( ent + 1 ))
+		if [ "$nm" = "$env_name" ]; then
+			msg "'%s' found in fixed values area.\n" "$env_name"
+			printf "%s\n" "$val"
+			exit 1
+		fi
+	done
+	coff="$defoff"
+	while ! [ "$(dd if="$ut/config" bs=1 count=1 skip="$coff" 2>$null | base64)" = "/w==" ]; do
+		nm="$(str "$ut/config" "$coff")"
+		coff=$(( coff + ${#nm} + 1 ))
+		val="$(str "$ut/config" "$coff")"
+		coff=$(( coff + ${#val} + 1 ))
+		if [ "$nm" = "$env_name" ]; then
+			msg "'%s' found in defaults values area.\n" "$env_name"
+			printf "%s\n" "$val"
+			exit 0
+		fi
+	done
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# check for and get (if any) a fixed branding value from specified system root                        #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+get_fixed_branding()
+(
+	path="${1:-/}${1:+/}$avm_rcconf"
+	b="$(sed -n -e "s|^export OEM\(=\(['\"]\?\)\(.*\)\2\)\?\$|\3|p" "$path")"
+	printf -- '%s' "$b"
+	[ -z "$b" ] && exit 1 || exit 0
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the preparations for 'YF_CHANGE_OEM' are found in specified system                   #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+check_oem_kernel_cmdline()
+(
+	path="${1:-/}${1:+/}"
+
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the preparations for 'yf_custom_environment' are found in specified system           #
+#                                                                                                     #
+# $1 - system root directory                                                                          #
+#                                                                                                     #
+#######################################################################################################
+check_custom_environment()
+(
+	path="${1:-/}${1:+/}"
+
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the host system supports branding changes                                            #
+#                                                                                                     #
+# checks in order of relevance:                                                                       #
+# - check for a 'fixed branding' using 'export OEM=<value>' from /etc/init.d/rc.conf                  #
+# - check for a 'semi-fixed branding' using 'oem=<value>' from kernel command line (requires a marker #
+#   in file /etc/init.d/rc.conf -> see script 'add_change_oem.sh' in 'bootmanager' folder of          #
+#   YourFritz repository)                                                                             #
+# - check for existence of 'yf_custom_environment.sh' in any directory from current PATH value; if    #
+#   it's found, the presence of the used TFFS minor node is checked next (it has to contain at least  #
+#   one line) and if this condition is met, too, in a last step the '/etc/inittab' file is checked,   #
+#   whether a call to the shell script above exists here                                              #
+# - as a last resort the configuration area from AVM's bootloader (EVA) will be located, dissected    #
+#   and checked, whether the 'firmware_version' setting is located in the table of 'immutable         #
+#   settings'                                                                                         #
+# - if the check above results in an 'immutable value' (in this case, any changes to the setting will #
+#   be ignored/reset on next system boot), no changes to the current branding are supported           #
 #                                                                                                     #
 #######################################################################################################
 change_branding_support()
 {
-	has_fdt_environment && return 1
-	return 0
+	get_fixed_branding "$1" >$null && printf -- "fixed_export" && exit 0
+	check_oem_kernel_cmdline "$1" && printf -- "kernel_cmdline" && exit 0
+	check_custom_environment "$1" && printf -- "custom_environment" && exit 0
+	if [ -n "$2" ] && { [ "$2" = "immutable" ] || [ "$2" = "changeable" ]; }; then
+		printf "%s\n" "$2"
+		[ "$2" = "changeable" ] && exit 0 || exit 1
+	else
+		if [ -n "$device_branding_is_changeable" ]; then
+			if [ "$device_branding_is_changeable" = "true" ]; then
+				printf -- "changeable"
+				exit 0
+			else
+				printf -- "immutable"
+				exit 1
+			fi
+		elif check_urlader_configuration "$branding_name"; then
+			device_branding_is_changeable="true"
+			printf -- "changeable"
+			exit 0
+		else
+			device_branding_is_changeable="false"
+			printf -- "immutable"
+			exit 1
+		fi
+	fi
 }
+#######################################################################################################
+#                                                                                                     #
+# get branding from environment variables 'kernel_args' or 'kernel_args1'                             #
+#                                                                                                     #
+# Caution: read values from urlader environment and NOT from current kernel command line              #
+#                                                                                                     #
+#######################################################################################################
+get_oem_kernel_cmdline()
+(
+	kargs="$(get_environment "$kernel_args") $(get_environment "$kernel_args1")"
+	for kv in $kargs; do
+		if [ -n "$(expr "$kv" : "\([Oo][Ee][Mm]\)=.*")" ]; then
+			printf "%s\n" "$kv" | sed -e "s|^\([^=]*\)=\(['\"]\?\)\(.*\)\2\$|\3|"
+			exit 0
+		fi
+	done
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# get branding from custom environment stored in a TFFS node                                          #
+#                                                                                                     #
+#######################################################################################################
+get_custom_env_branding()
+(
+	minor="${YF_CUSTOM_ENVIRONMENT_TFFS_MINOR:-80}"
+	[ -z "$minor" ] && exit 1
+	major="$(get_tffs_major)"
+	mknod "$tempdir/tffs_node" c "$major" "$minor" || exit 1
+	cat "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>$null
+	rm -f "$tempdir/tffs_node" 2>$null
+	trap 'rm $tempdir/tffsnode' EXIT
+	branding="$(sed -n -e "s|^${branding_name}[ \t]\(.*\)|\1|p" "$tempdir/tffsnode")"
+	if [ -n "$branding" ]; then
+		printf "%s\n" "$branding"
+		exit 0
+	fi
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# get branding for the specified system                                                               #
+#                                                                                                     #
+# $1 - root of system to use, empty string (or "/") for running system                                #
+# $2 - value of 'change_branding_support' function, if it's missing, a new call to function will be   #
+#      made                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+get_system_branding()
+(
+	[ -z "$2" ] && cbs="$(change_branding_support "$1")" || cbs="$2"
+	case "$cbs" in
+		("fixed_export")
+			get_fixed_branding "$1"
+			exit $?
+			;;
+		("kernel_cmdline")
+			get_oem_kernel_cmdline
+			exit $?
+			;;
+		("custom_environment")
+			get_custom_env_branding
+			exit $?
+			;;
+		(*)
+			printf -- "%s\n" "$OEM"
+			exit 0
+			;;
+	esac
+)
+#######################################################################################################
+#                                                                                                     #
+# get branding from urlader environment                                                               #
+#                                                                                                     #
+#######################################################################################################
+get_device_branding()
+(
+        sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
+)
 #######################################################################################################
 #                                                                                                     #
 # find system type or model name                                                                      #
@@ -407,8 +977,9 @@ spinlock()
 					[ $i -ge $maxwait ] && exit 1
 				else
 					if [ -d "/proc" ]; then
-						rm "$semafile" 2>/dev/null
+						rm "$semafile" 2>$null
 					fi
+					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
 				fi
 			done
 			printf -- '%d' "$spinlock_pid" >"$semafile"
@@ -420,7 +991,7 @@ spinlock()
 		[ -f "$semafile" ] || exit 0
 		pid="$(cat "$semafile")"
 		{ [ -z "$pid" ] || [ "$pid" != "$spinlock_pid" ]; } && exit 0
-		rm -f "$semafile" 2>/dev/null
+		rm -f "$semafile" 2>$null
 		exit 0
 	fi
 )
@@ -438,12 +1009,12 @@ compare_strings()
 	while [ -d "$t" ]; do
 		t="${t}_$$"
 	done
-	mkdir -p "$t" 2>/dev/null
-	trap 'rm -r "$t" 2>/dev/null' EXIT HUP INT
+	mkdir -p "$t" 2>$null
+	trap 'rm -r "$t" 2>$null' EXIT HUP INT
 	printf -- '%s\377' "$1" >"$t/left"
 	printf -- '%s\377' "$2" >"$t/right"
-	cmp -l "$t/left" "$t/right" 2>/dev/null >"$t/out"
-	read -r pos left right 2>/dev/null <"$t/out"
+	cmp -l "$t/left" "$t/right" 2>$null >"$t/out"
+	read -r pos left right 2>$null <"$t/out"
 	if [ -z "$left" ] || [ -z "$right" ]; then
 		printf -- '%d' "0"
 	else
@@ -452,13 +1023,17 @@ compare_strings()
 )
 #######################################################################################################
 #                                                                                                     #
-# get branding from environment                                                                       #
+# return maximum value of numbers specified as parameters                                             #
 #                                                                                                     #
 #######################################################################################################
-get_system_branding()
+max()
 (
-	fixed="$(get_fixed_branding)" && printf -- '%s' "$fixed" && exit 0
-	sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
+	m=0
+	while [ -n "$1" ]; do
+		[ "$1" -gt "$m" ] && m="$1"
+		shift
+	done
+	printf -- "%d\n" "$m"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -487,7 +1062,7 @@ is_kernel_present()
 		done
 		return 1
 	}
-	dd if="$1" bs=16 count=1 2>/dev/null | cmp -l - /dev/zero 2>/dev/null | __read_bytes
+	dd if="$1" bs=16 count=1 2>$null | cmp -l - $zeros 2>$null | __read_bytes
 )
 #######################################################################################################
 #                                                                                                     #
@@ -578,18 +1153,31 @@ get_version_major()
 # get the contained brandings from the directory with system defaults                                 #
 #                                                                                                     #
 # $1 - system root directory                                                                          #
+# $2 - output of 'change_branding_support' for system from $1; if empty, function will be called      #
+#      (possibly again/multiple times) to get data                                                    #
 #                                                                                                     #
 #######################################################################################################
 get_brandings()
 (
-	fixed="$(get_fixed_branding "$1")" && printf -- '%s' "$fixed" && exit 0
+	[ -z "$2" ] && cbs="$(change_branding_support "$1")" || cbs="$2"
+	if [ "$cbs" = "fixed_export" ]; then
+		get_fixed_branding "$1"
+		exit 0
+	fi
 	if [ -z "$1" ] || [ "$1" = "/" ]; then
 		eval PRODUKT="\$$avm_product_name"
 	else
 		PRODUKT="$(get_product_name "$1")"
 	fi
 	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
-	find "$path" -type d -maxdepth 1 2>/dev/null | sed -n -e "s|^$path/\(.*\)|\1|p" | sed -e '/^$/d' -e ':x;$!N;s/\n/ /;tx'
+	space=""
+	for name in "$path"/*; do
+		if [ -d "$name" ]; then
+			printf -- "%s%s" "$space" "${name##*/}"
+			space=" "
+		fi
+	done
+	printf -- "\n"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -682,7 +1270,7 @@ get_system_version()
 #######################################################################################################
 parse_date_value()
 (
-	command -v date 2>/dev/null 1>&2 || printf -- '%s' "$1"
+	command -v date 2>$null 1>&2 || printf -- '%s' "$1"
 	date --help 2>&1 | grep -q BusyBox || printf -- '%s' "$1"
 	eval "$(printf -- '%s\n' "$1" | sed -n -e "s|\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\) \([0-9]*\):\([0-9]*\):\([0-9]*\)|day=\1 month=\2 year=\3 hour=\4 minutes=\5 seconds=\6|p")"
 	# shellcheck disable=SC2154
@@ -690,17 +1278,54 @@ parse_date_value()
 )
 #######################################################################################################
 #                                                                                                     #
+# initialize text snippets from external message definition file (bootmanager.msg)                    #
+#                                                                                                     #
+#######################################################################################################
+get_localized()
+(
+	clang="$1"
+	id="$2"
+	line="$(sed -n -e "s|^[ \t]*[Ll]anguages \(.*\)|\1|p" "$messages_file")"
+	[ -z "$line" ] && exit 1
+	# shellcheck disable=SC2086
+	set -- $line
+	if ! [ "$clang" = "$1" ]; then
+		deflang="$1"
+		shift
+		while [ -n "$1" ]; do
+			if [ "$1" = "$clang" ]; then
+				usedLanguage="$1"
+				break
+			fi
+			shift
+		done
+		[ -z "$1" ] && usedLanguage="$deflang"
+	else
+		usedLanguage="$1"
+	fi
+	sed -n -e "s/^\($usedLanguage\|any\):\($id\)=\(.*\)/\3/p" "$messages_file"
+)
+#######################################################################################################
+#                                                                                                     #
+# get localized date string                                                                           #
+#                                                                                                     #
+#######################################################################################################
+get_localized_datetime_mask()
+(
+	mask="$(get_localized "${Language:-de}" "datetime")"
+	[ -z "$mask" ] && mask="%c"
+	printf -- "%s" "$mask"
+)
+#######################################################################################################
+#                                                                                                     #
 # get localized date string                                                                           #
 #                                                                                                     #
 #######################################################################################################
 get_localized_date()
-{
-	if [ "$Language" = "de" ]; then
-		date +'%d.%m.%Y, %H:%M:%S Uhr' -d @"$1"
-	else
-		date +'%m/%d/%Y %r' -d @"$1"
-	fi
-}
+(
+	mask="$1"
+	date "+$mask" -d @"$2"
+)
 #######################################################################################################
 #                                                                                                     #
 # get system build date from specified root, it's a file modification time in the newer versions      #
@@ -718,31 +1343,6 @@ get_system_date()
 		v=$(stat -c %Y "$path")
 	fi
 	printf -- '%d' "$v"
-)
-#######################################################################################################
-#                                                                                                     #
-# get system build date from specified root as a string value with localization                       #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_localized_system_date()
-(
-	get_localized_date "$(get_system_date "$1")"
-)
-#######################################################################################################
-#                                                                                                     #
-# get fixed brandings string from specified system root                                               #
-#                                                                                                     #
-# $1 - system root directory                                                                          #
-#                                                                                                     #
-#######################################################################################################
-get_fixed_branding()
-(
-	path="${1:-/}${1:+/}$avm_rcconf"
-	b="$(sed -n -e 's|^export OEM\(=\"\?\(.*\)\"\?\)\?$|\2|p' "$path")"
-	printf -- '%s' "$b"
-	[ -z "$b" ] && exit 1 || exit 0
 )
 #######################################################################################################
 #                                                                                                     #
@@ -811,8 +1411,8 @@ get_loopdevice_backingfile()
 		dev="$(get_ids_of_mountpoint "${1:-/}")"
 		[ -z "$dev" ] && exit 1
 		for device in "$sysfs_block_dir"/*; do
-			if [ "$(cat "$device/dev" 2>/dev/null)" = "$dev" ]; then
-				file="$(cat "$device/$loop_driver_name/$backing_file_name" 2>/dev/null)"
+			if [ "$(cat "$device/dev" 2>$null)" = "$dev" ]; then
+				file="$(cat "$device/$loop_driver_name/$backing_file_name" 2>$null)"
 				[ "${#file}" -gt 0 ] && printf -- '%s\n' "$file" && exit 0
 			fi
 		done
@@ -832,7 +1432,7 @@ mount_alternative_system()
 	export PATH=/sbin:/usr/sbin:/bin:/usr/bin
 	src="$(get_partition "$filesystem_name" "$inactive_name")"
 	mp="$tempdir/$alt_root_mount_name"
-	mkdir -p "$mp" 2>/dev/null || exit 1
+	mkdir -p "$mp" 2>$null || exit 1
 	if ! [ "${src#mount:}" = "$src" ]; then
 		# shellcheck disable=SC2046
 		set -- $(printf -- '%s' "$src" | sed -e "s|:| |g")
@@ -844,16 +1444,16 @@ mount_alternative_system()
 	fi
 	if [ -n "$device" ]; then
 		wr="$tempdir/$wrapper_mount_name"
-		mkdir -p "$wr" 2>/dev/null || exit 1
+		mkdir -p "$wr" 2>$null || exit 1
 		wre="$(find_mountpoint_for_device "$device")"
 		# shellcheck disable=SC2181
 		if [ $? -ne 0 ]; then
-			mount -t yaffs2 -o ro "$device" "$wr" 2>/dev/null || exit 1
+			mount -t yaffs2 -o ro "$device" "$wr" 2>$null || exit 1
 		else
 			wr="$wre"
 		fi
 	fi
-	mount -t squashfs -o ro "$wr$file" "$mp" 2>/dev/null || exit 1
+	mount -t squashfs -o ro "$wr$file" "$mp" 2>$null || exit 1
 	printf -- '%s' "$mp"
 	exit 0
 )
@@ -865,11 +1465,11 @@ mount_alternative_system()
 dismount_alternative_system()
 (
 	is_active_mountpoint "$tempdir/$alt_root_mount_name" || exit 0
-	umount -d "$tempdir/$alt_root_mount_name" 2>/dev/null || exit 1
-	rmdir "$tempdir/$alt_root_mount_name" 2>/dev/null
+	umount -d "$tempdir/$alt_root_mount_name" 2>$null || exit 1
+	rmdir "$tempdir/$alt_root_mount_name" 2>$null
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
-	umount -d "$tempdir/$wrapper_mount_name" 2>/dev/null || exit 1
-	rmdir "$tempdir/$wrapper_mount_name" 2>/dev/null
+	umount -d "$tempdir/$wrapper_mount_name" 2>$null || exit 1
+	rmdir "$tempdir/$wrapper_mount_name" 2>$null
 	exit 0
 )
 #######################################################################################################
@@ -929,8 +1529,8 @@ bin2dec()
 		printf -- '%d' $v
 	}
 
-	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>/dev/null | base64)" = "AQ==" ] && e=1 || e=0
-	{ cat; printf -- '%b' "\377"; } | cmp -l -- /dev/zero - 2>/dev/null | bin2dec_read_octal $e
+	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ] && e=1 || e=0
+	{ cat; printf -- '%b' "\377"; } | cmp -l -- $zeros - 2>$null | bin2dec_read_octal $e
 	return 0
 )
 #######################################################################################################
@@ -954,7 +1554,7 @@ get_mkfs_time()
 		[ "${#src}" -gt 0 ] && len=$(get_partition_size "$src") || len=0
 	fi
 	if [ "${#src}" -gt 0 ]; then
-		v="$(dd if="$src" bs=4 count=1 skip=2 2>/dev/null | bin2dec)"
+		v="$(dd if="$src" bs=4 count=1 skip=2 2>$null | bin2dec)"
 		if [ "${#v}" -gt 0 ]; then
 			if [ "$v" -gt "$len" ]; then
 				printf -- '%s\n' "$v" && exit 0
@@ -974,8 +1574,8 @@ get_mkfs_time()
 #######################################################################################################
 get_modified_date()
 (
-	command -v stat 2>/dev/null 1>&2 || exit 1
-	v="$(stat -c %Y -- /proc/self/exe 2>/dev/null)"
+	command -v stat 2>$null 1>&2 || exit 1
+	v="$(stat -c %Y -- /proc/self/exe 2>$null)"
 	# shellcheck disable=SC2181
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
@@ -1000,7 +1600,7 @@ get_modified_date()
 		fi
 	fi
 	[ -z "$v" ] && exit 1
-	get_localized_date "$v"
+	printf -- "%u\n" "$v"
 	exit 0
 )
 #######################################################################################################
@@ -1012,268 +1612,13 @@ get_modified_date()
 cleanup()
 {
 	[ -z "$tempdir" ] && return
-	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount -d "$tempdir/$alt_root_mount_name" 2>/dev/null
-	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount -d "$tempdir/$wrapper_mount_name" 2>/dev/null
-	rm -r "$tempdir" 2>/dev/null
+	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount -d "$tempdir/$alt_root_mount_name" 2>$null
+	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount -d "$tempdir/$wrapper_mount_name" 2>$null
+	rm -r "$tempdir" 2>$null
 	[ -z "$spinlock_pid" ] && return
 	[ -f "$semafile" ] || return
-	[ "$(cat $semafile 2>/dev/null)" = "$spinlock_pid" ] && rm -f "$semafile" 2>/dev/null
+	[ "$(cat $semafile 2>$null)" = "$spinlock_pid" ] && rm -f "$semafile" 2>$null
 }
-#######################################################################################################
-#                                                                                                     #
-# generate HTML output                                                                                #
-#                                                                                                     #
-#######################################################################################################
-html()
-(
-	cmd="printf -- \"$1\""
-	shift
-	while [ $# -gt 0 ]; do
-		cmd="$cmd${cmd:+ }\"$1\""
-		shift
-	done
-	eval "$cmd"
-)
-#######################################################################################################
-#                                                                                                     #
-# output data for a select control                                                                    #
-#                                                                                                     #
-#######################################################################################################
-select_box()
-(
-	html '<select id=\"%s\" name=\"%s\">\n' "$1" "$2"
-	for value in $3; do
-		html '<option value=\"%s\"' "$value"
-		[ "$value" = "$4" ] && html ' selected=\"selected\"'
-		html '>%s</option>\n' "$value"
-	done
-	html '</select>\n'
-)
-#######################################################################################################
-#                                                                                                     #
-# HTML code generators for different languages                                                        #
-#                                                                                                     #
-#######################################################################################################
-#                                                                                                     #
-# german version                                                                                      #
-#                                                                                                     #
-#######################################################################################################
-generate_html_lang_de()
-(
-	html '<br>'
-	html '<h3>Folgende Systeme stehen auf dieser FRITZ!Box zur Auswahl bei einem Neustart:</h3>'
-	html '<br>\n'
-	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
-	html '<label for=\"radioRunning\">\n'
-	html '<b>das aktuell laufende System</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
-	html '<br><br>Version %s vom %s<br>\n' "$running_version" "$running_date"
-	[ -z "$running_modified" ] || \
-		html 'zuletzt modifiziert am %s durch &quot;%s&quot;\n' "$running_fsdate" "$running_modified"
-	html '</label>\n'
-	html '<br><br>\n'
-	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
-	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
-	html '<label for=\"radioAlternative\">\n'
-	if [ "$alternative_is_missing" -eq 0 ]; then
-		html '<b>das derzeit inaktive System</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
-		if [ -z "$alternative_version" ]; then
-			html '<br><br>Das System in den alternativen Partitionen kann nicht identifiziert werden.<br>Es verwendet entweder ein unbekanntes Dateisystem oder es k&ouml;nnte auch besch&auml;digt sein.<br>Eine Umschaltung auf dieses System sollte nur ausgef&uuml;hrt werden, wenn man sich wirklich sehr sicher ist, was man da tut.\n'
-		else
-			html '<br><br>Version %s vom %s<br>\n' \
-					"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ -z "$alternative_modified" ] || \
-				html 'zuletzt modifiziert am %s durch &quot;%s&quot;\n' \
-					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
-		fi
-	else
-		html 'Die derzeit inaktiven Partitionen enthalten kein g&uuml;ltiges System.\n'
-	fi
-	html '</label>\n'
-	html '<br><br>\n'
-	html '<h4>Branding &auml;ndern</h4>\n'
-	if ! change_branding_support && [ "$running_branding_fixed" -eq 0 ] && [ "$alternative_branding_fixed" -eq 0 ]; then
-		html 'Bei diesem Ger&auml;t ist keine dauerhafte &Auml;nderung der Firmware-Version m&ouml;glich.\n'
-		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-	else
-		html '<span id=\"running_branding\">\n'
-		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des aktuell laufenden Systems ist fest auf &quot;<b>%s</b>&quot; eingestellt und kann nicht ge&auml;ndert werden.\n' "$running_brandings"
-		else
-			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist &quot;<b>%s</b>&quot; eingestellt.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;\n'
-				html '</label>\n'
-				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
-			else
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version &quot;<b>%s</b>&quot;, diese ist im Moment auch eingestellt.\n' "$current_branding"
-				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
-			fi
-		fi
-		html '</span>\n'
-		html '<span id=\"alternative_branding\">\n'
-		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Die Firmware-Version des derzeit inaktiven Systems ist fest auf &quot;<b>%s</b>&quot; eingestellt und kann nicht ge&auml;ndert werden.\n' "$alternative_brandings"
-		else
-			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt mehrere Firmware-Versionen, im Moment ist &quot;<b>%s</b>&quot; eingestellt.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idAlternativeBranding\">Beim n&auml;chsten Start wird folgender Wert gesetzt und bis zur n&auml;chsten &Auml;nderung verwendet:&nbsp;</label>\n'
-				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
-			else
-				if [ -z "$alternative_version" ];then
-					html 'Da das alternative System nicht identifiziert werden konnte, ist auch keine Information &uuml;ber dort enthaltene Firmware-Versionen verf&uuml;gbar.\n'
-					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
-				else
-					html 'Das oben ausgew&auml;hlte System unterst&uuml;tzt nur die Firmware-Version &quot;<b>%s</b>&quot;, ' "$alternative_brandings"
-					if [ "$alternative_brandings" = "$current_branding" ]; then
-						html 'diese ist im Moment auch eingestellt.\n'
-					else
-						html 'im Moment ist jedoch &quot;<b>%s</b>&quot; eingestellt.<br>\n' "$current_branding"
-						html 'Bei der Umschaltung des zu verwendenden Systems wird daher auch gleichzeitig dieser Wert auf &quot;<b>%s</b>&quot; ge&auml;ndert.\n' "$alternative_brandings"
-					fi
-				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-				fi
-			fi
-		fi
-		html '</span>\n'
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
-# english version                                                                                     #
-#                                                                                                     #
-#######################################################################################################
-generate_html_lang_en()
-(
-	html '<br>'
-	html '<h3>The following systems are available to be booted on this device next time:</h3>'
-	html '<br>\n'
-	html '<input type=\"radio\" id=\"radioRunning\" name=\"%s\" value=\"running\"%s>\n' "$system_select_name" "$running_checked"
-	html '<label for=\"radioRunning\">\n'
-	html '<b>the currently running system</b> (%s=%s)\n' "$system_select_name" "$current_system_switch"
-	html '<br><br>version %s built on %s<br>\n' "$running_version" "$running_date"
-	[ -z "$running_modified" ] || \
-		html 'last modified on %s using &quot;%s&quot;\n' "$running_fsdate" "$running_modified"
-	html '</label>\n'
-	html '<br><br>\n'
-	[ "$alternative_is_missing" -eq 1 ] && disabled=" disabled" || disabled=""
-	html '<input type=\"radio\" id=\"radioAlternative\" name=\"%s\" value=\"alternative\"%s%s>\n' "$system_select_name" "$alternative_checked" "$disabled"
-	html '<label for=\"radioAlternative\">\n'
-	if [ "$alternative_is_missing" -eq 0 ]; then
-		html '<b>the alternative system</b> (%s=%s)\n' "$system_select_name" "$(( ( current_system_switch + 1 ) % 2 ))"
-		if [ -z "$alternative_version" ]; then
-			html '<br><br>Unable to identify the installed system in the alternative partitions.<br>It may use an unknown filesystem format, it may have been damaged, it&#39;s simply missing or it has been deleted otherwise.<br>\n'
-			html 'Switching to this system may prevent your device from starting correctly.<br>You should be really sure, what you are doing in this case.\n'
-		else
-			html '<br><br>version %s built on %s<br>\n' \
-				"${alternative_version:-unbekannt}" "${alternative_date:-unbekannt}"
-			[ -z "$alternative_modified" ] || \
-				html 'last modified on %s using &quot;%s&quot;\n' \
-					"${alternative_fsdate:-unbekannt}" "${alternative_modified:-unbekannt}"
-		fi
-	else
-		html 'The alternative partitions do not contain any valid system.\n'
-	fi
-	html '</label>\n'
-	html '<br><br>\n'
-	html '<h4>Change branding</h4>\n'
-	if ! change_branding_support && [ "$running_branding_fixed" -eq 0 ] && [ "$alternative_branding_fixed" -eq 0 ]; then
-		html 'Unable to change the branding permanently on this device.\n'
-		html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-	else
-		html '<span id=\"running_branding\">\n'
-		if [ "$running_branding_fixed" -eq 1 ]; then
-			html 'Branding of currently running system was set to a fixed value of &quot;<b>%s</b>&quot; and can not be changed.\n' "$running_brandings"
-		else
-			if [ "$chg_running_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idRunningBranding\">\n'
-				html 'Restarting the device now, will set this name to the following value (until it&apos;s changed once more):&nbsp;\n'
-				html '</label>\n'
-				select_box 'idRunningBranding' 'running_branding' "$running_brandings" "$current_branding"
-			else
-				html 'The system selected above supports only the single OEM name &quot;<b>%s</b>&quot; and this is also the current one.\n' "$current_branding"
-				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
-			fi
-		fi
-		html '</span>\n'
-		html '<span id=\"alternative_branding\">\n'
-		if [ "$alternative_branding_fixed" -eq 1 ]; then
-			html 'Branding of installed alternative system was set to a fixed value of &quot;<b>%s</b>&quot; and can not be changed.\n' "$alternative_brandings"
-		else
-			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html 'The system selected above supports different OEM names, currently the value &quot;<b>%s</b>&quot; is set.\n' "$current_branding"
-				html '<br>\n'
-				html '<label for=\"idAlternativeBranding\">'
-				html 'Restarting the device now, will set this name to the following value (until it&apos;s changed once more):&nbsp;'
-				html '</label>\n'
-				select_box 'idAlternativeBranding' 'alternative_branding' "$alternative_brandings" "$current_branding"
-			else
-				if [ -z "$alternative_version" ];then
-					html 'Due to problems identifying the installed alternative system, there&#39;s no idea which values are supported by this system and the value remains unchanged.\n'
-					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
-				else
-					html 'The system selected above supports only the single OEM name &quot;<b>%s</b>&quot;' "$alternative_brandings"
-					if [ "$alternative_brandings" = "$current_branding" ]; then
-						html ' and this is also the current one.\n'
-					else
-						html ', but currently &quot;<b>%s</b>&quot; is set.<br>\n' "$current_branding"
-						html 'Restarting the device now, will set the OEM name value to &quot;<b>%s</b>&quot; without any further questions.\n' "$alternative_brandings"
-					fi
-					html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$alternative_brandings"
-				fi
-			fi
-		fi
-		html '</span>\n'
-	fi
-)
-#######################################################################################################
-#                                                                                                     #
-# generate JS code to display and hide additional elements depending on current selection             #
-#                                                                                                     #
-#######################################################################################################
-generate_javascript()
-(
-	html '<script type=\"text/javascript\">\n'
-	html 'function onBootManagerClick(evt) {\n'
-	html 'var radioButton = jxl.evtTarget(evt);\n'
-	if change_branding_support; then
-		html 'if ( radioButton.id == \"radioRunning\" ) {\n'
-		html 'jxl.show(\"running_branding\");\n'
-		html 'jxl.hide(\"alternative_branding\");\n'
-		html '} else {\n'
-		html 'jxl.hide(\"running_branding\");\n'
-		html 'jxl.show(\"alternative_branding\");\n'
-		html '}\n'
-	fi
-	html '}\n'
-	html 'function initBootManager() {\n'
-	html 'jxl.addEventHandler(\"radioRunning\",\"click\",onBootManagerClick);\n'
-	html 'jxl.addEventHandler(\"radioAlternative\",\"click\",onBootManagerClick);\n'
-	if change_branding_support; then
-		html 'jxl.display(\"running_branding\", %s);\n' "$( [ "$show_running" -eq 1 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
-		html 'jxl.display(\"alternative_branding\", %s);\n' "$( [ "$show_running" -eq 0 ] && printf -- '%s' "true" || printf -- '%s' "false" )"
-	fi
-	html '}\n'
-	html 'ready.onReady(initBootManager);\n'
-	html '</script>\n'
-)
-#######################################################################################################
-#                                                                                                     #
-# create HTML additions to the 'reboot.lua' page                                                      #
-#                                                                                                     #
-#######################################################################################################
-not_supported()
-(
-	if [ "$Language" = "de" ]; then
-		html '<h4>Die Umschaltung zwischen zwei installierten Systemen ist auf dieser FRITZ!Box nicht verf&uuml;gbar.</h4>\n'
-	else
-		html '<h4>Switching between alternative systems is not supported on this device.</h4>\n'
-	fi
-)
 #######################################################################################################
 #                                                                                                     #
 # collect data from active and inactive system for further processing                                 #
@@ -1281,24 +1626,20 @@ not_supported()
 #######################################################################################################
 collect_data()
 {
+	datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 	running_version="$(get_system_version)"
-	running_date="$(get_localized_system_date)"
-	running_fsdate="$(get_modified_date)"
+	running_date_epoch="$(get_system_date)"
+	running_date="$(get_localized_date "$datetime_mask" "$running_date_epoch")"
+	running_fsdate_epoch="$(get_modified_date)"
+	running_fsdate="$(get_localized_date "$datetime_mask" "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
-	readonly running_version running_date running_fsdate running_modified
-	chg_running_branding=0
-	running_branding_fixed=0
-	if change_branding_support; then
-		current_branding="$(get_system_branding)"
-		running_brandings="$(get_brandings)"
-		[ -z "$(get_fixed_branding)" ] || running_branding_fixed=1
-		[ "$(count_of_items "$running_brandings")" -gt 1 ] && chg_running_branding=1
-	fi
+	readonly running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified
+	running_cbs="$(change_branding_support)"
+	running_branding="$(get_system_branding "" "$running_cbs")"
+	running_brandings="$(get_brandings "" "$running_cbs")"
 	current_system_switch=$(get_system_switch)
-	readonly current_system_switch
+	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
-	chg_alternative_branding=0
-	alternative_branding_fixed=0
 	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 		alternative_is_missing=0
 		spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
@@ -1306,29 +1647,20 @@ collect_data()
 			alternative_version="$(get_system_version "$mp")"
 			readonly alternative_version
 			if [ -n "$alternative_version" ]; then
-				alternative_date="$(get_localized_system_date "$mp")"
-				alternative_fsdate="$(get_modified_date "$mp")"
+				alternative_date_epoch="$(get_system_date "$mp")"
+				alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
+				alternative_fsdate_epoch="$(get_modified_date "$mp")"
+				alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
 				alternative_modified="$(get_modified_by "$mp")"
-				readonly alternative_date alternative_fsdate alternative_modified
-				if change_branding_support; then
-					alternative_brandings="$(get_brandings "$mp")"
-					readonly alternative_brandings
-					[ -z "$(get_fixed_branding "$mp")" ] && alternative_branding_fixed=0 || alternative_branding_fixed=1
-					[ "$(count_of_items "$alternative_brandings")" -gt 1 ] && chg_alternative_branding=1
-				fi
+				readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+				alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
+				alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
+				alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
+				readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
 			fi
 			dismount_alternative_system
 		fi
 		spinlock release
-	fi
-	if is_switched && [ $alternative_is_missing -eq 0 ]; then
-		running_checked=""
-		alternative_checked="$radio_button_checked"
-		show_running=0
-	else
-		running_checked="$radio_button_checked"
-		alternative_checked=""
-		show_running=1
 	fi
 }
 #######################################################################################################
@@ -1339,39 +1671,45 @@ collect_data()
 get_values()
 {
 	printf -- "active_version=\"%s\"\n" "$running_version"
+	printf -- "active_date_epoch=\"%s\"\n" "$running_date_epoch"
 	printf -- "active_date=\"%s\"\n" "$running_date"
 	printf -- "active_modified_by=\"%s\"\n" "$running_modified"
+	printf -- "active_modified_at_epoch=\"%s\"\n" "$running_fsdate_epoch"
 	printf -- "active_modified_at=\"%s\"\n" "$running_fsdate"
 	printf -- "active_brandings=\"%s\"\n" "$running_brandings"
+	printf -- "active_branding=\"%s\"\n" "$running_branding"
+	printf -- "active_change_branding_support=%s\n" "$running_cbs"
 	if [ $alternative_is_missing -eq 1 ]; then
 		printf -- "inactive_version=\"%s\"\n" "missing"
 	else
 		printf -- "inactive_version=\"%s\"\n" "$alternative_version"
+		printf -- "inactive_date_epoch=\"%s\"\n" "$alternative_date_epoch"
 		printf -- "inactive_date=\"%s\"\n" "$alternative_date"
 		printf -- "inactive_modified_by=\"%s\"\n" "$alternative_modified"
+		printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
 		printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
 		printf -- "inactive_brandings=\"%s\"\n" "$alternative_brandings"
+		printf -- "inactive_branding=\"%s\"\n" "$alternative_branding"
+		printf -- "inactive_change_branding_support=%s\n" "$alternative_cbs"
 	fi
-	printf -- "current_branding=\"%s\"\n" "$current_branding"
-	cb_support=$(( alternative_branding_fixed + running_branding_fixed ))
-	if [ $cb_support -eq 2 ]; then
-		cb_supported="both_fixed"
+	#
+	# the value of 'switch_branding_support' is kept stable for older frontends, but it may be removed
+	# in future versions
+	#
+	if [ "$running_cbs" = "immutable" ] && [ "$alternative_cbs" = "immutable" ]; then
+		cb_support="false"
+	elif [ "$running_cbs" = "fixed_export" ] && ! [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="running_fixed"
+	elif ! [ "$running_cbs" = "fixed_export" ] && [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="alternative_fixed"
+	elif [ "$running_cbs" = "fixed_export" ] && [ "$alternative_cbs" = "fixed_export" ]; then
+		cb_support="both_fixed"
 	else
-		if change_branding_support; then
-			if [ $cb_support -eq 1 ]; then
-				if [ $running_branding_fixed -eq 1 ]; then
-					cb_supported="running_fixed"
-				else
-					cb_supported="alternative_fixed"
-				fi
-			else
-				cb_supported="true"
-			fi
-		else
-			cb_supported="false"
-		fi
+		cb_support="true"
 	fi
-	printf -- "switch_branding_support=%s\n" "$cb_supported"
+	printf -- "device_branding=%s\n" "$device_branding"
+	printf -- "device_branding_changeable=%s\n" "$device_branding_is_changeable"
+	printf -- "switch_branding_support=%s\n" "$cb_support"
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
 }
@@ -1394,7 +1732,93 @@ is_dualboot_supported()
 #######################################################################################################
 save_environment()
 (
-	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>/dev/null
+	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>$null
+)
+#######################################################################################################
+#                                                                                                     #
+# display debug line with optional colorization                                                       #
+#                                                                                                     #
+#######################################################################################################
+debug()
+(
+	if [ "$color" -eq 1 ]; then
+		line_start="$(printf -- "\033[32;1m")"
+		line_end="$(printf -- "\033[0m")"
+		header_end=""
+		case "$2" in
+			("red")
+				c=31
+				;;
+			("green")
+				c=32
+				;;
+			("yellow")
+				c=33
+				;;
+			("blue")
+				c=34
+				;;
+			(*)
+				c=37
+				;;
+		esac
+		value_start="$(printf -- "\033[%s;1m" "$c")"
+	else
+		line_start=""
+		line_end=""
+		header_end=""
+		value_start=""
+	fi
+	mask="$(printf -- "%s%s%s%s%s%s\\\\n" "$line_start" "$1" "$header_end" "$value_start" "$3" "$line_end")"
+	shift 3
+	# shellcheck disable=SC2059
+	printf -- "$mask" "$@"
+)
+#######################################################################################################
+#                                                                                                     #
+# display delimiter line to format verbose debug output                                               #
+#                                                                                                     #
+#######################################################################################################
+debug_delim()
+(
+	if [ "$color" -eq 1 ]; then
+		c="$1"
+		v="$2"
+		shift 2
+		left="$(dd if=$zeros bs=1 count=$(( ( max_delim - ${#1} ) / 2 )) 2>$null | tr '\000' '>')"
+		right="$(dd if=$zeros bs=1 count=$(( max_delim - ${#1} - ${#left} )) 2>$null | tr '\000' '<')"
+		mask="$(printf -- "{white}%s%s {%s}%s {white}%s%s{reset}" ">>>>>>>>>>" "$left" "$c" "$v" "$right" "<<<<<<<<<<")"
+		# shellcheck disable=SC2059
+		printf -- "$mask\n" "$@" | colorize
+	else
+		shift 2
+		printf -- ">>>>>>>>>> %s <<<<<<<<<<\n" "$*" | \
+		sed -e "s|{[^}]}||g"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# display delimiter line to format verbose debug output                                               #
+#                                                                                                     #
+#######################################################################################################
+colorize()
+(
+	[ "$color" -eq 0 ] && cat - && exit
+	color() { printf -- "\033[%s;1m" "$1"; }
+	red="$(color 31)"
+	red_bg="$(color "37;101")"
+	yellow="$(color 33)"
+	green="$(color 32)"
+	blue="$(color 34)"
+	white="$(color 37)"
+	reset="$(printf -- "\033[0m")"
+	sed -e "s|{red}|$red|g" \
+		-e "s|{red_bg}|$red_bg|g" \
+		-e "s|{yellow}|$yellow|g" \
+		-e "s|{green}|$green|g" \
+		-e "s|{blue}|$blue|g" \
+		-e "s|{white}|$white|g" \
+		-e "s|{reset}|$reset|g"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1404,7 +1828,7 @@ save_environment()
 exec 2>&1
 tempdir="$tmpdir/$$_$(date +%s)"
 readonly tempdir
-mkdir -p "$tempdir" 2>/dev/null
+mkdir -p "$tempdir" 2>$null
 trap cleanup HUP EXIT INT TERM
 rc=127
 #######################################################################################################
@@ -1413,6 +1837,22 @@ rc=127
 #                                                                                                     #
 #######################################################################################################
 save_environment
+verbose=0
+if [ -f "$device_cache_file" ]; then
+	device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
+	device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
+	[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
+else
+	device_branding="$(check_urlader_configuration)"
+	# shellcheck disable=SC2181
+	if [ "$?" -eq 0 ]; then
+		device_branding_is_changeable="true"
+		printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
+	else
+		device_branding_is_changeable="false"
+		printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
+	fi
+fi
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -1421,39 +1861,81 @@ case "$1" in
 		[ -f $semafile ] && rc=1 || rc=0
 		;;
 	("debug")
-		is_puma_based_device && printf -- "system type = Puma6/7\n" || printf -- "system type = %s\n" "$(get_system_type)"
-		printf -- "system selector = %u\n" "$(get_system_switch)"
-		printf -- "system is switched = %s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "system branding = %s\n" "$(get_system_branding)"
-		printf -- "system branding is changeable = %s\n" "$(change_branding_support && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "active kernel = %s\n" "$(get_partition "$kernel_name" "$active_name")"
-		printf -- "active filesystem = %s\n" "$(get_partition "$filesystem_name" "$active_name")"
-		printf -- "active system version = %s\n" "$(get_system_version)"
-		printf -- "active system date = %s\n" "$(get_localized_system_date)"
-		printf -- "active system modification date = %s\n" "$(get_modified_date)"
-		printf -- "active system modification source = %s\n" "$(get_modified_by)"
-		printf -- "brandings supported on active system = %s%s\n" "$(get_brandings)" "$([ -z "$(get_fixed_branding)" ] || printf -- '%s' " (fixed)")"
-		printf -- "inactive kernel = %s\n" "$(get_partition "$kernel_name" "$inactive_name")"
-		printf -- "inactive system is installed = %s\n" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
-		printf -- "inactive filesystem = %s\n" "$(get_partition "$filesystem_name" "$inactive_name")"
+		shift
+		verbose=0
+		while [ -n "$1" ]; do
+			if [ "$1" = "verbose" ]; then
+				verbose=1
+			elif [ "$1" = "color" ]; then
+				color=1
+			elif [ "$1" = "nocolor" ]; then
+				color=0
+			fi
+			shift
+		done
+		if [ -z "$color" ] && [ -t 1 ]; then
+			color=1
+		fi
+		delim_1="debug output of bootmanager script"
+		delim_2="running system"
+		delim_3="alternative system"
+		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
+		set | grep "^delim_[0-9]*=" | \
+		while read -r ln; do
+			lv="$(expr "$ln" : "[^=]*='\(.*\)'")"
+			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
+		done
+		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
+		is_puma_based_device && system_type="Puma6/7" || system_type="$(get_system_type)"
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
+		debug "system type = " "yellow" "%s" "$system_type"
+		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
+		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
+		debug "device branding = " "yellow" "%s" "$device_branding"
+		debug "device branding is changeable = " "yellow" "%s" "$device_branding_is_changeable"
+		debug "current branding = " "yellow" "%s" "$OEM"
+		debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+		debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+		debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
+		debug "active system version = " "yellow" "%s" "$(get_system_version)"
+		value="$(get_system_date)"
+		debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+		value="$(get_modified_date)"
+		debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+		debug "active system modification source = " "yellow" "%s" "$(get_modified_by)"
+		cbs="$(change_branding_support)"
+		debug "brandings supported on active system = " "yellow" "%s" "$(get_brandings "" "$cbs")"
+#		if ! [ "$cbs" = "changeable" ]; then
+			debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
+#		fi
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
+		debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+		debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
 		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 			spinlock_pid=$$
 			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
-			printf -- "inactive filesystem mounted on %s\n" "$mp"
+			[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "inactive filesystem mounted on %s" "$mp")"
 			if [ -n "$mp" ]; then
-				printf -- "inactive system version = %s\n" "$(get_system_version "$mp")"
-				printf -- "inactive system date = %s\n" "$(get_localized_system_date "$mp")"
-				printf -- "inactive system modification date = %s\n" "$(get_modified_date "$mp")"
-				printf -- "inactive system modification source = %s\n" "$(get_modified_by "$mp")"
-				printf -- "brandings supported on inactive system = %s%s\n" "$(get_brandings "$mp")" "$([ -z "$(get_fixed_branding "$mp")" ] || printf -- '%s' " (fixed)")"
+				debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
+				value="$(get_system_date "$mp")"
+				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				value="$(get_modified_date "$mp")"
+				debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				debug "inactive system modification source = " "yellow" "%s" "$(get_modified_by "$mp")"
+				altcbs="$(change_branding_support "$mp" "$cbs")"
+				debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
+#				if ! [ "$altcbs" = "changeable" ]; then
+					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
+#				fi
 				dismount_alternative_system
-				printf -- "inactive filesystem dismounted\n"
+				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "inactive filesystem dismounted"
 			else
-				printf -- "inactive filesystem could not be mounted\n"
+				debug "" "red" "%s" "inactive filesystem could not be mounted"
 			fi
 			spinlock release
 		else
-			printf -- "inactive system checks skipped\n"
+			debug "" "red" "%s" "inactive system checks skipped"
 		fi
 		rc=0
 		;;
@@ -1468,49 +1950,14 @@ case "$1" in
 					get_values >"$data_cache_file"
 				fi
 			fi
-			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>/dev/null
+			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>$null
 			rc=0
 		else
 			rc=1
 		fi
 		;;
-	("html_display")
-		skip_generate=0
-		if ! [ "$2" = "nocache" ]; then
-			if [ -f "$html_cache_file" ] && [ -f "$html_cache_error" ]; then
-				cat "$html_cache_file" 2>/dev/null
-				rc="$(cat "$html_cache_error" 2>/dev/null)"
-				skip_generate=1
-			fi
-		fi
-		if [ $skip_generate -eq 0 ]; then
-			if ! [ "$2" = "nocache" ]; then
-				exec 4>&1
-				exec 1>"$html_cache_file"
-			fi
-			if is_dualboot_supported; then
-				[ "$Language" = "de" ] || Language="en"
-				spinlock_pid=$$
-				collect_data
-				[ "$2" = "nocache" ] || get_values >"$data_cache_file"
-				eval generate_html_lang_$Language
-				generate_javascript
-				rc=$?
-			else
-				not_supported
-				rc=1
-			fi
-			if ! [ "$2" = "nocache" ]; then
-				exec 1>&-
-				exec 1>&4
-				printf -- "%u" "$rc" >"$html_cache_error"
-				cat "$html_cache_file"
-			fi
-		fi
-		;;
 	("clear_cache")
-		[ -f "$html_cache_file" ] && rm "$html_cache_file" "$html_cache_error" 2>/dev/null
-		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>/dev/null
+		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>$null
 		rc=0
 		;;
 	("switch_to")
