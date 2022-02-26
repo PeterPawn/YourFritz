@@ -122,7 +122,8 @@ readonly semafile="$tmpfs/run/bootmanager.sem"
 readonly fdt_chosen="$procfs/device-tree/chosen"
 readonly yf_change_oem_marker="# YF_CHANGE_OEM"
 readonly yf_change_oem_script="etc/init.d/yf_change_oem.sh"
-readonly yf_custom_environment_script="yf_custom_environment.sh"
+readonly yf_custom_environment_script="yf_custom_environment\\.sh"
+readonly yf_custom_environment_locations="\$path/etc/boot.d \$path/etc/init.d \$path/etc/inittab \$wrapper/etc/inittab"
 #######################################################################################################
 #                                                                                                     #
 # various sources for version numbers                                                                 #
@@ -227,10 +228,20 @@ printf_ss()
 get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1|p" "$proc_devices"; )
 #######################################################################################################
 #                                                                                                     #
-# provide a shellcheck compatible use of printf with variable mask values                             #
+# get a value from urlader environment                                                                #
 #                                                                                                     #
 #######################################################################################################
 get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2>$null; )
+#######################################################################################################
+#                                                                                                     #
+# set a new value on urlader environment and verify successful change                                 #
+#                                                                                                     #
+#######################################################################################################
+set_environment_value()
+(
+	printf -- "%s\t%s\n" "$1" "$2" >"$urlader_environment"
+	grep -q "^$1[[:space]]$2\$" "$urlader_environment" 2>$null
+)
 #######################################################################################################
 #                                                                                                     #
 # check urlader configuration of host device                                                          #
@@ -242,7 +253,7 @@ check_urlader_configuration()
 	append() { cat - >>"$ut/config_header"; }
 	env() { get_environment "$1"; }
 	fsize() { wc -c <"$1" 2>$null | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
-	chkgrep() { [ "$(printf "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC")" = "$(printf "ABC\nABC\n")" ] && return 0 || return 1; }
+	chkgrep() { [ "$(printf -- "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC" 2>$null)" = "$(printf -- "ABC\nABC\n")" ] && return 0 || return 1; }
 	h2b() {
 		h2b_ro()
 		{
@@ -271,7 +282,7 @@ check_urlader_configuration()
 							dd if="$zeros" bs=$z count=1 2>$null
 							z=0
 						fi
-						printf "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+						printf -- "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
 					fi
 					h=1
 				else
@@ -283,7 +294,7 @@ check_urlader_configuration()
 			return 0
 		}
 		if [ -n "$1" ]; then
-			printf "%s" "$1" | h2b
+			printf -- "%s" "$1" | h2b
 			return $?
 		fi
 		cmp -l -- "$zeros" - 2>$null | h2b_ro
@@ -314,9 +325,9 @@ check_urlader_configuration()
 				v=$(( v + rt ))
 				i=$(( p + 1 ))
 			done
-			printf "%d" $v
+			printf -- "%d" $v
 		}
-		( cat; printf "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | b2d_ro
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | b2d_ro
 		return 0
 	)
 	str() (
@@ -324,7 +335,7 @@ check_urlader_configuration()
 		{
 			s=1
 			while read -r p l _; do
-				[ "$p" -ne "$s" ] && printf "%u\n" "$(( s - 1 ))" && return
+				[ "$p" -ne "$s" ] && printf -- "%u\n" "$(( s - 1 ))" && return
 				s=$(( s + 1 ))
 			done
 			return 1
@@ -384,19 +395,19 @@ check_urlader_configuration()
 		h=$(( $3 / 2 ))
 		s=$(( $4 / h ))
 		mo="$(dd if="$2" count=1 bs="$3" skip=$(( $4 / $3 )) 2>$null | grep -ao "$1" 2>$null)"
-		[ -z "$mo" ] && printf "(not found)" && exit 1
+		[ -z "$mo" ] && printf -- "(not found)" && exit 1
 		if ! dd if="$2" count=1 bs="$h" skip="$s" 2>$null | grep -q -ao "$1" 2>$null; then
-			if [ "$(dd if="$2" count=1 bs="$h" skip=$(( s + 1 )) 2>$null | grep -ao "$1")" = "$mo" ]; then
+			if [ "$(dd if="$2" count=1 bs="$h" skip=$(( s + 1 )) 2>$null | grep -ao "$1" 2>$null)" = "$mo" ]; then
 				lwr=1
 			else
-				printf "%u\n" "$(( $4 + h - 16 ))"
+				printf -- "%u\n" "$(( $4 + h - 16 ))"
 				exit 0
 			fi
 		else
 			lwr=0
 		fi
 		if [ "$h" -eq 16 ]; then
-			[ "$lwr" -eq 0 ] && printf "%u\n" "$(( s * h ))" || printf "%u\n" "$(( ( s + 1 ) * h ))"
+			[ "$lwr" -eq 0 ] && printf -- "%u\n" "$(( s * h ))" || printf -- "%u\n" "$(( ( s + 1 ) * h ))"
 			exit 0
 		fi
 		sblk "$1" "$2" "$(( h ))" "$(( $4 + ( lwr * h ) ))"
@@ -404,7 +415,7 @@ check_urlader_configuration()
 	fndo() (
 		f="$1"; l="$2"; ch="$3"
 		fo="$(sblk "$l" "$f" "$(fsize "$f")" 0)"
-		[ "$fo" = "(not found)" ] && printf "%s" "$fo" && exit 1
+		[ "$fo" = "(not found)" ] && printf -- "%s" "$fo" && exit 1
 		s=$(( fo - ( fo % 4096 ) - 4096 ))
 		[ "$s" -lt 0 ] && s=0
 		dd if="$f" of="$ut/try_here" bs=4096 count=2 skip=$(( s / 4096 )) 2>$null
@@ -421,7 +432,7 @@ check_urlader_configuration()
 		if [ "$fnd" -eq 1 ]; then
 			dd if="$f" of="$ut/check_this" bs=16 count=64 skip=$(( ( s + o ) / 16 )) 2>$null
 			if chkcfg "$ut/check_this" 1>$null; then
-				printf "%u\n" "$(( s + o ))"
+				printf -- "%u\n" "$(( s + o ))"
 				exit 0
 			fi
 		fi
@@ -463,23 +474,23 @@ check_urlader_configuration()
 		eval $value="$env_value"
 	done
 	touch "$ut/config_header" 2>$null
-	printf "\000\000\000\003" | append
+	printf -- "\000\000\000\003" | append
 	[ "$(get_system_type)" = "Puma6/7" ] && memsize=$(( memsize / 2 ))
-	h2b "$(printf "%08x" "$memsize")" | append
-	printf "\000\000\000\000" | append
+	h2b "$(printf -- "%08x" "$memsize")" | append
+	printf -- "\000\000\000\000" | append
 	i=0
 	while [ $i -lt 16 ]; do
-		mtd=$(printf "mtd%u" "$i")
+		mtd=$(printf -- "mtd%u" "$i")
 		i=$(( i + 1 ))
 		val="$(env "$mtd")"
 		if [ -z "$val" ]; then
-			printf "\000\000\000\000\000\000\000\000" | append
+			printf -- "\000\000\000\000\000\000\000\000" | append
 		else
 			start="$(expr "$val" : "\(0[xX][0-9a-fA-F]*\),.*")"
 			end="$(expr "$val" : "[^,]*,\(0[xX][0-9a-fA-F]*\)")"
 			size=$(( end - start ))
-			h2b "$(printf "%08x" "$start")" | append
-			h2b "$(printf "%08x" "$size")" | append
+			h2b "$(printf -- "%08x" "$start")" | append
+			h2b "$(printf -- "%08x" "$size")" | append
 		fi
 	done
 	found=0
@@ -529,7 +540,7 @@ check_urlader_configuration()
 		ent=$(( ent + 1 ))
 		if [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
-			printf "%s\n" "$val"
+			printf -- "%s\n" "$val"
 			exit 1
 		fi
 	done
@@ -541,7 +552,7 @@ check_urlader_configuration()
 		coff=$(( coff + ${#val} + 1 ))
 		if [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in defaults values area.\n" "$env_name"
-			printf "%s\n" "$val"
+			printf -- "%s\n" "$val"
 			exit 0
 		fi
 	done
@@ -571,8 +582,9 @@ get_fixed_branding()
 check_oem_kernel_cmdline()
 (
 	path="${1:-/}${1:+/}"
-
-	exit 1
+	grep -q "^$yf_change_oem_marker\$" "$path$avm_rcconf" 2>$null || exit 1
+	grep -q "$yf_change_oem_script" "$path$avm_rcconf" 2>$null || exit 1
+	exit 0
 )
 #######################################################################################################
 #                                                                                                     #
@@ -583,8 +595,38 @@ check_oem_kernel_cmdline()
 #######################################################################################################
 check_custom_environment()
 (
+	st="$(get_system_type)"
+	if [ "$st" = "VR9" ]; then
+		if is_active_mountpoint "$tempdir/$wrapper_mount_name"; then
+			# shellcheck disable=SC2034
+			wrapper="$tempdir/$wrapper_mount_name"
+			altsys=1
+		else
+			# shellcheck disable=SC2034
+			wrapper="$vr9_wrapper_dir"
+			altsys=0
+		fi
+	fi
 	path="${1:-/}${1:+/}"
-
+	path="${path%*/}"
+	for dir in $(eval printf -- "%s\\\\n" "$yf_custom_environment_locations"); do
+		if [ -d "$dir" ]; then
+			recursive="-r"
+			suffix="/*"
+		else
+			recursive=""
+			suffix=""
+		fi
+		# shellcheck disable=SC2086
+		if grep -q $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null; then # script called from somewhere
+			# shellcheck disable=SC2086,SC2013
+			for fn in $(grep -l $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null | sed -n -e 1p); do
+				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>$null | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\)|\1|p")"
+				[ "$st" = "VR9" ] && [ "$altsys" -eq 1 ] && v="$tempdir$v"
+				[ -f "$v" ] && exit 0
+			done
+		fi
+	done
 	exit 1
 )
 #######################################################################################################
@@ -613,7 +655,7 @@ change_branding_support()
 	check_oem_kernel_cmdline "$1" && printf -- "kernel_cmdline" && exit 0
 	check_custom_environment "$1" && printf -- "custom_environment" && exit 0
 	if [ -n "$2" ] && { [ "$2" = "immutable" ] || [ "$2" = "changeable" ]; }; then
-		printf "%s\n" "$2"
+		printf -- "%s\n" "$2"
 		[ "$2" = "changeable" ] && exit 0 || exit 1
 	else
 		if [ -n "$device_branding_is_changeable" ]; then
@@ -647,11 +689,38 @@ get_oem_kernel_cmdline()
 	kargs="$(get_environment "$kernel_args") $(get_environment "$kernel_args1")"
 	for kv in $kargs; do
 		if [ -n "$(expr "$kv" : "\([Oo][Ee][Mm]\)=.*")" ]; then
-			printf "%s\n" "$kv" | sed -e "s|^\([^=]*\)=\(['\"]\?\)\(.*\)\2\$|\3|"
+			printf -- "%s\n" "$kv" | sed -e "s|^\([^=]*\)=\(['\"]\?\)\(.*\)\2\$|\3|"
 			exit 0
 		fi
 	done
 	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# replace an existing 'oem=<value>' entry from 'kernel_args' or 'kernel_args1' or append a new one,   #
+# if it doesn't exist yet                                                                             #
+#                                                                                                     #
+#######################################################################################################
+set_oem_kernel_cmdline()
+(
+	replaced=0
+	for var in $kernel_args1 $kernel_args; do
+		line=""
+		for kv in $(get_environment "$var"); do
+			if [ -n "$(expr "$kv" : "\([Oo][Ee][Mm]\)=.*")" ]; then
+				kv="$(printf -- "oem=%s" "$1")"
+				replaced=1
+			else
+				line="$line${line:+ }$kv"
+			fi
+		done
+		if [ "$replaced" -eq 1 ]; then
+			set_environment_value "$var" "$line"
+			exit $?
+		fi
+	done
+	set_environment_value "$var" "$line oem=$1"
+	exit $?
 )
 #######################################################################################################
 #                                                                                                     #
@@ -669,10 +738,29 @@ get_custom_env_branding()
 	trap 'rm $tempdir/tffsnode' EXIT
 	branding="$(sed -n -e "s|^${branding_name}[ \t]\(.*\)|\1|p" "$tempdir/tffsnode")"
 	if [ -n "$branding" ]; then
-		printf "%s\n" "$branding"
+		printf -- "%s\n" "$branding"
 		exit 0
 	fi
 	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# remove an existing 'firmware_version <value>' entry from custom environment file, if it exists, and #
+# append a new entry containing the wanted setting                                                    #
+#                                                                                                     #
+#######################################################################################################
+set_custom_env_branding()
+(
+	minor="${YF_CUSTOM_ENVIRONMENT_TFFS_MINOR:-80}"
+	[ -z "$minor" ] && exit 1
+	major="$(get_tffs_major)"
+	mknod "$tempdir/tffs_node" c "$major" "$minor" || exit 1
+	sed -e "/^$branding_name/d" "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>$null
+	printf -- "%s\t%s\n" "$branding_name" "$1" >>"$tempdir/tffsnode"
+	cat "$tempdir/tffsnode" >"$tempdir/tffs_node"
+	grep -q "^${branding_name}[[:space:]]$1\$" "$tempdir/tffs_node" 2>$null && rc=0 || rc=1
+	rm -f "$tempdir/tffs_node" "$tempdir/tffsnode" 2>$null
+	exit $rc
 )
 #######################################################################################################
 #                                                                                                     #
@@ -692,11 +780,11 @@ get_system_branding()
 			exit $?
 			;;
 		("kernel_cmdline")
-			get_oem_kernel_cmdline
+			get_oem_kernel_cmdline || printf -- "(unknown)"
 			exit $?
 			;;
 		("custom_environment")
-			get_custom_env_branding
+			get_custom_env_branding || printf -- "(unknown)"
 			exit $?
 			;;
 		(*)
@@ -707,12 +795,45 @@ get_system_branding()
 )
 #######################################################################################################
 #                                                                                                     #
+# replace branding, if necessary                                                                      #
+#                                                                                                     #
+# $1 - wanted branding                                                                                #
+# $2 - current branding for newly selected system                                                     #
+# $3 - output of change_branding_support for the newly selected system                                #
+#                                                                                                     #
+#######################################################################################################
+change_branding()
+(
+	[ "$1" = "$2" ] && exit 0
+	case "$3" in
+		("changeable")
+			set_environment_value "$branding_name" "$1"
+			exit $?
+			;;
+		("kernel_cmdline")
+			set_oem_kernel_cmdline "$1"
+			exít $?
+			;;
+		("custom_environment")
+			set_custom_env_branding "$1"
+			exit $?
+			;;
+		("fixed_export" | "immutable")
+			exit 1
+			;;
+		(*)
+			exit 1
+			;;
+	esac
+)
+#######################################################################################################
+#                                                                                                     #
 # get branding from urlader environment                                                               #
 #                                                                                                     #
 #######################################################################################################
 get_device_branding()
 (
-        sed -n -e "s/^$branding_name\t\(.*\)\$/\1/p" "$urlader_environment"
+	get_environment "$branding_name"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1023,17 +1144,24 @@ switch_system_to()
 	else
 		[ "$1" = "alternative" ] && switch_system && rc=0
 	fi
-	[ -z "$2" ] || change_branding "$2"
+	if [ -n "$2" ]; then
+		if [ -f "$data_cache_file" ]; then
+			if [ "$1" = "running" ]; then
+				cbs_name="active_change_branding_support"
+				brnd_name="active_branding"
+			else
+				cbs_name="inactive_change_branding_support"
+				brnd_name="inactive_branding"
+			fi
+			cbs="$(sed -n -e "s|^$cbs_name=\(['\"]\?\)\(.*\)\1\$|\2|p" "$data_cache_file")"
+			brnd="$(sed -n -e "s|^$brnd_name=\(['\"]\?\)\(.*\)\1\$|\2|p" "$data_cache_file")"
+			if [ -n "$cbs" ]; then
+				change_branding "$2" "$brnd" "$cbs" && exit 0
+			fi
+		fi
+		exit 1
+	fi
 	exit $rc
-)
-#######################################################################################################
-#                                                                                                     #
-# replace branding, if necessary                                                                      #
-#                                                                                                     #
-#######################################################################################################
-change_branding()
-(
-	[ "$1" = "$(get_system_branding)" ] || printf -- '%s\t%s' "$branding_name" "$1" >"$urlader_environment"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1180,7 +1308,7 @@ get_system_version()
 parse_date_value()
 (
 	command -v date 2>$null 1>&2 || printf -- '%s' "$1"
-	date --help 2>&1 | grep -q BusyBox || printf -- '%s' "$1"
+	date --help 2>&1 | grep -q BusyBox 2>$null || printf -- '%s' "$1"
 	eval "$(printf -- '%s\n' "$1" | sed -n -e "s|\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\) \([0-9]*\):\([0-9]*\):\([0-9]*\)|day=\1 month=\2 year=\3 hour=\4 minutes=\5 seconds=\6|p")"
 	# shellcheck disable=SC2154
 	date +%s -d "$year$month$day$hour$minutes.$seconds"
@@ -1789,7 +1917,7 @@ case "$1" in
 		delim_2="running system"
 		delim_3="alternative system"
 		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
-		set | grep "^delim_[0-9]*=" | \
+		set | grep "^delim_[0-9]*=" 2>$null | \
 		while read -r ln; do
 			lv="$(expr "$ln" : "[^=]*='\(.*\)'")"
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
