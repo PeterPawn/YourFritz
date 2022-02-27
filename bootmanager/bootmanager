@@ -1630,13 +1630,17 @@ get_modified_date()
 	if [ -z "$v" ]; then
 		v="$(get_mkfs_time "${base:-/}")"	# try to find valid mkfs_time first
 	fi
-	if [ -z "$v" ] && is_loopdevice_mountpoint "${base:-/}"; then
-		file="$(get_loopdevice_backingfile "${base:-/}")"
-		v="$(stat -c %Y -- "$file")"
-		d="$(get_system_date "$1")"
-		if [ -n "$d" ] && [ -n "$v" ]; then
-			[ "$d" -lt "$v" ] && delta=$(( v - d )) || delta=$(( d - v ))	# no abs() function available
-			[ $delta -lt 600 ] && exit 1 	# within ten minutes, assume no further modifications
+	if [ -z "$v" ]; then
+		if is_loopdevice_mountpoint "${base:-/}"; then
+			file="$(get_loopdevice_backingfile "${base:-/}")"
+			v="$(stat -c %Y -- "$file")"
+			d="$(get_system_date "$1")"
+			if [ -n "$d" ] && [ -n "$v" ]; then
+				[ "$d" -lt "$v" ] && delta=$(( v - d )) || delta=$(( d - v ))	# no abs() function available
+				[ $delta -lt 600 ] && exit 1 	# within ten minutes, assume no further modifications
+			fi
+		else
+			v="$(stat -c %Y -- "$base/$avm_rcconf")"
 		fi
 	fi
 	[ -z "$v" ] && exit 1
@@ -1727,8 +1731,10 @@ get_values()
 		printf -- "inactive_date_epoch=\"%s\"\n" "$alternative_date_epoch"
 		printf -- "inactive_date=\"%s\"\n" "$alternative_date"
 		printf -- "inactive_modified_by=\"%s\"\n" "$alternative_modified"
-		printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
-		printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
+		if ! [ "$alternative_modified" = "-" ]; then
+			printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
+			printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
+		fi
 		printf -- "inactive_brandings=\"%s\"\n" "$alternative_brandings"
 		printf -- "inactive_branding=\"%s\"\n" "$alternative_branding"
 		printf -- "inactive_change_branding_support=%s\n" "$alternative_cbs"
@@ -1955,9 +1961,14 @@ case "$1" in
 		debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		value="$(get_system_date)"
 		debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-		value="$(get_modified_date)"
-		debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-		debug "active system modification source = " "yellow" "%s" "$(get_modified_by)"
+		modby="$(get_modified_by)"
+		if [ "$modby" = "-" ]; then
+			debug "active system modification source = " "yellow" "%s" "(unmodified or unknown)"
+		else
+			value="$(get_modified_date)"
+			debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+			debug "active system modification source = " "yellow" "%s" "$modby"
+		fi
 		cbs="$(change_branding_support)"
 		debug "brandings supported on active system = " "yellow" "%s" "$(get_brandings "" "$cbs")"
 		if ! [ "$cbs" = "changeable" ]; then
@@ -1974,9 +1985,14 @@ case "$1" in
 				debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
 				value="$(get_system_date "$mp")"
 				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				value="$(get_modified_date "$mp")"
-				debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				debug "inactive system modification source = " "yellow" "%s" "$(get_modified_by "$mp")"
+				altmodby="$(get_modified_by "$mp")"
+				if [ "$altmodby" = "-" ]; then
+					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+				else
+					value="$(get_modified_date "$mp")"
+					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+				fi
 				altcbs="$(change_branding_support "$mp")"
 				debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
 				if ! [ "$altcbs" = "changeable" ]; then
