@@ -843,6 +843,7 @@ get_device_branding()
 #######################################################################################################
 get_system_type()
 {
+	is_puma_based_device && printf "%s\n" "Puma6/7" && return 9
 	type="$(sed -n -e "s|^system type[ \t]*: \([^ \t]*\).*|\1|p" "$proc_cpuinfo")"
 	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
 	type="$(sed -n -e "$ipq4019_cpuinfo_check" "$proc_cpuinfo")"
@@ -901,7 +902,8 @@ get_puma_partition()
 (
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
 	if [ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ]; then
-		sed -n -e "s|^$(eval printf -- "\$puma_%s_name_%s" "$1" "$2")=\(.*\)|\1|p" "$puma_partitions"
+		eval name="\$puma_${1}_name_${2}"
+		sed -n -e "s|^$name=\(.*\)|\1|p" "$puma_partitions"
 		exit 0
 	fi
 	exit 1
@@ -1665,13 +1667,14 @@ cleanup()
 collect_data()
 {
 	datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
+	system_type="$(get_system_type)"
 	running_version="$(get_system_version)"
 	running_date_epoch="$(get_system_date)"
 	running_date="$(get_localized_date "$datetime_mask" "$running_date_epoch")"
 	running_fsdate_epoch="$(get_modified_date)"
 	running_fsdate="$(get_localized_date "$datetime_mask" "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
-	readonly running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified
+	readonly system_type running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified
 	running_cbs="$(change_branding_support)"
 	running_branding="$(get_system_branding "" "$running_cbs")"
 	running_brandings="$(get_brandings "" "$running_cbs")"
@@ -1937,7 +1940,7 @@ case "$1" in
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
-		is_puma_based_device && system_type="Puma6/7" || system_type="$(get_system_type)"
+		system_type="$(get_system_type)"
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
 		debug "system type = " "yellow" "%s" "$system_type"
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
