@@ -65,7 +65,10 @@
 #                stored otherwise - ready for output on next call) gets ignored                       #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
-# clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument       #
+# clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument; if   #
+#                the second argument is 'with_eva_config', any results from an earlier check of EVA's #
+#                configuration area are removed, too, what leads to a delay on next call which builds #
+#                new data                                                                             #
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
@@ -494,24 +497,22 @@ check_urlader_configuration()
 		fi
 	done
 	found=0
-	if [ $found -eq 0 ] && [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>$null 1>&2; then
+	if [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>$null 1>&2; then
 		co="$(fndo "$ut/dump" "$wlan_key" "$ut/config_header")"
-		[ "$co" = "(not found)" ] && unset config_offset
-		if [ -z "$co" ]; then
-			msg "Unable to locate configuration area in urlader dump file.\n"
-			exit 1
-		fi
+		[ "$co" = "(not found)" ] && unset co
 		found=1
 	fi
-	if [ $found -eq 0 ] && grep -q -ao "maca" "$ut/dump" 2>$null 1>&2; then
+	if [ "$found" -eq 0 ]; then
 		[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
-		co="$(fndo "$ut/dump" "maca" "$ut/config_header")"
-		[ "$co" = "(not found)" ] && unset config_offset
-		if [ -z "$co" ]; then
-			msg "Unable to locate configuration area in urlader dump file.\n"
-			exit 1
+		if grep -q -ao "$maca" "$ut/dump" 2>$null 1>&2; then
+			co="$(fndo "$ut/dump" "$maca" "$ut/config_header")"
+			[ "$co" = "(not found)" ] && unset config_offset
+			if [ -z "$co" ]; then
+				msg "Unable to locate configuration area in urlader dump file.\n"
+				exit 1
+			fi
+			found=1
 		fi
-		found=1
 	fi
 	[ $found -eq 0 ] && exit 1
 	dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>$null
@@ -621,7 +622,7 @@ check_custom_environment()
 		if grep -q $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null; then # script called from somewhere
 			# shellcheck disable=SC2086,SC2013
 			for fn in $(grep -l $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null | sed -n -e 1p); do
-				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>$null | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\)|\1|p")"
+				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>$null | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\).*|\1|p")"
 				[ "$st" = "VR9" ] && [ "$altsys" -eq 1 ] && v="$tempdir$v"
 				[ -f "$v" ] && exit 0
 			done
@@ -1859,6 +1860,32 @@ colorize()
 )
 #######################################################################################################
 #                                                                                                     #
+# load device configuration findings from cache file, if it exists                                    #
+#                                                                                                     #
+#######################################################################################################
+load_device_configuration()
+{
+	if ! [ -f "$device_cache_file" ]; then
+		device_branding="$(check_urlader_configuration "$branding_name")"
+		# shellcheck disable=SC2181
+		if [ "$?" -eq 0 ]; then
+			[ -z "$device_branding" ] && exit 1
+			device_branding_is_changeable="true"
+			printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
+		else
+			[ -z "$device_branding" ] && exit 1
+			device_branding_is_changeable="false"
+			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
+		fi
+	else
+		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
+		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
+		[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
+	fi
+	printf "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
+}
+#######################################################################################################
+#                                                                                                     #
 # prepare a temporary directory and a clean exit routine                                              #
 #                                                                                                     #
 #######################################################################################################
@@ -1875,21 +1902,6 @@ rc=127
 #######################################################################################################
 save_environment
 verbose=0
-if [ -f "$device_cache_file" ]; then
-	device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
-	device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
-	[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
-else
-	device_branding="$(check_urlader_configuration)"
-	# shellcheck disable=SC2181
-	if [ "$?" -eq 0 ]; then
-		device_branding_is_changeable="true"
-		printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
-	else
-		device_branding_is_changeable="false"
-		printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
-	fi
-fi
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -1913,6 +1925,8 @@ case "$1" in
 		if [ -z "$color" ] && [ -t 1 ]; then
 			color=1
 		fi
+		# shellcheck disable=SC2046
+		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
 		delim_2="running system"
 		delim_3="alternative system"
@@ -1943,9 +1957,9 @@ case "$1" in
 		debug "active system modification source = " "yellow" "%s" "$(get_modified_by)"
 		cbs="$(change_branding_support)"
 		debug "brandings supported on active system = " "yellow" "%s" "$(get_brandings "" "$cbs")"
-#		if ! [ "$cbs" = "changeable" ]; then
+		if ! [ "$cbs" = "changeable" ]; then
 			debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
-#		fi
+		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
 		debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
 		debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
@@ -1960,11 +1974,11 @@ case "$1" in
 				value="$(get_modified_date "$mp")"
 				debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 				debug "inactive system modification source = " "yellow" "%s" "$(get_modified_by "$mp")"
-				altcbs="$(change_branding_support "$mp" "$cbs")"
+				altcbs="$(change_branding_support "$mp")"
 				debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
-#				if ! [ "$altcbs" = "changeable" ]; then
+				if ! [ "$altcbs" = "changeable" ]; then
 					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
-#				fi
+				fi
 				dismount_alternative_system
 				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "inactive filesystem dismounted"
 			else
@@ -1977,6 +1991,8 @@ case "$1" in
 		rc=0
 		;;
 	("get_values")
+		# shellcheck disable=SC2046
+		eval $(load_device_configuration)
 		if is_dualboot_supported; then
 			if [ "$2" = "nocache" ] || ! [ -f "$data_cache_file" ]; then
 				spinlock_pid=$$
@@ -1995,9 +2011,12 @@ case "$1" in
 		;;
 	("clear_cache")
 		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>$null
+		[ "$2" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>$null
 		rc=0
 		;;
 	("switch_to")
+		# shellcheck disable=SC2046
+		eval $(load_device_configuration)
 		switch_system_to "$2" "$3"
 		rc=$?
 		;;
