@@ -1021,8 +1021,8 @@ get_fit_partition()
 	[ -z "$1" ] && exit 1
 	i=$(get_mtd_number "$1")
 	[ -n "$i" ] && printf_ss "$mtdblock_mask\n" "$i" && exit 0
-	i=$(get_emmc_partition "$1")
-	[ -n "$i" ] && printf_ss "$emmcblock_mask\n" "$i" && exit 0
+	v="$(get_emmc_partition "$1")"
+	[ -n "$v" ] && printf -- "%s\n" "$v" && exit 0
 	exit 1
 )
 #######################################################################################################
