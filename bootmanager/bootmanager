@@ -941,7 +941,7 @@ get_mtd_number()
 # FIT image devices with eMMC flash: find partition with specified name                               #
 #                                                                                                     #
 #######################################################################################################
-get_mmc_partition()
+get_emmc_partition()
 (
 	[ -z "$1" ] && exit 1
 	if [ -L "$disk_by_label/$1" ]; then
