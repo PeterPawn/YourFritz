@@ -36,21 +36,26 @@
 #######################################################################################################
 #                                                                                                     #
 # This script implements all actions necessary to switch between the two installed system versions on #
-# AVM router devices with 'dual-boot' capabilities.                                                   #
+# AVM router devices with 'dual-boot' capabilities and - optionally - change the 'branding' value, if #
+# supported by device and installed firmware.                                                         #
 #                                                                                                     #
-# It should support any VR9- or AR10-based device as well as devices with Puma6/7 chipsets (Puma7     #
-# support is currently untested and solely based on already published script code from AVM). Devices  #
-# with a GRX5 SoC are supported, too - but there's only switching of system possible and there's no   #
-# further distinction between bootloader versions, where the branding may be changed (some earlier    #
-# 7560 and 7580 devices) and newer devices, where a branding is always reset to the finalized value   #
-# from bootloader partition.                                                                          #
+# It should work now with more chipsets used by AVM nowadays.                                         #
 #                                                                                                     #
-# With update to 0.6.4, support for IPQ4019-based devices was added, the restrictions are the same as #
-# for GRX5 devices.                                                                                   #
+#######################################################################################################
 #                                                                                                     #
-# This version is able to detect a fixed branding value, if it's set from '/etc/init.d/rc.conf' with  #
-# a modified 'export OEM' statement - in such a case, an appropriate output is generated, containing  #
-# a message about this fixed value.                                                                   #
+# With update to 0.8.3, support for more devices has been added and AVM's models using the FIT format #
+# for firmware images will be handled now correctly - assuming, that the 'bootslotctl' tool by AVM is #
+# available for these models. Currently there's no support to detect the inactive system and its      #
+# version and/or modification date/source - there's no code included to dissect an existing FIT image #
+# from either FIT partition.                                                                          #
+#                                                                                                     #
+# This version is able to detect various manners to overwrite the used 'branding' value, even if the  #
+# device doesn't support permanent changes to the original value from EVA's configuration.            #
+# If a supported method was detected ('YF_CHANGE_OEM' and 'yf_custom_environment' are available and   #
+# a fixed 'export OEM=<value>' will be detected, too) and it offers a chance to change the branding,  #
+# the feature gets activated ... otherwise no changes to the branding value are supported.            #
+#                                                                                                     #
+#######################################################################################################
 #                                                                                                     #
 # There are six operations supported as first argument (at least one parameter is always required):   #
 #                                                                                                     #
@@ -69,6 +74,8 @@
 #                the second argument is 'with_eva_config', any results from an earlier check of EVA's #
 #                configuration area are removed, too, what leads to a delay on next call which builds #
 #                new data                                                                             #
+#                                                                                                     #
+#######################################################################################################
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
@@ -101,6 +108,7 @@ readonly inactive_name="inactive"
 readonly branding_name="firmware_version"
 readonly kernel_args="kernel_args"
 readonly kernel_args1="kernel_args1"
+readonly flash_size="flashsize"
 readonly proc_mtd="$procfs/mtd"
 readonly proc_devices="$procfs/devices"
 readonly tffs_device_name="tffs"
@@ -108,10 +116,15 @@ readonly tffs_device_name="tffs"
 readonly mtd_prefix="mtd"
 readonly mtdblock_prefix="$devtmpfs/mtdblock"
 readonly mtdblock_mask="${mtdblock_prefix}%u"
+readonly emmcblock_prefix="$devtmpfs/mmcblk0"
+readonly emmcblock_mask="${emmcblock_prefix}p%u"
 readonly proc_cpuinfo="$procfs/cpuinfo"
 readonly proc_mountinfo="$procfs/self/mountinfo"
 readonly urlader_name="urlader"
 readonly kernel_name="kernel"
+readonly fit_partition_name="fit"
+readonly fit_partition_name_mask="$fit_partition_name%u"
+readonly bootslot_tool="/sbin/bootslotctl"
 readonly filesystem_name="filesystem"
 readonly reserved_prefix="reserved"
 readonly alt_root_mount_name="alt_root"
@@ -119,6 +132,7 @@ readonly defaults_dir="etc/default.%s"
 readonly sysfs_block_dir="$sysfs/block"
 readonly loop_driver_name="loop"
 readonly backing_file_name="backing_file"
+readonly disk_by_label="$devtmpfs/disk/by-partlabel"
 readonly tmpdir="${TMPDIR:-$tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
 readonly semafile="$tmpfs/run/bootmanager.sem"
@@ -148,7 +162,7 @@ readonly version_files="$yourfritz_version_file $freetz_ng_version_file $freetz_
 readonly modified_by="YourFritz Freetz-NG Freetz modfs -"
 #######################################################################################################
 #                                                                                                     #
-# GRX5, VR9 and IPQ4019 common settings                                                               #
+# GRX5, VR9 and IPQ (only 'raw flash' based devices) common settings                                  #
 #                                                                                                     #
 #######################################################################################################
 # shellcheck disable=SC2034
@@ -161,10 +175,18 @@ readonly mtd_kernel_name_active="${kernel_name}"
 readonly mtd_kernel_name_inactive="${reserved_prefix}-${kernel_name}"
 #######################################################################################################
 #                                                                                                     #
-# IPQ4019 specific settings (IPQ4018-based devices should use SPI flash with a single OS)             #
+# MIPS specific 'cpuinfo' mask                                                                        #
 #                                                                                                     #
 #######################################################################################################
-readonly ipq4019_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev 5 (v7l)\$|IPQ4019|p;tq;b;:q q"
+readonly mips_cpuinfo_check='s|^system type[ \t]*: \([^ \t]*\).*$|\1|p'
+#######################################################################################################
+#                                                                                                     #
+# IPQ4019/IPQ501x/IPQ807x specific settings                                                           #
+#                                                                                                     #
+#######################################################################################################
+readonly ipq_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev [45] (v7l)\$|IPQ|p;tq;b;:q q"
+readonly ipq8074_eva_config_name="0:CONFIG"
+readonly emmc_mask="emmc_size"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
@@ -379,20 +401,27 @@ check_urlader_configuration()
 			msg "'%s' missing.\n" "$procfs"
 			exit 1
 		fi
-		if ! [ -f "$proc_mtd" ]; then
-			msg "'%s' missing.\n" "$proc_mtd"
-			exit 1
-		fi
-		urlader="$(sed -n -e "s|^\(mtd[0-9]\?\):\([ \t]\+[0-9a-fA-F]*\)\{2\}[ \t]\?\"$urlader_name\"\$|\1|p" "$proc_mtd")"
-		if [ -z "$urlader" ]; then
-			msg "'%s' partition not found.\n" "$urlader_name"
-			exit 1
-		fi
-		if ! [ -c "$devtmpfs/$urlader" ]; then
-			msg "'%s' is not a character device.\n" "$devtmpfs/$urlader"
-			exit 1
-		fi
-		cat "$devtmpfs/$urlader" 2>$null
+		case "$(get_system_type)" in
+			("IPQ8074")
+				cat "$disk_by_label/$ipq8074_eva_config_name" 2>$null
+				;;
+			(*)
+				if ! [ -f "$proc_mtd" ]; then
+					msg "'%s' missing.\n" "$proc_mtd"
+					exit 1
+				fi
+				urlader="$(sed -n -e "s|^\(mtd[0-9]\?\):\([ \t]\+[0-9a-fA-F]*\)\{2\}[ \t]\?\"$urlader_name\"\$|\1|p" "$proc_mtd")"
+				if [ -z "$urlader" ]; then
+					msg "'%s' partition not found.\n" "$urlader_name"
+					exit 1
+				fi
+				if ! [ -c "$devtmpfs/$urlader" ]; then
+					msg "'%s' is not a character device.\n" "$devtmpfs/$urlader"
+					exit 1
+				fi
+				cat "$devtmpfs/$urlader" 2>$null
+				;;
+		esac
 	}
 	sblk() (
 		h=$(( $3 / 2 ))
@@ -652,6 +681,11 @@ check_custom_environment()
 #######################################################################################################
 change_branding_support()
 {
+	if is_fit_image_device; then
+		# no branding support yet on Hawkeye platform
+		printf -- "immutable"
+		exit 0
+	fi
 	get_fixed_branding "$1" >$null && printf -- "fixed_export" && exit 0
 	check_oem_kernel_cmdline "$1" && printf -- "kernel_cmdline" && exit 0
 	check_custom_environment "$1" && printf -- "custom_environment" && exit 0
@@ -840,17 +874,59 @@ get_device_branding()
 #                                                                                                     #
 # find system type or model name                                                                      #
 #                                                                                                     #
+# Supported models/chipsets:                                                                          #
+#                                                                                                     #
+# - all VR9-based devices with two slots for a system (kernel + filesystem)                           #
+# - all GRX5-based devices (no single slot devices known so far)                                      #
+# - all Puma6 and Puma7 devices (no single slot devices found yet)                                    #
+# - IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                           #
+# - IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                   #
+#                                                                                                     #
 #######################################################################################################
 get_system_type()
 {
-	is_puma_based_device && printf "%s\n" "Puma6/7" && return 9
-	type="$(sed -n -e "s|^system type[ \t]*: \([^ \t]*\).*|\1|p" "$proc_cpuinfo")"
+	# Puma6 and Puma7 devices with '/proc/avm_partitions' pseudo file, platform selection based on AVM's script 'puma6_helper.sh'
+	is_puma_based_device && printf "%s\n" "Puma6/7" && return 0
+	# VR9 and GRX5 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
+	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
 	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
-	type="$(sed -n -e "$ipq4019_cpuinfo_check" "$proc_cpuinfo")"
-	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
+	# ARM-based devices with Qualcomm chipsets in 32-bit mode, selected by content of '/proc/cpuinfo' and further properties
+	type="$(sed -n -e "$ipq_cpuinfo_check" "$proc_cpuinfo")"
+	if [ -n "$type" ] && [ "$type" = "IPQ" ]; then
+		fsize="$(get_environment "$flash_size")"
+		# Hawkeye family with eMMC storage using FIT image format, partitions accessible via '/dev/disk/by-partlabel/fit[01]'
+		if [ -n "$(expr "$fsize" : ".*${emmc_mask}=\([^ ]*\).*")" ]; then
+			printf -- "%s\n" "IPQ8074" && return 0
+		# TODO: additional checks to identify other ARM-based chipsets by Qualcomm
+		# IPQ4019 with NAND flash and partitions in '/proc/mtd'
+		else
+			printf -- '%s\n' "IPQ4019" && return 0
+		fi
+	fi
+	# unknown device type
 	printf -- '%s\n' "undetected"
 	return 1
 }
+#######################################################################################################
+#                                                                                                     #
+# check whether this device uses FIT image format for firmware                                        #
+#                                                                                                     #
+#######################################################################################################
+is_fit_image_device()
+(
+	case "$(get_system_type)" in
+		("IPQ8074")
+			# shellcheck disable=SC2059
+			[ -z "$(get_fit_partition "$(printf "$fit_partition_name_mask" "0")")" ] && exit 1
+			# shellcheck disable=SC2059
+			[ -z "$(get_fit_partition "$(printf "$fit_partition_name_mask" "1")")" ] && exit 1
+			[ -x "$bootslot_tool" ] && exit 0
+			;;
+		(*)
+			exit 1
+			;;
+	esac
+)
 #######################################################################################################
 #                                                                                                     #
 # find partition number with given name                                                               #
@@ -860,6 +936,33 @@ get_mtd_number()
 {
 	sed -n -e "s|^mtd\([0-9]*\): [^ ]* [^ ]* \"$1\"\$|\1|p" "$proc_mtd"
 }
+#######################################################################################################
+#                                                                                                     #
+# FIT image devices with eMMC flash: find partition with specified name                               #
+#                                                                                                     #
+#######################################################################################################
+get_mmc_partition()
+(
+	[ -z "$1" ] && exit 1
+	if [ -L "$disk_by_label/$1" ]; then
+		command -v realpath 2>$null 1>&2 && realpath "$disk_by_label/$1" 2>$null && exit 0
+		command -v readlink 2>$null 1>&2 && readlink -f "$disk_by_label/$1" 2>$null && exit 0
+		p="$disk_by_label/$1"
+		l="$(ls -dl "$p")"
+		t="${l#*" $p -> "}"
+		d="$(pwd)"
+		# shellcheck disable=SC2164
+		cd "${p%/*}" 2>$null
+		# shellcheck disable=SC2164
+		cd -P "${t%/*}" 2>$null
+		r="$(pwd)/${t##*/}"
+		# shellcheck disable=SC2164
+		cd "$d" 2>$null
+		printf "%s\n" "$r"
+		exit 0
+	fi
+	exit 1
+)
 #######################################################################################################
 #                                                                                                     #
 # GRX5/VR9: locate the MTD partition for kernel or filesystem for the active or alternative system    #
@@ -910,11 +1013,29 @@ get_puma_partition()
 )
 #######################################################################################################
 #                                                                                                     #
+# locate partition/device name for a FIT partition on devices using this feature                      #
+#                                                                                                     #
+#######################################################################################################
+get_fit_partition()
+(
+	[ -z "$1" ] && exit 1
+	i=$(get_mtd_number "$1")
+	[ -n "$i" ] && printf_ss "$mtdblock_mask\n" "$i" && exit 0
+	i=$(get_emmc_partition "$1")
+	[ -n "$i" ] && printf_ss "$emmcblock_mask\n" "$i" && exit 0
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # locate the flash device (MTD or eMMC) for filesystem or kernel of the active or alternative system  #
 #                                                                                                     #
 #######################################################################################################
 get_partition()
 (
+	if [ "$(expr "$1" : "\($fit_partition_name\)[01]")" = "$fit_partition_name" ]; then
+		get_fit_partition "$1"
+		exit $?
+	fi
 	rc=0
 	[ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ] || exit 1
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
@@ -1115,11 +1236,15 @@ is_switched()
 		if [ -f "$boot_cache_file" ]; then
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
-			k1="$(get_partition "$kernel_name" "$active_name")"
-			k2="$(get_partition "$kernel_name" "$inactive_name")"
-			c=$(compare_strings "$k1" "$k2")
-			[ "$c" -eq -1 ] && current=0 || current=1
-			! [ "$(get_system_switch)" = "$current" ]
+			if is_fit_image_device; then
+				exit 1
+			else
+				k1="$(get_partition "$kernel_name" "$active_name")"
+				k2="$(get_partition "$kernel_name" "$inactive_name")"
+				c=$(compare_strings "$k1" "$k2")
+				[ "$c" -eq -1 ] && current=0 || current=1
+				! [ "$(get_system_switch)" = "$current" ]
+			fi
 		fi
 	fi
 )
@@ -1207,6 +1332,7 @@ get_brandings()
 	if [ -z "$1" ] || [ "$1" = "/" ]; then
 		eval PRODUKT="\$$avm_product_name"
 	else
+		is_fit_image_device && printf -- "(unsupported)\n" && exit
 		PRODUKT="$(get_product_name "$1")"
 	fi
 	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
@@ -1218,6 +1344,18 @@ get_brandings()
 		fi
 	done
 	printf -- "\n"
+)
+#######################################################################################################
+#                                                                                                     #
+# extract firmware variables from AVM's firmware new info source                                      #
+#                                                                                                     #
+# $1 - system root directory - missing value select 'active' system, any other value selects 'other'  #
+#                                                                                                     #
+#######################################################################################################
+get_fit_version_values()
+(
+	[ -z "$1" ] && sys="active" || sys="other"
+	"$bootslot_tool" "get_fw_version" "$("$bootslot_tool" "get_$sys")"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1298,6 +1436,10 @@ get_version_values()
 #######################################################################################################
 get_system_version()
 (
+	if is_fit_image_device; then
+		get_fit_version_values "$1"
+		exit $?
+	fi
 	eval "$(get_version_values "$1")"
 	has_old_version_info "$1" && printf -- '%s%s' "$VERSION" "$SUBVERSION" || printf -- '%s.%s%s' "$(get_version_major "$1")" "$VERSION" "$SUBVERSION"
 )
@@ -1375,6 +1517,7 @@ get_localized_date()
 #######################################################################################################
 get_system_date()
 (
+	is_fit_image_device && [ -n "$1" ] && printf "0" && exit
 	path="${1:-/}${1:+/}$avm_version_file_old"
 	if has_old_version_info "$1"; then
 		d="$(sed -n -e "s|^[ \t]*export $avm_version_file_old_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
@@ -1521,6 +1664,7 @@ dismount_alternative_system()
 #######################################################################################################
 get_modified_by()
 (
+	is_fit_image_device && [ -n "$1" ] && printf -- "-" && exit
 	base="${1:-}"
 	i=1
 	for f in $version_files; do
@@ -1619,6 +1763,7 @@ get_modified_date()
 	# shellcheck disable=SC2181
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
+	is_fit_image_device && [ -n "$1" ] && printf "0\n" && exit 0
 	base="${1:-}"
 	unset v
 	for f in $version_files; do
@@ -1685,27 +1830,29 @@ collect_data()
 	current_system_switch=$(get_system_switch)
 	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
-	if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
-		alternative_is_missing=0
-		spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
-		if [ -n "$mp" ]; then
-			alternative_version="$(get_system_version "$mp")"
-			readonly alternative_version
-			if [ -n "$alternative_version" ]; then
-				alternative_date_epoch="$(get_system_date "$mp")"
-				alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
-				alternative_fsdate_epoch="$(get_modified_date "$mp")"
-				alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
-				alternative_modified="$(get_modified_by "$mp")"
-				readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
-				alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
-				alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
-				alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
-				readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
+	if ! is_fit_image_device; then
+		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+			alternative_is_missing=0
+			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
+			if [ -n "$mp" ]; then
+				alternative_version="$(get_system_version "$mp")"
+				readonly alternative_version
+				if [ -n "$alternative_version" ]; then
+					alternative_date_epoch="$(get_system_date "$mp")"
+					alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
+					alternative_fsdate_epoch="$(get_modified_date "$mp")"
+					alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
+					alternative_modified="$(get_modified_by "$mp")"
+					readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+					alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
+					alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
+					alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
+					readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
+				fi
+				dismount_alternative_system
 			fi
-			dismount_alternative_system
+			spinlock release
 		fi
-		spinlock release
 	fi
 }
 #######################################################################################################
@@ -1768,6 +1915,7 @@ get_values()
 is_dualboot_supported()
 (
 	[ -z "$(get_system_switch)" ] && exit 1
+	is_fit_image_device && [ -x "$bootslot_tool" ] && exit 0
 	[ -z "$(get_partition "$kernel_name" "$inactive_name")" ] && exit 1
 	[ -z "$(get_partition "$filesystem_name" "$inactive_name")" ] && exit 1
 	exit 0
@@ -1954,11 +2102,15 @@ case "$1" in
 		debug "device branding = " "yellow" "%s" "$device_branding"
 		debug "device branding is changeable = " "yellow" "%s" "$device_branding_is_changeable"
 		debug "current branding = " "yellow" "%s" "$OEM"
-		debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
-		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
-		debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
-		debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
-		debug "active system version = " "yellow" "%s" "$(get_system_version)"
+		if ! is_fit_image_device; then
+			debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
+			[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+			debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+			debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
+			debug "active system version = " "yellow" "%s" "$(get_system_version)"
+		else
+			debug "active system version = " "yellow" "%s" "$(get_system_version)"
+		fi
 		value="$(get_system_date)"
 		debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 		modby="$(get_modified_by)"
@@ -1975,31 +2127,33 @@ case "$1" in
 			debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
-		debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
-		debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
-		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
-			spinlock_pid=$$
-			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
-			[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "inactive filesystem mounted on %s" "$mp")"
-			if [ -n "$mp" ]; then
-				debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
-				value="$(get_system_date "$mp")"
-				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				altmodby="$(get_modified_by "$mp")"
-				if [ "$altmodby" = "-" ]; then
-					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
-				else
-					value="$(get_modified_date "$mp")"
-					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+		if ! is_fit_image_device; then
+			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
+			if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+				spinlock_pid=$$
+				spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
+				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "inactive filesystem mounted on %s" "$mp")"
+				if [ -n "$mp" ]; then
+					debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
+					value="$(get_system_date "$mp")"
+					debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+					altmodby="$(get_modified_by "$mp")"
+					if [ "$altmodby" = "-" ]; then
+						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+					else
+						value="$(get_modified_date "$mp")"
+						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+					fi
+					altcbs="$(change_branding_support "$mp")"
+					debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
+					if ! [ "$altcbs" = "changeable" ]; then
+						debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
+					fi
+					dismount_alternative_system
+					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "inactive filesystem dismounted"
 				fi
-				altcbs="$(change_branding_support "$mp")"
-				debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
-				if ! [ "$altcbs" = "changeable" ]; then
-					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
-				fi
-				dismount_alternative_system
-				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "inactive filesystem dismounted"
 			else
 				debug "" "red" "%s" "inactive filesystem could not be mounted"
 			fi
