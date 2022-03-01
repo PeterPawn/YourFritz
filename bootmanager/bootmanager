@@ -38,19 +38,12 @@
 # This script implements all actions necessary to switch between the two installed system versions on #
 # AVM router devices with 'dual-boot' capabilities.                                                   #
 #                                                                                                     #
-# It should support any VR9- or AR10-based device as well as devices with Puma6/7 chipsets (Puma7     #
-# support is currently untested and solely based on already published script code from AVM). Devices  #
-# with a GRX5 SoC are supported, too - but there's only switching of system possible and there's no   #
-# further distinction between bootloader versions, where the branding may be changed (some earlier    #
-# 7560 and 7580 devices) and newer devices, where a branding is always reset to the finalized value   #
-# from bootloader partition.                                                                          #
+# Further infos, regarding supported models/chipsets and options to support changes of the 'branding' #
+# value even on devices, where the boot-loader will restore preset values on each system reboot, will #
+# be re-added in the next (release) version of this script, because the range of supported devices    #
+# will increase a lot.                                                                                #
 #                                                                                                     #
-# With update to 0.6.4, support for IPQ4019-based devices was added, the restrictions are the same as #
-# for GRX5 devices.                                                                                   #
-#                                                                                                     #
-# This version is able to detect a fixed branding value, if it's set from '/etc/init.d/rc.conf' with  #
-# a modified 'export OEM' statement - in such a case, an appropriate output is generated, containing  #
-# a message about this fixed value.                                                                   #
+#######################################################################################################
 #                                                                                                     #
 # There are six operations supported as first argument (at least one parameter is always required):   #
 #                                                                                                     #
@@ -69,6 +62,8 @@
 #                the second argument is 'with_eva_config', any results from an earlier check of EVA's #
 #                configuration area are removed, too, what leads to a delay on next call which builds #
 #                new data                                                                             #
+#                                                                                                     #
+#######################################################################################################
 #                                                                                                     #
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
