@@ -662,7 +662,7 @@ change_branding_support()
 				printf -- "immutable"
 				exit 1
 			fi
-		elif check_urlader_configuration "$branding_name"; then
+		elif ! [ "$(get_system_type)" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
 			device_branding_is_changeable="true"
 			printf -- "changeable"
 			exit 0
