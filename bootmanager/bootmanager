@@ -57,7 +57,7 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# There are six operations supported as first argument (at least one parameter is always required):   #
+# There are seven operations supported as first argument (at least one parameter is always required): #
 #                                                                                                     #
 # is_supported - returns true (exit code 0) or false (exit code 1), if the device doesn't support the #
 #                dual-boot selection                                                                  #
@@ -70,6 +70,7 @@
 #                stored otherwise - ready for output on next call) gets ignored                       #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
+# show_eva_cfg - show content of EVA configuration area (for debug purposes)
 # clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument; if   #
 #                the second argument is 'with_eva_config', any results from an earlier check of EVA's #
 #                configuration area are removed, too, what leads to a delay on next call which builds #
@@ -586,6 +587,7 @@ check_urlader_configuration()
 	cb=$(( defptr - defoff ))
 	kvs=$(( 0x98 / 4 ))
 	ent=0
+	dh=0
 	while [ "$ent" -lt "$kvc" ]; do
 		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>$null | tbo | b2d)"
 		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>$null | tbo | b2d)"
@@ -593,21 +595,32 @@ check_urlader_configuration()
 		val="$(str "$ut/config" "$(( kv - cb ))")"
 		kvs=$(( kvs + 2 ))
 		ent=$(( ent + 1 ))
-#		printf "%s=%s\n" "$nm" "$val" 1>&2
-		if [ "$nm" = "$env_name" ]; then
+		if [ -z "$env_name" ]; then
+			if [ "$dh" -eq 0 ]; then
+				printf ">>>> fixed values from EVA configuration <<<<\n" 1>&2
+				dh=1
+			fi
+			printf "%s=%s\n" "$nm" "$val" 1>&2
+		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
 			exit 1
 		fi
 	done
 	coff="$defoff"
+	dh=0
 	while ! [ "$(dd if="$ut/config" bs=1 count=1 skip="$coff" 2>$null | base64)" = "/w==" ]; do
 		nm="$(str "$ut/config" "$coff")"
 		coff=$(( coff + ${#nm} + 1 ))
 		val="$(str "$ut/config" "$coff")"
 		coff=$(( coff + ${#val} + 1 ))
-#		printf "%s=%s\n" "$nm" "$val" 1>&2
-		if [ "$nm" = "$env_name" ]; then
+		if [ -z "$env_name" ]; then
+			if [ "$dh" -eq 0 ]; then
+				printf ">>> default values from EVA configuration <<<\n" 1>&2
+				dh=1
+			fi
+			printf "%s=%s\n" "$nm" "$val" 1>&2
+		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in defaults values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
 			exit 0
@@ -2190,6 +2203,10 @@ case "$1" in
 			debug "" "red" "%s" "inactive system checks skipped"
 		fi
 		rc=0
+		;;
+	("show_eva_cfg")
+		check_urlader_configuration
+		exit 0
 		;;
 	("get_values")
 		# shellcheck disable=SC2046
