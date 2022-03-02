@@ -325,7 +325,31 @@ check_urlader_configuration()
 		cmp -l -- "$zeros" - 2>$null | h2b_ro
 		return $?
 	}
-	b2d_be() (
+	tbo() (
+		tbo_ro()
+		{
+			v1=0; v2=0; v3=0; v4=0
+			while read -r p _ rt; do
+				[ "$p" -gt 5 ] && exit 1
+				[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
+				if [ "$p" -eq 5 ]; then
+					for i in $v4 $v3 $v2 $v1; do
+						printf "%b" "\0$(printf "%o" "$i")"
+					done
+					exit 0
+				fi
+				eval v$p=$(( 0$rt ))
+			done
+			exit 1
+		}
+		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ]; then
+#		if true; then
+			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | tbo_ro
+		else
+			cat - 2>$null
+		fi
+	)
+	b2d() ( # always in BE order, was reversed by tbo() above, if needed
 		b2d_ro()
 		{
 			i=1; l=0; v=0; s=-8; ff=0
@@ -370,7 +394,7 @@ check_urlader_configuration()
 	)
 	chkcfg() {
 		_f="$1"
-		[ "$(dd if="$_f" bs=2 count=1 skip=$(( 0x8E / 2 )) 2>$null | base64)" = "ZAk=" ] || return 1
+		[ "$(dd if="$_f" bs=2 count=2 skip=$(( 0x8C / 2 )) 2>$null | tbo | b2d)" = "25609" ] || return 1
 		_kv=0
 		dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>$null
 		# shellcheck disable=SC2050
@@ -379,13 +403,13 @@ check_urlader_configuration()
 			_kv=$(( _kv + 1 ))
 			[ "$_kv" -gt 256 ] && return 1
 		done
-		_dp=$(dd if="$_f" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | b2d_be)
+		_dp=$(dd if="$_f" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | tbo | b2d)
 		_do=$(( ( ( 0x98 / 8 ) + _kv + 1 ) * 8 ))
 		_cb=$(( _dp - _do ))
 		_e=0
 		while [ "$_e" -lt "$_kv" ]; do
-			_vp=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) )) 2>$null | b2d_be)
-			_np=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) + 1 )) 2>$null | b2d_be)
+			_vp=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) )) 2>$null | tbo | b2d)
+			_np=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) + 1 )) 2>$null | tbo | b2d)
 			[ "$_vp" -lt "$_cb" ] && return 1
 			[ "$_np" -lt "$_cb" ] && return 1
 			[ $(( _vp - _cb )) -gt 1023 ] && return 1
@@ -396,13 +420,14 @@ check_urlader_configuration()
 		printf -- "%u\n" "$_kv"
 		return 0
 	}
-	geteva() {
+	geteva() (
 		if ! [ -d "$procfs" ]; then
 			msg "'%s' missing.\n" "$procfs"
 			exit 1
 		fi
 		case "$(get_system_type)" in
 			("IPQ8074")
+#				cat "/var/media/ftp/mmcblk0p15" 2>$null
 				cat "$disk_by_label/$ipq8074_eva_config_name" 2>$null
 				;;
 			(*)
@@ -422,7 +447,7 @@ check_urlader_configuration()
 				cat "$devtmpfs/$urlader" 2>$null
 				;;
 		esac
-	}
+	)
 	sblk() (
 		h=$(( $3 / 2 ))
 		s=$(( $4 / h ))
@@ -506,9 +531,9 @@ check_urlader_configuration()
 		eval $value="$env_value"
 	done
 	touch "$ut/config_header" 2>$null
-	printf -- "\000\000\000\003" | append
+	printf -- "\000\000\000\003" | tbo | append
 	[ "$(get_system_type)" = "Puma6/7" ] && memsize=$(( memsize / 2 ))
-	h2b "$(printf -- "%08x" "$memsize")" | append
+	h2b "$(printf -- "%08x" "$memsize")" | tbo | append
 	printf -- "\000\000\000\000" | append
 	i=0
 	while [ $i -lt 16 ]; do
@@ -521,8 +546,8 @@ check_urlader_configuration()
 			start="$(expr "$val" : "\(0[xX][0-9a-fA-F]*\),.*")"
 			end="$(expr "$val" : "[^,]*,\(0[xX][0-9a-fA-F]*\)")"
 			size=$(( end - start ))
-			h2b "$(printf -- "%08x" "$start")" | append
-			h2b "$(printf -- "%08x" "$size")" | append
+			h2b "$(printf -- "%08x" "$start")" | tbo | append
+			h2b "$(printf -- "%08x" "$size")" | tbo | append
 		fi
 	done
 	found=0
@@ -556,18 +581,19 @@ check_urlader_configuration()
 		kvs=$(( kvs + 1 ))
 		[ "$kvc" -gt 256 ] && exit 1
 	done
-	defptr=$(dd if="$ut/config" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | b2d_be)
+	defptr=$(dd if="$ut/config" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | tbo | b2d)
 	defoff=$(( ( kvs + 1 ) * 8 ))
 	cb=$(( defptr - defoff ))
 	kvs=$(( 0x98 / 4 ))
 	ent=0
 	while [ "$ent" -lt "$kvc" ]; do
-		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>$null | b2d_be)"
-		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>$null | b2d_be)"
+		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>$null | tbo | b2d)"
+		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>$null | tbo | b2d)"
 		nm="$(str "$ut/config" "$(( kn - cb ))")"
 		val="$(str "$ut/config" "$(( kv - cb ))")"
 		kvs=$(( kvs + 2 ))
 		ent=$(( ent + 1 ))
+#		printf "%s=%s\n" "$nm" "$val" 1>&2
 		if [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
@@ -580,6 +606,7 @@ check_urlader_configuration()
 		coff=$(( coff + ${#nm} + 1 ))
 		val="$(str "$ut/config" "$coff")"
 		coff=$(( coff + ${#val} + 1 ))
+#		printf "%s=%s\n" "$nm" "$val" 1>&2
 		if [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in defaults values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
@@ -681,11 +708,11 @@ check_custom_environment()
 #######################################################################################################
 change_branding_support()
 {
-	if is_fit_image_device; then
-		# no branding support yet on Hawkeye platform
-		printf -- "immutable"
-		exit 0
-	fi
+#	if is_fit_image_device; then
+#		# no branding support yet on Hawkeye platform
+#		printf -- "immutable"
+#		exit 0
+#	fi
 	get_fixed_branding "$1" >$null && printf -- "fixed_export" && exit 0
 	check_oem_kernel_cmdline "$1" && printf -- "kernel_cmdline" && exit 0
 	check_custom_environment "$1" && printf -- "custom_environment" && exit 0
@@ -885,6 +912,7 @@ get_device_branding()
 #######################################################################################################
 get_system_type()
 {
+#	printf "IPQ8074\n" && exit 0 # a fixed condition on other devices for testing
 	# Puma6 and Puma7 devices with '/proc/avm_partitions' pseudo file, platform selection based on AVM's script 'puma6_helper.sh'
 	is_puma_based_device && printf "%s\n" "Puma6/7" && return 0
 	# VR9 and GRX5 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
