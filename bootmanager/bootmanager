@@ -8,7 +8,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.2                                                                          #
+# bootmanager, version 0.8.3                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -70,7 +70,7 @@
 #                stored otherwise - ready for output on next call) gets ignored                       #
 # debug        - this operation is intended only for diagnose, it shows some settings and their       #
 #                current values on STDOUT to provide information about the current system             #
-# show_eva_cfg - show content of EVA configuration area (for debug purposes)
+# show_eva_cfg - show content of EVA configuration area (for debug purposes)                          #
 # clear_cache  - remove saved data from an earlier 'get_values' call without 'nocache' argument; if   #
 #                the second argument is 'with_eva_config', any results from an earlier check of EVA's #
 #                configuration area are removed, too, what leads to a delay on next call which builds #
@@ -118,6 +118,7 @@ readonly mtd_prefix="mtd"
 readonly mtdblock_prefix="$devtmpfs/mtdblock"
 readonly mtdblock_mask="${mtdblock_prefix}%u"
 readonly emmcblock_prefix="$devtmpfs/mmcblk0"
+# shellcheck disable=SC2034
 readonly emmcblock_mask="${emmcblock_prefix}p%u"
 readonly proc_cpuinfo="$procfs/cpuinfo"
 readonly proc_mountinfo="$procfs/self/mountinfo"
@@ -198,7 +199,7 @@ readonly vr9_wrapper_dir="/wrapper"
 readonly vr9_rootfs_name="/filesystem_core.squashfs"
 readonly vr9_image_source_active="${vr9_wrapper_dir}${vr9_rootfs_name}"
 readonly vr9_image_source_inactive="mount:%s:${vr9_rootfs_name}"
-########################################################################################################
+#######################################################################################################
 #                                                                                                     #
 # Puma6 / Puma7 specific settings                                                                     #
 #                                                                                                     #
@@ -335,15 +336,15 @@ check_urlader_configuration()
 				[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
 				if [ "$p" -eq 5 ]; then
 					for i in $v4 $v3 $v2 $v1; do
-						printf "%b" "\0$(printf "%o" "$i")"
+						printf -- "%b" "\0$(printf -- "%o" "$i")"
 					done
 					exit 0
 				fi
-				eval v$p=$(( 0$rt ))
+				eval "v$p"=$(( 0$rt ))
 			done
 			exit 1
 		}
-		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ]; then
+		if ! [ "$(get_system_type)" = "Puma6/7" ] && [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ]; then
 #		if true; then
 			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | tbo_ro
 		else
@@ -428,7 +429,6 @@ check_urlader_configuration()
 		fi
 		case "$(get_system_type)" in
 			("IPQ8074")
-#				cat "/var/media/ftp/mmcblk0p15" 2>$null
 				cat "$disk_by_label/$ipq8074_eva_config_name" 2>$null
 				;;
 			(*)
@@ -597,10 +597,10 @@ check_urlader_configuration()
 		ent=$(( ent + 1 ))
 		if [ -z "$env_name" ]; then
 			if [ "$dh" -eq 0 ]; then
-				printf ">>>> fixed values from EVA configuration <<<<\n" 1>&2
+				printf -- ">>>> fixed values from EVA configuration <<<<\n" 1>&2
 				dh=1
 			fi
-			printf "%s=%s\n" "$nm" "$val" 1>&2
+			printf -- "%s=%s\n" "$nm" "$val" 1>&2
 		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
@@ -616,10 +616,10 @@ check_urlader_configuration()
 		coff=$(( coff + ${#val} + 1 ))
 		if [ -z "$env_name" ]; then
 			if [ "$dh" -eq 0 ]; then
-				printf ">>> default values from EVA configuration <<<\n" 1>&2
+				printf -- ">>> default values from EVA configuration <<<\n" 1>&2
 				dh=1
 			fi
-			printf "%s=%s\n" "$nm" "$val" 1>&2
+			printf -- "%s=%s\n" "$nm" "$val" 1>&2
 		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in defaults values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
@@ -925,9 +925,8 @@ get_device_branding()
 #######################################################################################################
 get_system_type()
 {
-#	printf "IPQ8074\n" && exit 0 # a fixed condition on other devices for testing
 	# Puma6 and Puma7 devices with '/proc/avm_partitions' pseudo file, platform selection based on AVM's script 'puma6_helper.sh'
-	is_puma_based_device && printf "%s\n" "Puma6/7" && return 0
+	is_puma_based_device && printf -- "%s\n" "Puma6/7" && return 0
 	# VR9 and GRX5 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
 	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
 	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
@@ -958,9 +957,9 @@ is_fit_image_device()
 	case "$(get_system_type)" in
 		("IPQ8074")
 			# shellcheck disable=SC2059
-			[ -z "$(get_fit_partition "$(printf "$fit_partition_name_mask" "0")")" ] && exit 1
+			[ -z "$(get_fit_partition "$(printf -- "$fit_partition_name_mask" "0")")" ] && exit 1
 			# shellcheck disable=SC2059
-			[ -z "$(get_fit_partition "$(printf "$fit_partition_name_mask" "1")")" ] && exit 1
+			[ -z "$(get_fit_partition "$(printf -- "$fit_partition_name_mask" "1")")" ] && exit 1
 			[ -x "$bootslot_tool" ] && exit 0
 			;;
 		(*)
@@ -999,7 +998,7 @@ get_emmc_partition()
 		r="$(pwd)/${t##*/}"
 		# shellcheck disable=SC2164
 		cd "$d" 2>$null
-		printf "%s\n" "$r"
+		printf -- "%s\n" "$r"
 		exit 0
 	fi
 	exit 1
@@ -1558,7 +1557,7 @@ get_localized_date()
 #######################################################################################################
 get_system_date()
 (
-	is_fit_image_device && [ -n "$1" ] && printf "0" && exit
+	is_fit_image_device && [ -n "$1" ] && printf -- "0" && exit
 	path="${1:-/}${1:+/}$avm_version_file_old"
 	if has_old_version_info "$1"; then
 		d="$(sed -n -e "s|^[ \t]*export $avm_version_file_old_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
@@ -1804,7 +1803,7 @@ get_modified_date()
 	# shellcheck disable=SC2181
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
-	is_fit_image_device && [ -n "$1" ] && printf "0\n" && exit 0
+	is_fit_image_device && [ -n "$1" ] && printf -- "0" && exit 0
 	base="${1:-}"
 	unset v
 	for f in $version_files; do
@@ -2080,7 +2079,7 @@ load_device_configuration()
 		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
 		[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
 	fi
-	printf "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
+	printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2253,4 +2252,4 @@ exit $rc
 #                                                                                                     #
 # end of script                                                                                       #
 #                                                                                                     #
-#######################################################################################################)
+#######################################################################################################
