@@ -336,7 +336,7 @@ check_urlader_configuration()
 				[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
 				if [ "$p" -eq 5 ]; then
 					for i in $v4 $v3 $v2 $v1; do
-						printf -- "%b" "\0$(printf -- "%o" "$i")"
+						printf -- "%b" $(printf -- "%#o" $(( i )) )
 					done
 					exit 0
 				fi
