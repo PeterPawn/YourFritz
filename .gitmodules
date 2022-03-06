@@ -4,3 +4,6 @@
 [submodule "bin"]
 	path = bin
 	url = https://github.com/PeterPawn/yf_bin.git
+[submodule "dtc"]
+	path = dtc
+	url = https://github.com/PeterPawn/dtc.git
