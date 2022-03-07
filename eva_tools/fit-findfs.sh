@@ -145,8 +145,8 @@ find_filesystem_in_fit_image()
 
 	img="$1"
 	[ -f "$img" ] && fsize=$(( $(wc -c <"$img" 2>"$null" || printf -- "0") )) || fsize=0
-	[ "$fsize" -eq 0 ] && usage && exit 1
-	msg "File: %s, size=%u\n" "$img" "$(wc -c < "$img" 2>"$null")"
+	[ -f "$img" ] && [ "$fsize" -eq 0 ] && usage && exit 1
+	msg "File: %s, size=%u\n" "$img" "$fsize"
 
 	[ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
