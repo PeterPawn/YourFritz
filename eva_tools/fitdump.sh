@@ -76,6 +76,7 @@ dissect_fit_image()
 		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | b2d_ro
 		return 0
 	)
+	get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
 	str() (
 		strlen()
 		{
@@ -86,18 +87,15 @@ dissect_fit_image()
 			done
 			printf -- "%u\n" "$(( s - 1 ))"
 		}
-		l="$(dd if="$1" bs=1 skip="$2" 2>"$null" | cmp -l -- - "$zeros" 2>"$null" | strlen)"
-		[ -n "$l" ] && dd if="$1" bs=1 skip="$2" count="$l" 2>"$null"
-	)
-	get_data() (
-		dd if="$1" bs=1 count="$2" skip="$3" 2>"$null"
+		l="$(get_data "$1" 256 "$2" | cmp -l -- - "$zeros" 2>"$null" | strlen)"
+		[ -n "$l" ] && get_data "$1" "$l" "$2"
 	)
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
 	get_fdt32_be() (
-		dd if="$1" bs=4 count=1 skip=$(( $2 / 4 )) 2>"$null" | b2d
+		get_data "$1" 4 "$2" | b2d
 	)
 	get_fdt32_cpu() (
-		dd if="$1" bs=4 count=1 skip=$(( $2 / 4 )) 2>"$null" | tbo | b2d
+		get_data "$1" 4 "$2" | tbo | b2d
 	)
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
@@ -116,17 +114,20 @@ dissect_fit_image()
 	incr_indent() { curr_indent=$(( curr_indent + 1 )); }
 	decr_indent() { curr_indent=$(( curr_indent - 1 )); [ $curr_indent -lt 0 ] && curr_indent=0; }
 	is_printable_string() (
-		i=0
-		while [ $i -lt "$3" ]; do
-			c="$(dd if="$1" bs=1 skip=$(( $2 + i )) count=1 2>"$null" | b2d)"
-			i=$(( i + 1 ))
-			if [ "$i" -eq "$3" ] && [ "$c" -eq 0 ]; then
-				[ "$i" -eq 1 ] && return 1 || return 0
-			fi
-			[ "$c" -lt 32 ] && return 1
-			[ "$c" -gt 126 ] && return 1
-		done
-		return 0
+		ro() {
+			i=0
+			while read -r p l _; do
+				i=$(( i + 1 ))
+				[ "$p" -gt "$i" ] && [ "$i" -eq 1 ] && return 1
+				[ "$l" -lt 040 ] && return 1
+				[ "$l" -gt 0176 ] && return 1
+			done
+			[ "$i" -eq 0 ] && [ "$1" -eq 1 ] && return 1;
+			[ "$i" -lt $(( $1 - 1 )) ] && return 1
+			return 0
+		}
+		get_data "$1" "$3" "$2" | cmp -l -- - "$zeros" 2>"$null" | ro "$3"
+		return $?
 	)
 	get_hex32() (
 		i=0
@@ -210,13 +211,13 @@ dissect_fit_image()
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
 	img="$1"
-	[ -f "$1" ] && fsize=$(( "$(wc -c < "$img" 2>"$null" || printf -- "0")" )) || fsize=0
-	[ "$fsize" -eq 0 ] && usage && exit 1
-	msg "File: %s, size=%u\n" "$img" "$(wc -c < "$img" 2>"$null")"
+	[ -f "$img" ] && fsize=$(( $(wc -c <"$img" 2>"$null" || printf -- "0") )) || fsize=0
+	[ -f "$img" ] && [ "$fsize" -eq 0 ] && usage && exit 1
+	msg "File: %s, size=%u\n" "$img" "$fsize"
 
 	[ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
-	msg "Signature at offset 0x%02x: 0x%08x %s\n" "$offset" "$(get_fdt32_cpu "$img" "$offset")" "$end"
+	msg "Signature at offset 0x%02x: 0x%08x %s\n" "$offset" "$(dd if="$img" bs=4 count=1 2>"$null" | tbo | b2d)" "$end"
 
 	offset=$(( offset + fdt32_size ))
 	payload_size="$(get_fdt32_cpu "$img" "$offset")"
