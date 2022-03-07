@@ -144,7 +144,7 @@ find_filesystem_in_fit_image()
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
 	img="$1"
-	[ -f "$1" ] && fsize=$(( "$(wc -c < "$img" 2>"$null" || printf -- "0")" )) || fsize=0
+	[ -f "$img" ] && fsize=$(( $(wc -c <"$img" 2>"$null" || printf -- "0") )) || fsize=0
 	[ "$fsize" -eq 0 ] && usage && exit 1
 	msg "File: %s, size=%u\n" "$img" "$(wc -c < "$img" 2>"$null")"
 
