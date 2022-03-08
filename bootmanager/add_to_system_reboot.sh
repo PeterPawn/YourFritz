@@ -29,8 +29,8 @@ sed:1:7:8:999:999:\$LuaFile:./lua_patch_0708.sed
 sed:1:7:8:999:999:\$JsFile:./js_patch_0708.sed
 # copy bootmanager HTML generator for versions up to 07.08
 cp:0:0:0:7:8:./bootmanager_html:usr/bin/bootmanager_html:0:0:555
-# copy bootmanager messages for versions since 07.08
-cp:0:7:8:999:999:./bootmanager.msg:usr/bin/bootmanager.msg:0:0:444
+# copy bootmanager messages for all versions
+cp:0:0:0:999:999:./bootmanager.msg:usr/bin/bootmanager.msg:0:0:444
 # copy bootmanager script for all versions
 cp:0:0:0:999:999:./bootmanager:usr/bin/bootmanager:0:0:555
 # copy bootmanager_server script for versions since 07.08
