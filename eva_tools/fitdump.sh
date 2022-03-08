@@ -91,12 +91,8 @@ dissect_fit_image()
 		[ -n "$l" ] && get_data "$1" "$l" "$2"
 	)
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
-	get_fdt32_be() (
-		get_data "$1" 4 "$2" | b2d
-	)
-	get_fdt32_cpu() (
-		get_data "$1" 4 "$2" | tbo | b2d
-	)
+	get_fdt32_be() ( get_data "$1" 4 "$2" | b2d; )
+	get_fdt32_cpu() ( get_data "$1" 4 "$2" | tbo | b2d; )
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
 		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
@@ -108,9 +104,7 @@ dissect_fit_image()
 			printf -- "%s=\"\$%s\"\n" "$3" "$n"
 		fi
 	}
-	indent() {
-		printf -- "%s" "$(expr "$indent_template" : "\( \{$(( curr_indent * 4 ))\}\).*")"
-	}
+	indent() { printf -- "%s" "$(expr "$indent_template" : "\( \{$(( curr_indent * 4 ))\}\).*")"; }
 	incr_indent() { curr_indent=$(( curr_indent + 1 )); }
 	decr_indent() { curr_indent=$(( curr_indent - 1 )); [ $curr_indent -lt 0 ] && curr_indent=0; }
 	is_printable_string() (
