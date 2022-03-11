@@ -1941,6 +1941,8 @@ get_values()
 	else
 		cb_support="true"
 	fi
+	# old name of 'active_branding', while only 'fixed_export', 'changeable' and 'immutable' were considered
+	printf -- "current_branding=%s\n" "$running_branding"
 	printf -- "device_branding=%s\n" "$device_branding"
 	printf -- "device_branding_changeable=%s\n" "$device_branding_is_changeable"
 	printf -- "switch_branding_support=%s\n" "$cb_support"
