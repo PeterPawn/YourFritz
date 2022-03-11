@@ -156,7 +156,7 @@ readonly avm_version_file_old="etc/version"
 readonly avm_version_file_old_prefix="FIRMWARE_"
 readonly avm_version_file="etc/init.d/rc.conf"
 readonly avm_version_file_prefix="CONFIG_"
-readonly avm_version_main_components="VERSION SUBVERSION"
+readonly avm_version_main_components="VERSION SUBVERSION BUILDNUMBER"
 readonly avm_version_major_name="CONFIG_VERSION_MAJOR"
 readonly avm_version_date="DATE"
 readonly avm_product_name="CONFIG_PRODUKT"
@@ -1481,6 +1481,7 @@ get_system_version()
 		exit $?
 	fi
 	eval "$(get_version_values "$1")"
+	[ -z "$SUBVERSION" ] && SUBVERSION="-$BUILDNUMBER"
 	has_old_version_info "$1" && printf -- '%s%s' "$VERSION" "$SUBVERSION" || printf -- '%s.%s%s' "$(get_version_major "$1")" "$VERSION" "$SUBVERSION"
 )
 #######################################################################################################
