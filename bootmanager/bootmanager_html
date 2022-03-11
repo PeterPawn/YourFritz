@@ -247,18 +247,18 @@ generate_html()
 	else
 		html '<span id=\"running_branding\">\n'
 		if [ "$running_branding_fixed" -eq 1 ]; then
-			html '%s\n' "$(html "$(get_localized "brndcurrfixed")" "$(bold "$current_branding")")"
+			html '%s\n' "$(html "$(get_localized "brndcurrfixed")" "$(bold "$active_branding")")"
 		else
 			if [ "$chg_running_branding" -eq 1 ]; then
-				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$current_branding")")"
+				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$active_branding")")"
 				html '<br>\n'
 				html '<label for=\"idRunningBranding\">\n'
 				html '%s&nbsp;\n' "$(get_localized "brndset")"
 				html '</label>\n'
-				select_box 'idRunningBranding' 'running_branding' "$active_brandings" "$current_branding"
+				select_box 'idRunningBranding' 'running_branding' "$active_brandings" "$active_branding"
 			else
-				html '%s\n' "$(html "$(get_localized "brndcurrsingle")" "$(bold "$current_branding")")"
-				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$current_branding"
+				html '%s\n' "$(html "$(get_localized "brndcurrsingle")" "$(bold "$active_branding")")"
+				html '<input type=\"hidden\" name=\"running_branding\" value=\"%s\">\n' "$active_branding"
 			fi
 		fi
 		html '</span>\n'
@@ -267,20 +267,20 @@ generate_html()
 			html '%s\n' "$(html "$(get_localized "brndaltfixed")" "$(bold "$inactive_brandings")")"
 		else
 			if [ "$chg_alternative_branding" -eq 1 ]; then
-				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$current_branding")")"
+				html '%s\n' "$(html "$(get_localized "brndmulti")" "$(bold "$active_branding")")"
 				html '<br>\n'
 				html '<label for=\"idAlternativeBranding\">%s&nbsp;</label>\n' "$(get_localized "brndset")"
-				select_box 'idAlternativeBranding' 'alternative_branding' "$inactive_brandings" "$current_branding"
+				select_box 'idAlternativeBranding' 'alternative_branding' "$inactive_brandings" "$active_branding"
 			else
 				if [ -z "$inactive_version" ];then
 					html '%s\n' "$(get_localized "brndaltinv")"
-					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$current_branding"
+					html '<input type="hidden" name="alternative_branding" value="%s">\n' "$active_branding"
 				else
 					html '%s\n' "$(html "$(get_localized "brndaltsingle")" "$(bold "$inactive_brandings")")"
-					if [ "$inactive_brandings" = "$current_branding" ]; then
-						html '%s\n' "$(html "$(get_localized "brndaltnochg")" "$(bold "$current_branding")")"
+					if [ "$inactive_brandings" = "$active_branding" ]; then
+						html '%s\n' "$(html "$(get_localized "brndaltnochg")" "$(bold "$active_branding")")"
 					else
-						html '%s\n' "$(html "$(get_localized "brndaltset")" "$(bold "$current_branding")")"
+						html '%s\n' "$(html "$(get_localized "brndaltset")" "$(bold "$active_branding")")"
 						html '%s\n' "$(html "$(get_localized "brndaltnew")" "$(bols "$inactive_brandings")")"
 					fi
 				html '<input type=\"hidden\" name=\"alternative_branding\" value=\"%s\">\n' "$inactive_brandings"
@@ -352,7 +352,7 @@ current_switch_value=0
 active_version=""
 inactive_version=""
 switch_branding_support=false
-current_branding=""
+active_branding=""
 active_brandings=""
 inactive_brandings=""
 system_is_switched=false
