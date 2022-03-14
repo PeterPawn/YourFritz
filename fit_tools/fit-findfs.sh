@@ -118,7 +118,6 @@ find_filesystem_in_fit_image()
 			v="$(str "$1" "$2")"
 			printf -- "%s=\"%s\"\n%s=\"\$%s\"\n" "$n" "$v" "$3" "$n"
 		else
-			v="$(set | sed -n -e "s|^$n=\(['\"]\?\)\(.*\)\1|\2|p")"
 			printf -- "%s=\"\$%s\"\n" "$3" "$n"
 		fi
 	}

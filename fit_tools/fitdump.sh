@@ -139,9 +139,10 @@ dissect_fit_image()
 		if [ -z "$f" ]; then
 			v="$(str "$1" "$2")"
 			printf -- "%s=\"%s\"\n%s=\"\$%s\"\n" "$n" "$v" "$3" "$n"
+			duration "$(printf -- "string '%s' cached as '%s'" "$v" "$n")"
 		else
-			v="$(set | sed -n -e "s|^$n=\(['\"]\?\)\(.*\)\1|\2|p")"
 			printf -- "%s=\"\$%s\"\n" "$3" "$n"
+			duration "$(printf -- "cached string '%s' used" "$n")"
 		fi
 	}
 	indent() { printf -- "%s" "$(expr "$indent_template" : "\( \{$(( curr_indent * 4 ))\}\).*")"; }
