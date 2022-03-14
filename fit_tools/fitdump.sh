@@ -1,6 +1,44 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# dissect a FIT image with AVM's modified format                                                      #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# fitdump.sh, version 0.2                                                                             #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2022 P.Haemmerlein (peterpawn@yourfritz.de)                                           #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script reads a FIT image in AVM's own format and generates an .its file as source for further  #
+# 'mkimage' calls, while all binary data with a length > 512 bytes will be written to separate files, #
+# which will be included with '/incbin/' statements.                                                  #
+#                                                                                                     #
+# All output will be written to a new folder 'fit-dump' in the current working directory, which may   #
+# not exist already.                                                                                  #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# the whole logic as a sealed sub-function                                                            #
+#                                                                                                     #
+#######################################################################################################
 dissect_fit_image()
 (
 	printf_ss() {
@@ -165,7 +203,13 @@ dissect_fit_image()
 	usage() {
 		exec 1>&2
 		printf -- "fitdump.sh - dissect a FIT image into .its and blob files\n\n"
-		printf -- "Usage: %s [ -d | --debug ] [ -n | --no-its ] <fit-image>\n\n" "$0"
+		printf -- "Usage: %s [ options ]<fit-image>\n\n" "$0"
+		printf -- "Options:\n\n"
+		printf -- "-d or --debug   - show extra information (on STDERR) while reading FDT structure\n"
+		printf -- "-n or --no-its  - do not create an .its file as output\n"
+		printf -- "-c or --copy    - copy source file to a temporary location prior to processing\n"
+		printf -- "-m or --measure - measure execution time using /proc/timer-list and write log data to\n"
+		printf -- "                  a file named 'fitdump.measure' in the output directory\n"
 	}
 	nsecs() { sed -n -e "s|^now at \([0-9]*\).*|\1|p" /proc/timer_list; }
 	format_duration() (
@@ -219,6 +263,9 @@ dissect_fit_image()
 		elif [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
 			measr=1
 			shift
+		elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+			usage
+			exit 0
 		else
 			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
@@ -272,7 +319,6 @@ dissect_fit_image()
 
 	duration "signature and data size read"
 
-#	if [ "$tmpcopy" = "1" ] || ! [ -f "$img" ]; then
 	if [ "$tmpcopy" = "1" ]; then
 		tmpdir="${TMP:-$TMPDIR}"
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
@@ -420,6 +466,14 @@ dissect_fit_image()
 	duration "processing finished"
 )
 
+#                                                                                                     #
+# constants                                                                                           #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# common values                                                                                       #
+#                                                                                                     #
+#######################################################################################################
 cwd="$(pwd)"
 dissect_fit_image "$@"
 rc=$?
