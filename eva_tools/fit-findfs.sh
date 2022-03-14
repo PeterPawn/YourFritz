@@ -121,8 +121,6 @@ find_filesystem_in_fit_image()
 	fdt_end=9
 	fdt32_size=4
 
-	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
-
 	force_tmpcopy=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
 		[ "$1" = "--" ] && shift && break
@@ -145,7 +143,6 @@ find_filesystem_in_fit_image()
 		tmpdir="${TMP:-$TMPDIR}"
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
 		tmpimg="$tmpdir/fit-image-$$"
-		# slower copying with 1M blocks, but it needs less buffer space for 'dd' - it's a one-time action
 		dd if="$img" of="$tmpimg" bs=$(( 1024 * 1024 )) count=$(( ( payload_size + 64 + 8 ) / ( 1024 * 1024 ) + 1 )) 2>$null || exit 1
 		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 		img="$tmpimg"
@@ -159,7 +156,7 @@ find_filesystem_in_fit_image()
 	fdt_start=$offset
 	offset=$(( offset + fdt32_size ))
 
-	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
+#	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
 	offset=$(( offset + fdt32_size ))
 
 	fdt_off_dt_struct="$(get_fdt32_be "$img" "$offset")"
@@ -174,7 +171,7 @@ find_filesystem_in_fit_image()
 	fdt_version="$(get_fdt32_be "$img" "$offset")"
 	offset=$(( offset + fdt32_size ))
 
-	fdt_last_comp_version="$(get_fdt32_be "$img" "$offset")"
+#	fdt_last_comp_version="$(get_fdt32_be "$img" "$offset")"
 
 	if [ "$fdt_version" -ge 2 ]; then
 		offset=$(( offset + fdt32_size ))
