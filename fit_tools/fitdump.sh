@@ -201,15 +201,44 @@ dissect_fit_image()
 		dd if="$img" bs=1 skip=$(( off )) count=$(( wr )) 2>"$null"
 	)
 	usage() {
+		__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+		__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+		__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+		__yf_get_script_lines() {
+			sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+			sed -e '1d;$d' | \
+			sed -e 's|# \(.*\) *#$|\1|' | \
+			sed -e 's|^#*#$|--|p' | \
+			sed -e '$d' | \
+			sed -e 's| *$||'
+		}
+		__yf_show_script_name() {
+			[ -n "$1" ] && printf -- '%s' "$1"
+			printf -- '%s' "${0#*/}"
+			[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+		}
+		__yf_show_license() { __yf_get_script_lines 'LIC'; }
+		__yf_show_version() {
+			printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+			v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+			printf "%s\n" "$v_display"
+		}
+		__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
+
 		exec 1>&2
-		printf -- "fitdump.sh - dissect a FIT image into .its and blob files\n\n"
-		printf -- "Usage: %s [ options ]<fit-image>\n\n" "$0"
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		printf -- "\n"
+		printf -- "${__yf_ansi_bold__}fitdump.sh${__yf_ansi_reset__} - dissect a FIT image into .its and blob files\n\n"
+		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
 		printf -- "Options:\n\n"
 		printf -- "-d or --debug   - show extra information (on STDERR) while reading FDT structure\n"
 		printf -- "-n or --no-its  - do not create an .its file as output\n"
 		printf -- "-c or --copy    - copy source file to a temporary location prior to processing\n"
 		printf -- "-m or --measure - measure execution time using /proc/timer-list and write log data to\n"
 		printf -- "                  a file named 'fitdump.measure' in the output directory\n"
+		printf -- "\n"
 	}
 	nsecs() { sed -n -e "s|^now at \([0-9]*\).*|\1|p" /proc/timer_list; }
 	format_duration() (
@@ -465,13 +494,9 @@ dissect_fit_image()
 	done
 	duration "processing finished"
 )
-
-#                                                                                                     #
-# constants                                                                                           #
-#                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# common values                                                                                       #
+# call the sealed function above                                                                      #
 #                                                                                                     #
 #######################################################################################################
 cwd="$(pwd)"
