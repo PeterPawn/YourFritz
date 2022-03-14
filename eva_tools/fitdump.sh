@@ -210,21 +210,17 @@ dissect_fit_image()
 		if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
 			debug=1
 			shift
-		fi
-
-		if [ "$1" = "-c" ] || [ "$1" = "--copy" ]; then
+		elif [ "$1" = "-c" ] || [ "$1" = "--copy" ]; then
 			tmpcopy=1
 			shift
-		fi
-
-		if [ "$1" = "-n" ] || [ "$1" = "--no-its" ]; then
+		elif [ "$1" = "-n" ] || [ "$1" = "--no-its" ]; then
 			its_file="$null"
 			shift
-		fi
-
-		if [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
+		elif [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
 			measr=1
 			shift
+		else
+			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
 	done
 
@@ -282,7 +278,7 @@ dissect_fit_image()
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
 		tmpimg="$tmpdir/fit-image-$$"
 		dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>$null
-		trap '[ -f "$tmpimg" ] && rm -f $tmpimg 2>/dev/null' EXIT
+		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 		img="$tmpimg"
 		duration "image copied to tmpfs"
 	fi
