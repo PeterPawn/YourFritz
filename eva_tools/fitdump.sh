@@ -183,12 +183,12 @@ dissect_fit_image()
 		"$@"
 		r=$?
 		end=$(nsecs)
-		printf "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && printf "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
 		return $r
 	}
 	duration() {
 		now=$(nsecs)
-		printf "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && printf "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
 	}
 
 	null="/dev/null"
@@ -199,6 +199,7 @@ dissect_fit_image()
 	image_file_mask="image_%03u.bin"
 	files=0
 	tmpcopy=0
+	measr=0
 	curr_indent=0
 	indent_template="$(dd if=$zeros bs=256 count=1 2>"$null" | tr '\000' ' ')"
 
@@ -218,6 +219,11 @@ dissect_fit_image()
 
 		if [ "$1" = "-n" ] || [ "$1" = "--no-its" ]; then
 			its_file="$null"
+			shift
+		fi
+
+		if [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
+			measr=1
 			shift
 		fi
 	done
@@ -248,7 +254,7 @@ dissect_fit_image()
 	fi
 	cd "$dump_dir" || exit 1
 
-	exec 3<>"fitdump.measure"
+	[ "$measr" -eq 1 ] && exec 3<>"fitdump.measure"
 
 	duration "measure log initialized"
 
