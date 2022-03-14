@@ -230,7 +230,8 @@ dissect_fit_image()
 		__yf_show_copyright
 		__yf_show_license
 		printf -- "\n"
-		printf -- "${__yf_ansi_bold__}fitdump.sh${__yf_ansi_reset__} - dissect a FIT image into .its and blob files\n\n"
+		printf -- "%sfitdump.sh%s - dissect a FIT image into .its and blob files\n\n" "${__yf_ansi_bold__}" "${__yf_ansi_reset__}"
+
 		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
 		printf -- "Options:\n\n"
 		printf -- "-d or --debug   - show extra information (on STDERR) while reading FDT structure\n"

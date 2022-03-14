@@ -168,7 +168,7 @@ find_filesystem_in_fit_image()
 		__yf_show_copyright
 		__yf_show_license
 		printf -- "\n"
-		printf -- "${__yf_ansi_bold__}fit-findfs.sh${__yf_ansi_reset__} - locate a filesystem BLOB in a FIT image\n\n"
+		printf -- "%sfit-findfs.sh%s - locate a filesystem BLOB in a FIT image\n\n" "${__yf_ansi_bold__}" "${__yf_ansi_reset__}"
 		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
 		printf -- "Options:\n\n"
 		printf -- "-f or --force-copy - always create and use a copy on temporary storage,\n"
