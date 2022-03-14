@@ -1,6 +1,44 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later
+#######################################################################################################
+#                                                                                                     #
+# search the 'filesystem' entry with the largest data size in a FIT image                             #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# fit-findfs.sh, version 0.2                                                                          #
+#                                                                                                     #
+# This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2022 P.Haemmerlein (peterpawn@yourfritz.de)                                           #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU       #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# This script reads a FIT image in AVM's own format and searches the biggest BLOB of data with type   #
+# of 'filesystem'. The assumption is, that this data will be the filesystem used for the FRITZ!OS     #
+# main system, providing AVM's user frontend.                                                         #
+#                                                                                                     #
+# If a filesystem was found, its offset in the FIT file and its data size will be written to STDOUT,  #
+# readily prepared to be set as variables using an 'eval' statement.                                  #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# the whole logic as a sealed sub-function                                                            #
+#                                                                                                     #
+#######################################################################################################
 find_filesystem_in_fit_image()
 (
 	tbo() (
@@ -101,9 +139,42 @@ find_filesystem_in_fit_image()
 		return $?
 	)
 	usage() {
+		__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+		__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+		__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+		__yf_get_script_lines() {
+			sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+			sed -e '1d;$d' | \
+			sed -e 's|# \(.*\) *#$|\1|' | \
+			sed -e 's|^#*#$|--|p' | \
+			sed -e '$d' | \
+			sed -e 's| *$||'
+		}
+		__yf_show_script_name() {
+			[ -n "$1" ] && printf -- '%s' "$1"
+			printf -- '%s' "${0#*/}"
+			[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+		}
+		__yf_show_license() { __yf_get_script_lines 'LIC'; }
+		__yf_show_version() {
+			printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+			v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+			printf "%s\n" "$v_display"
+		}
+		__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
+
 		exec 1>&2
-		printf -- "fit-findfs.sh - find filesystem entries in a FIT image\n\n"
-		printf -- "Usage: %s [ -c | --force-copy ] <fit-image>\n\n" "$0"
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		printf -- "\n"
+		printf -- "${__yf_ansi_bold__}fit-findfs.sh${__yf_ansi_reset__} - locate a filesystem BLOB in a FIT image\n\n"
+		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
+		printf -- "Options:\n\n"
+		printf -- "-f or --force-copy - always create and use a copy on temporary storage,\n"
+		printf -- "                     even if input is a regular file\n"
+		printf -- "\n"
+		exec 1>&2
 	}
 
 	null="/dev/null"
@@ -128,6 +199,9 @@ find_filesystem_in_fit_image()
 		if [ "$1" = "-f" ] || [ "$1" = "--force-copy" ]; then
 			force_tmpcopy=1
 			shift
+		elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+			usage
+			exit 0
 		else
 			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
@@ -239,5 +313,14 @@ find_filesystem_in_fit_image()
 	printf -- "filesystem_offset=%u filesystem_size=%u\n" "$filesystem_offset" "$filesystem_size"
 
 )
-
+#######################################################################################################
+#                                                                                                     #
+# invoke sealed function from above                                                                   #
+#                                                                                                     #
+#######################################################################################################
 find_filesystem_in_fit_image "$@"
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
