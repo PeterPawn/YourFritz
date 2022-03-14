@@ -3,13 +3,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 find_filesystem_in_fit_image()
 (
-	printf_ss() {
-		mask="$1"
-		shift
-		# shellcheck disable=SC2059
-		printf -- "$mask" "$@"
-	}
-	msg() { [ "$debug" -eq 1 ] || return; printf_ss "$@" 1>&2; }
 	tbo() (
 		tbo_ro()
 		{
@@ -63,6 +56,7 @@ find_filesystem_in_fit_image()
 		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | b2d_ro
 		return 0
 	)
+	get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
 	str() (
 		strlen()
 		{
@@ -73,19 +67,12 @@ find_filesystem_in_fit_image()
 			done
 			printf -- "%u\n" "$(( s - 1 ))"
 		}
-		l="$(dd if="$1" bs=1 skip="$2" 2>"$null" | cmp -l -- - "$zeros" 2>"$null" | strlen)"
-		[ -n "$l" ] && dd if="$1" bs=1 skip="$2" count="$l" 2>"$null"
-	)
-	get_data() (
-		dd if="$1" bs=1 count="$2" skip="$3" 2>"$null"
+		l="$(get_data "$1" 256 "$2" | cmp -l -- - "$zeros" 2>"$null" | strlen)"
+		[ -n "$l" ] && get_data "$1" "$l" "$2"
 	)
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
-	get_fdt32_be() (
-		dd if="$1" bs=4 count=1 skip=$(( $2 / 4 )) 2>"$null" | b2d
-	)
-	get_fdt32_cpu() (
-		dd if="$1" bs=4 count=1 skip=$(( $2 / 4 )) 2>"$null" | tbo | b2d
-	)
+	get_fdt32_be() ( get_data "$1" 4 "$2" | b2d; )
+	get_fdt32_cpu() ( get_data "$1" 4 "$2" | tbo | b2d; )
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
 		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
@@ -98,22 +85,25 @@ find_filesystem_in_fit_image()
 		fi
 	}
 	is_printable_string() (
-		i=0
-		while [ $i -lt "$3" ]; do
-			c="$(dd if="$1" bs=1 skip=$(( $2 + i )) count=1 2>"$null" | b2d)"
-			i=$(( i + 1 ))
-			if [ "$i" -eq "$3" ] && [ "$c" -eq 0 ]; then
-				[ "$i" -eq 1 ] && return 1 || return 0
-			fi
-			[ "$c" -lt 32 ] && return 1
-			[ "$c" -gt 126 ] && return 1
-		done
-		return 0
+		ro() {
+			i=0
+			while read -r p l _; do
+				i=$(( i + 1 ))
+				[ "$p" -gt "$i" ] && [ "$i" -eq 1 ] && return 1
+				[ "$l" -lt 040 ] && return 1
+				[ "$l" -gt 0176 ] && return 1
+			done
+			[ "$i" -eq 0 ] && [ "$1" -eq 1 ] && return 1;
+			[ "$i" -lt $(( $1 - 1 )) ] && return 1
+			return 0
+		}
+		get_data "$1" "$3" "$2" | cmp -l -- - "$zeros" 2>"$null" | ro "$3"
+		return $?
 	)
 	usage() {
 		exec 1>&2
 		printf -- "fit-findfs.sh - find filesystem entries in a FIT image\n\n"
-		printf -- "Usage: %s [ -d | --debug ] <fit-image>\n\n" "$0"
+		printf -- "Usage: %s [ -c | --force-copy ] <fit-image>\n\n" "$0"
 	}
 
 	null="/dev/null"
@@ -124,16 +114,6 @@ find_filesystem_in_fit_image()
 	filesystem_offset=0
 	filesystem_size=0
 
-	debug=0
-	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
-		[ "$1" = "--" ] && shift && break
-
-		if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
-			debug=1
-			shift
-		fi
-	done
-
 	fdt_begin_node=1
 	fdt_end_node=2
 	fdt_prop=3
@@ -143,74 +123,77 @@ find_filesystem_in_fit_image()
 
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
-	img="$1"
-	[ -f "$img" ] && fsize=$(( $(wc -c <"$img" 2>"$null" || printf -- "0") )) || fsize=0
-	[ -f "$img" ] && [ "$fsize" -eq 0 ] && usage && exit 1
-	msg "File: %s, size=%u\n" "$img" "$fsize"
+	force_tmpcopy=0
+	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
+		[ "$1" = "--" ] && shift && break
 
+		if [ "$1" = "-f" ] || [ "$1" = "--force-copy" ]; then
+			force_tmpcopy=1
+			shift
+		else
+			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
+		fi
+	done
+
+	img="$1"
 	[ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
-	offset=0
-	msg "Signature at offset 0x%02x: 0x%08x %s\n" "$offset" "$(get_fdt32_cpu "$img" "$offset")" "$end"
 
 	offset=$(( offset + fdt32_size ))
 	payload_size="$(get_fdt32_cpu "$img" "$offset")"
-	msg "Overall length of data at offset 0x%02x: 0x%08x - dec.: %u %s\n" "$offset" "$payload_size" "$payload_size" "$end"
 
-	offset=$(( offset + fdt32_size ))
-	size=64
-	msg "Data at offset 0x%02x, size %u:\n" "$offset" "$size"
-	[ "$debug" -eq 1 ] && get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
+	if ! [ -f "$img" ] || [ "$force_tmpcopy" -eq 1 ]; then
+		tmpdir="${TMP:-$TMPDIR}"
+		[ -z "$tmpdir" ] && tmpdir="/tmp"
+		tmpimg="$tmpdir/fit-image-$$"
+		# slower copying with 1M blocks, but it needs less buffer space for 'dd' - it's a one-time action
+		dd if="$img" of="$tmpimg" bs=$(( 1024 * 1024 )) count=$(( ( payload_size + 64 + 8 ) / ( 1024 * 1024 ) + 1 )) 2>$null || exit 1
+		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
+		img="$tmpimg"
+	fi
 
-	offset=$(( offset + size ))
+	offset=$(( offset + fdt32_size + 64 ))
 	fdt_magic="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT magic at offset 0x%02x: 0x%08x %s\n" "$offset" "$fdt_magic" "(BE)"
-	[ "$fdt_magic" -ne 3490578157 ] && msg "Invalid FDT magic found.\n" && exit 1
+
+	[ "$fdt_magic" -ne 3490578157 ] && printf "Invalid FDT magic found.\a\n" 1>&2 && exit 1
+
 	fdt_start=$offset
-
 	offset=$(( offset + fdt32_size ))
+
 	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT total size at offset 0x%02x: 0x%08x (dec.: %u) %s\n" "$offset" "$fdt_totalsize" "$fdt_totalsize" "(BE)"
-
 	offset=$(( offset + fdt32_size ))
+
 	fdt_off_dt_struct="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT structure offset: 0x%08x (dec.: %u) %s\n" "$fdt_off_dt_struct" "$fdt_off_dt_struct" "(BE)"
-
 	offset=$(( offset + fdt32_size ))
+
 	fdt_off_dt_strings="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT strings offset: 0x%08x (dec.: %u) %s\n" "$fdt_off_dt_strings" "$fdt_off_dt_strings" "(BE)"
-
 	offset=$(( offset + fdt32_size ))
-	fdt_off_mem_rsvmap="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT memory reserve map offset: 0x%08x (dec.: %u) %s\n" "$fdt_off_mem_rsvmap" "$fdt_off_mem_rsvmap" "(BE)"
 
+#	fdt_off_mem_rsvmap="$(get_fdt32_be "$img" "$offset")"
 	offset=$(( offset + fdt32_size ))
+
 	fdt_version="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT version at offset 0x%04x: 0x%08x (dec.: %u) %s\n" "$offset" "$fdt_version" "$fdt_version" "(BE)"
-
 	offset=$(( offset + fdt32_size ))
+
 	fdt_last_comp_version="$(get_fdt32_be "$img" "$offset")"
-	msg "FDT last compatible version at offset 0x%04x: 0x%08x (dec.: %u) %s\n" "$offset" "$fdt_last_comp_version" "$fdt_last_comp_version" "(BE)"
 
 	if [ "$fdt_version" -ge 2 ]; then
 		offset=$(( offset + fdt32_size ))
-		fdt_boot_cpuid_phys="$(get_fdt32_be "$img" "$offset")"
-		msg "FDT physical CPU ID while booting at offset 0x%04x: 0x%08x (dec.: %u) %s\n" "$offset" "$fdt_boot_cpuid_phys" "$fdt_boot_cpuid_phys" "(BE)"
+#		fdt_boot_cpuid_phys="$(get_fdt32_be "$img" "$offset")"
 
 		if [ "$fdt_version" -ge 2 ]; then
 			offset=$(( offset + fdt32_size ))
-			fdt_size_dt_strings="$(get_fdt32_be "$img" "$offset")"
-			msg "FDT size of strings block: 0x%08x (dec.: %u) %s\n" "$fdt_size_dt_strings" "$fdt_size_dt_strings" "(BE)"
+#			fdt_size_dt_strings="$(get_fdt32_be "$img" "$offset")"
 
 			if [ "$fdt_version" -ge 17 ]; then
 				offset=$(( offset + fdt32_size ))
-				fdt_size_dt_struct="$(get_fdt32_be "$img" "$offset")"
-				msg "FDT size of structure block: 0x%08x (dec.: %u) %s\n" "$fdt_size_dt_struct" "$fdt_size_dt_struct" "(BE)"
+#				fdt_size_dt_struct="$(get_fdt32_be "$img" "$offset")"
 			fi
 		fi
 	fi
 
 	offset=$(( fdt_start + fdt_off_dt_struct ))
 	data=$(get_fdt32_be "$img" "$offset")
+
 	# shellcheck disable=SC2050
 	while [ 1 -eq 1 ]; do
 		case "$data" in
@@ -218,28 +201,24 @@ find_filesystem_in_fit_image()
 				name_off="$(( offset + fdt32_size ))"
 				eval "$(get_string "$img" $name_off "name")"
 				[ -z "$name" ] && name="/"
-				msg "Begin node at offset 0x%08x, name=%s\n" "$offset" "$name"
 				offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
 				;;
 			("$fdt_end_node")
-				msg "End node at offset 0x%08x\n" "$offset"
 				offset=$(( offset + fdt32_size ))
 				;;
 			("$fdt_prop")
 				value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
 				name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
 				eval "$(get_string "$img" $name_off "name")"
-				msg "Property node at offset 0x%08x, value size=%u, name=%s\n" "$offset" "$value_size" "$name"
 				data_offset=$(( offset + 3 * fdt32_size ))
 				if [ "$value_size" -gt 512 ]; then
 					last_blob_offset="$data_offset"
 					last_blob_size="$value_size"
-					msg "Found BLOB with %u bytes of data at offset 0x%08x\n" "$value_size" "$data_offset"
 				elif is_printable_string "$img" "$data_offset" "$value_size"; then
 					eval "$(get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
 					if [ -n "$str" ]; then
 						if [ "$name" = "$type_name" ] && [ "$str" = "$filesystem_type" ]; then
-							# assume 'data' entry was processed already
+							# assume 'data' entry was processed already, should be re-implemented with recursion for nodes
 							if [ "$last_blob_size" -gt "$filesystem_size" ]; then
 								filesystem_offset="$last_blob_offset"
 								filesystem_size="$last_blob_size"
@@ -253,14 +232,15 @@ find_filesystem_in_fit_image()
 				offset=$(( offset + fdt32_size ))
 				;;
 			("$fdt_end")
-				msg "FDT end found at offset 0x%08x\n" "$offset"
 				offset=$(( offset + fdt32_size ))
 				break
 				;;
 		esac
 		data=$(get_fdt32_be "$img" "$offset")
 	done
+
 	printf -- "filesystem_offset=%u filesystem_size=%u\n" "$filesystem_offset" "$filesystem_size"
+
 )
 
 find_filesystem_in_fit_image "$@"
