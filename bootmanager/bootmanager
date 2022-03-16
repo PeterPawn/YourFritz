@@ -128,6 +128,7 @@ readonly urlader_name="urlader"
 readonly kernel_name="kernel"
 readonly fit_partition_name="fit"
 readonly fit_partition_name_mask="$fit_partition_name%u"
+readonly fit_mtd_name_mask="fit%u"
 readonly bootslot_tool="/sbin/bootslotctl"
 readonly filesystem_name="filesystem"
 readonly reserved_prefix="reserved"
@@ -251,7 +252,6 @@ __yf_show_version() {
 	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
 	printf -- "%s\n" "$v_display"
 }
-__yf_get_version() { __yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, version \(.*\)|\1|p"; }
 __yf_show_copyright() { __yf_get_script_lines 'CPY'; }
 boot_manager_usage() {
 	__yf_show_version
@@ -287,7 +287,7 @@ is_puma_based_device()
 	[ -f "$puma_helper" ] || exit 1
 	# shellcheck disable=SC1090
 	. "$puma_helper"
-	if type is_puma7 2>$null 1>&2; then
+	if type is_puma7 2>"$null" 1>&2; then
 		[ "$IS_ATOM" = "y" ] || exit 1
 	else
 		is_puma_atom || exit 1
@@ -317,7 +317,7 @@ get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1
 # get a value from urlader environment                                                                #
 #                                                                                                     #
 #######################################################################################################
-get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2>$null; )
+get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2>"$null"; )
 #######################################################################################################
 #                                                                                                     #
 # set a new value on urlader environment and verify successful change                                 #
@@ -326,7 +326,311 @@ get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2
 set_environment_value()
 (
 	printf -- "%s\t%s\n" "$1" "$2" >"$urlader_environment"
-	grep -q "^$1[[:space]]$2\$" "$urlader_environment" 2>$null
+	grep -q "^$1[[:space]]$2\$" "$urlader_environment" 2>"$null"
+)
+#######################################################################################################
+#                                                                                                     #
+# common helper functions for EVA configuration and FIT image functions                               #
+#                                                                                                     #
+#######################################################################################################
+hex2bin() {
+	hex2bin_ro()
+	{
+		i=1; h=1; z=0
+		# shellcheck disable=SC2034
+		while read -r p _ o; do
+			[ "$i" -lt "$p" ] && return 1
+			i=$(( i + 1 ))
+			if [ "$o" -ge 60 ] && [ "$o" -le 67 ]; then
+				c=$(( o - 60 ))
+			elif [ "$o" -ge 70 ] && [ "$o" -le 71 ]; then
+				c=$(( o - 62 ))
+			elif [ "$o" -ge 101 ] && [ "$o" -le 106 ]; then
+				c=$(( o - 91 ))
+			elif [ "$o" -ge 141 ] && [ "$o" -le 146 ]; then
+				c=$(( o - 131 ))
+			else
+				return 1
+			fi
+			if [ $h -eq 0 ]; then
+				v=$(( v + c ))
+				if [ $v -eq 0 ]; then
+					z=$(( z + 1 ))
+				else
+					if [ $z -gt 0 ]; then
+						dd if="$zeros" bs=$z count=1 2>"$null"
+						z=0
+					fi
+					printf -- "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+				fi
+				h=1
+			else
+				v=$(( c * 16 ))
+				h=0
+			fi
+		done
+		[ $z -gt 0 ] && dd if="$zeros" bs=$z count=1 2>"$null"
+		return 0
+	}
+	if [ -n "$1" ]; then
+		printf -- "%s" "$1" | hex2bin
+		return $?
+	fi
+	cmp -l -- "$zeros" - 2>"$null" | hex2bin_ro
+	return $?
+}
+bin2dec_be() (
+	bin2dec_be_ro()
+	{
+		i=1; l=0; v=0; s=-8; ff=0
+		while read -r p _ rt; do
+			if [ "$ff" -eq 1 ]; then
+				v=$(( v * 256 ))
+				ff=255
+				v=$(( v + ff ))
+				i=$(( i + 1 ))
+				ff=0
+			fi
+			while [ "$i" -lt "$p" ]; do
+				v=$(( v * 256 ))
+				i=$(( i + 1 ))
+			done
+			if [ "$rt" = 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			v=$(( v * 256 ))
+			rt=$(( 0$rt ))
+			v=$(( v + rt ))
+			i=$(( p + 1 ))
+		done
+		printf -- "%d" $v
+	}
+	( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | bin2dec_be_ro
+	return 0
+)
+native_byte_order() (
+	native_byte_order_ro()
+	{
+		v1=0; v2=0; v3=0; v4=0
+		while read -r p _ rt; do
+			[ "$p" -gt 5 ] && exit 1
+			[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
+			if [ "$p" -eq 5 ]; then
+				for i in $v4 $v3 $v2 $v1; do
+					printf -- "%b" "\0$(printf -- "%o" "$i")"
+				done
+				exit 0
+			fi
+			eval "v$p"=$(( 0$rt ))
+		done
+		exit 1
+	}
+	if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | bin2dec_be)" -eq 1 ]; then
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | native_byte_order_ro
+	else
+		cat - 2>"$null"
+	fi
+)
+native_byte_order_evacfg() (
+	if ! [ "$(get_system_type)" = "Puma6/7" ]; then
+		native_byte_order
+	else
+		cat - 2>"$null"
+	fi
+)
+get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
+string_from_file() (
+	strlen()
+	{
+		s=1
+		while read -r p l _; do
+			[ "$p" -ne "$s" ] && printf -- "%u\n" "$(( s - 1 ))" && return
+			s=$(( s + 1 ))
+		done
+		printf -- "%u\n" "$(( s - 1 ))"
+	}
+	l="$(get_data "$1" 256 "$2" | cmp -l -- - "$zeros" 2>"$null" | strlen)"
+	[ -n "$l" ] && get_data "$1" "$l" "$2"
+)
+#######################################################################################################
+#                                                                                                     #
+# find offset of rootfs image in the specified source with AVM's FIT image format                     #
+#                                                                                                     #
+#######################################################################################################
+find_rootfs_in_fit_image()
+(
+	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
+	get_fdt32_be() ( get_data "$1" 4 "$2" | bin2dec_be; )
+	get_fdt32_cpu() ( get_data "$1" 4 "$2" | native_byte_order | bin2dec_be; )
+	get_string() {
+		n="$(printf -- "__fdt_string_%u" "$2")"
+		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
+		if [ -z "$f" ]; then
+			v="$(string_from_file "$1" "$2")"
+			printf -- "%s=\"%s\"\n%s=\"\$%s\"\n" "$n" "$v" "$3" "$n"
+		else
+			printf -- "%s=\"\$%s\"\n" "$3" "$n"
+		fi
+	}
+	is_printable_string() (
+		ro() {
+			i=0
+			while read -r p l _; do
+				i=$(( i + 1 ))
+				[ "$p" -gt "$i" ] && [ "$i" -eq 1 ] && return 1
+				[ "$l" -lt 040 ] && return 1
+				[ "$l" -gt 0176 ] && return 1
+			done
+			[ "$i" -eq 0 ] && [ "$1" -eq 1 ] && return 1;
+			[ "$i" -lt $(( $1 - 1 )) ] && return 1
+			return 0
+		}
+		get_data "$1" "$3" "$2" | cmp -l -- - "$zeros" 2>"$null" | ro "$3"
+		return $?
+	)
+	entry() (
+		img="$1"
+		offset="$2"
+		parent="$3"
+		level="$4"
+		filesystem_found=0
+		ramdisk_found=0
+		data=$(get_fdt32_be "$img" "$offset")
+		# shellcheck disable=SC2050
+		while [ 1 -eq 1 ]; do
+			case "$data" in
+				("$fdt_begin_node")
+					name_off="$(( offset + fdt32_size ))"
+					eval "$(get_string "$img" $name_off "name")"
+					[ -z "$name" ] && name="/"
+					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
+					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" 5>&1)"
+					offset="$next_offset"
+					;;
+				("$fdt_end_node")
+					offset=$(( offset + fdt32_size ))
+					{
+						[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_offset=%u fs_size=%u " "$fs_node_name" "$fs_offset" "$fs_size"
+						# shellcheck disable=SC2154
+						[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_offset=%u rd_size=%u " "$rd_node_name" "$rd_offset" "$rd_size"
+						printf -- "next_offset=%u" "$offset"
+					} 1>&5
+					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
+						printf -- " fs_size=%u fs_offset=%u fs_node_name=\"%s\"" "$fs_size" "$fs_offset" "$parent" 1>&5
+					fi
+					if [ "$ramdisk_found" = "1" ]; then
+						if [ "$fs_size" -eq 0 ] && [ "$rd_size" -lt "$new_rd_size" ]; then
+							printf -- " rd_size=%u rd_offset=%u rd_node_name=\"%s\"" "$new_rd_size" "$new_rd_offset" "$parent" 1>&5
+						fi
+					fi
+					exit 0
+					;;
+				("$fdt_prop")
+					value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
+					name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
+					eval "$(get_string "$img" $name_off "name")"
+					data_offset=$(( offset + 3 * fdt32_size ))
+					if [ "$value_size" -gt 512 ]; then
+						[ "$name" = "$data_name" ] && file_size="$value_size" && file_offset="$data_offset"
+					elif is_printable_string "$img" "$data_offset" "$value_size"; then
+						eval "$(get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
+						if [ "$name" = "$filesystem_indicator" ]; then
+							# shellcheck disable=SC2154
+							if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
+								filesystem_found=1
+								fs_size="$file_size"
+								fs_offset="$file_offset"
+								fs_node_name="$parent"
+							fi
+						elif [ "$name" = "$type_name" ]; then
+							type_found="$str"
+							if [ "$type_found" = "$ramdisk_type" ]; then
+								ramdisk_found=1
+								new_rd_size="$file_size"
+								new_rd_offset="$file_offset"
+							fi
+						fi
+					fi
+					offset=$(fdt32_align $(( data_offset + value_size )) )
+					;;
+				("$fdt_nop")
+					offset=$(( offset + fdt32_size ))
+						;;
+				("$fdt_end")
+					offset=$(( offset + fdt32_size ))
+					break
+					;;
+			esac
+			data=$(get_fdt32_be "$img" "$offset")
+		done
+		{
+			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_offset=%u fs_size=%u " "$fs_node_name" "$fs_offset" "$fs_size"
+			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_offset=%u rd_size=%u " "$rd_node_name" "$rd_offset" "$rd_size"
+			printf -- "next_offset=%u\n" "$offset"
+		} 1>&5
+	)
+
+	filesystem_indicator="avm,kernel-args"
+	filesystem_indicator_marker="mtdparts_ext="
+	data_name="data"
+	type_name="type"
+	filesystem_type="filesystem"
+	ramdisk_type="ramdisk"
+
+	fdt_begin_node=1
+	fdt_end_node=2
+	fdt_prop=3
+	fdt_nop=4
+	fdt_end=9
+	fdt32_size=4
+
+	next_offset=0
+	img="$1"
+	magic="$(dd if="$img" bs=4 count=1 2>"$null" | bin2dec_be)"
+	if ! [ "$magic" = "218164734" ]; then
+		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
+		exit 1
+	fi
+
+	next_offset=$(( next_offset + fdt32_size ))
+	payload_size="$(get_fdt32_cpu "$img" "$next_offset")"
+
+	td="$tempdir"
+	[ -z "$td" ] && td="/tmp"
+	tmpimg="$td/fit-image-$$"
+	dd if="$img" of="$tmpimg" bs=$(( 1024 * 1024 )) count=$(( ( payload_size + 64 + 8 ) / ( 1024 * 1024 ) + 1 )) 2>"$null" || exit 1
+	trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
+	img="$tmpimg"
+
+	next_offset=$(( next_offset + fdt32_size + 64 ))
+	fdt_magic="$(get_fdt32_be "$img" "$next_offset")"
+
+	[ "$fdt_magic" -ne 3490578157 ] && printf "Invalid FDT magic found.\a\n" 1>&2 && exit 1
+
+	fdt_start=$next_offset
+	next_offset=$(( next_offset + 2 * fdt32_size ))
+	fdt_off_dt_struct="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
+	fdt_off_dt_strings="$(get_fdt32_be "$img" "$next_offset")"
+
+	fs_size=0
+	fs_offset=0
+	rd_size=0
+	fs_offset=0
+	fs_node_name=""
+	rd_node_name=""
+
+	next_offset=$(( fdt_start + fdt_off_dt_struct ))
+	eval "$(entry "$img" "$next_offset" "-" 0 5>&1)"
+
+	if [ "$fs_size" -gt 0 ]; then
+		printf "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
+	elif [ "$rd_size" -gt 0 ]; then
+		printf "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
+	else
+		printf "No rootfs candicates found.\a\n" 1>&2 && exit 1
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -338,146 +642,33 @@ check_urlader_configuration()
 	msg() { [ "$verbose" -eq 1 ] || return; printf_ss "$@" 1>&2; }
 	append() { cat - >>"$ut/config_header"; }
 	env() { get_environment "$1"; }
-	fsize() { wc -c <"$1" 2>$null | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
-	chkgrep() { [ "$(printf -- "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC" 2>$null)" = "$(printf -- "ABC\nABC\n")" ] && return 0 || return 1; }
-	h2b() {
-		h2b_ro()
-		{
-			i=1; h=1; z=0
-			# shellcheck disable=SC2034
-			while read -r p _ o; do
-				[ "$i" -lt "$p" ] && return 1
-				i=$(( i + 1 ))
-				if [ "$o" -ge 60 ] && [ "$o" -le 67 ]; then
-					c=$(( o - 60 ))
-				elif [ "$o" -ge 70 ] && [ "$o" -le 71 ]; then
-					c=$(( o - 62 ))
-				elif [ "$o" -ge 101 ] && [ "$o" -le 106 ]; then
-					c=$(( o - 91 ))
-				elif [ "$o" -ge 141 ] && [ "$o" -le 146 ]; then
-					c=$(( o - 131 ))
-				else
-					return 1
-				fi
-				if [ $h -eq 0 ]; then
-					v=$(( v + c ))
-					if [ $v -eq 0 ]; then
-						z=$(( z + 1 ))
-					else
-						if [ $z -gt 0 ]; then
-							dd if="$zeros" bs=$z count=1 2>$null
-							z=0
-						fi
-						printf -- "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
-					fi
-					h=1
-				else
-					v=$(( c * 16 ))
-					h=0
-				fi
-			done
-			[ $z -gt 0 ] && dd if="$zeros" bs=$z count=1 2>$null
-			return 0
-		}
-		if [ -n "$1" ]; then
-			printf -- "%s" "$1" | h2b
-			return $?
-		fi
-		cmp -l -- "$zeros" - 2>$null | h2b_ro
-		return $?
-	}
-	tbo() (
-		tbo_ro()
-		{
-			v1=0; v2=0; v3=0; v4=0
-			while read -r p _ rt; do
-				[ "$p" -gt 5 ] && exit 1
-				[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
-				if [ "$p" -eq 5 ]; then
-					for i in $v4 $v3 $v2 $v1; do
-						printf -- "%b" $(printf -- "%#o" $(( i )) )
-					done
-					exit 0
-				fi
-				eval "v$p"=$(( 0$rt ))
-			done
-			exit 1
-		}
-		if ! [ "$(get_system_type)" = "Puma6/7" ] && [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ]; then
-#		if true; then
-			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | tbo_ro
-		else
-			cat - 2>$null
-		fi
-	)
-	b2d() ( # always in BE order, was reversed by tbo() above, if needed
-		b2d_ro()
-		{
-			i=1; l=0; v=0; s=-8; ff=0
-			while read -r p _ rt; do
-				if [ "$ff" -eq 1 ]; then
-					v=$(( v * 256 ))
-					ff=255
-					v=$(( v + ff ))
-					i=$(( i + 1 ))
-					ff=0
-				fi
-				while [ "$i" -lt "$p" ]; do
-					v=$(( v * 256 ))
-					i=$(( i + 1 ))
-				done
-				if [ "$rt" = 377 ] && [ $ff -eq 0 ]; then
-					ff=1
-					continue
-				fi
-				v=$(( v * 256 ))
-				rt=$(( 0$rt ))
-				v=$(( v + rt ))
-				i=$(( p + 1 ))
-			done
-			printf -- "%d" $v
-		}
-		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>$null | b2d_ro
-		return 0
-	)
-	str() (
-		strlen()
-		{
-			s=1
-			while read -r p l _; do
-				[ "$p" -ne "$s" ] && printf -- "%u\n" "$(( s - 1 ))" && return
-				s=$(( s + 1 ))
-			done
-			return 1
-		}
-		l="$(dd if="$1" bs=1 skip="$2" 2>$null | cmp -l -- - "$zeros" 2>$null | strlen)"
-		[ -n "$l" ] && dd if="$1" bs=1 skip="$2" count="$l" 2>$null
-	)
+	fsize() { wc -c <"$1" 2>"$null" | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
+	chkgrep() { [ "$(printf -- "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC" 2>"$null")" = "$(printf -- "ABC\nABC\n")" ] && return 0 || return 1; }
 	chkcfg() {
 		_f="$1"
-		[ "$(dd if="$_f" bs=2 count=2 skip=$(( 0x8C / 2 )) 2>$null | tbo | b2d)" = "25609" ] || return 1
+		[ "$(dd if="$_f" bs=2 count=2 skip=$(( 0x8C / 2 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)" = "25609" ] || return 1
 		_kv=0
-		dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>$null
+		dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>"$null"
 		# shellcheck disable=SC2050
 		while [ 1 -eq 1 ]; do
-			dd if="$_f" bs=8 count=1 skip=$(( ( 0x98 / 8 ) + _kv )) 2>$null | cmp -s -- - "$ut/8zeros" 2>$null && break
+			dd if="$_f" bs=8 count=1 skip=$(( ( 0x98 / 8 ) + _kv )) 2>"$null" | cmp -s -- - "$ut/8zeros" 2>"$null" && break
 			_kv=$(( _kv + 1 ))
 			[ "$_kv" -gt 256 ] && return 1
 		done
-		_dp=$(dd if="$_f" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | tbo | b2d)
+		_dp=$(dd if="$_f" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)
 		_do=$(( ( ( 0x98 / 8 ) + _kv + 1 ) * 8 ))
 		_cb=$(( _dp - _do ))
 		_e=0
 		while [ "$_e" -lt "$_kv" ]; do
-			_vp=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) )) 2>$null | tbo | b2d)
-			_np=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) + 1 )) 2>$null | tbo | b2d)
+			_vp=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)
+			_np=$(dd if="$_f" bs=4 count=1 skip=$(( ( 0x98 / 4 ) + ( _e * 2 ) + 1 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)
 			[ "$_vp" -lt "$_cb" ] && return 1
 			[ "$_np" -lt "$_cb" ] && return 1
 			[ $(( _vp - _cb )) -gt 1023 ] && return 1
 			[ $(( _np - _cb )) -gt 1023 ] && return 1
 			_e=$(( _e + 1 ))
 		done
-		grep -q -ao "00:04:0E:FF:FF:01" "$_f" 2>$null 1>&2 && return 1
+		grep -q -ao "00:04:0E:FF:FF:01" "$_f" 2>"$null" 1>&2 && return 1
 		printf -- "%u\n" "$_kv"
 		return 0
 	}
@@ -488,7 +679,7 @@ check_urlader_configuration()
 		fi
 		case "$(get_system_type)" in
 			("IPQ8074")
-				cat "$disk_by_label/$ipq8074_eva_config_name" 2>$null
+				cat "$disk_by_label/$ipq8074_eva_config_name" 2>"$null"
 				;;
 			(*)
 				if ! [ -f "$proc_mtd" ]; then
@@ -504,17 +695,17 @@ check_urlader_configuration()
 					msg "'%s' is not a character device.\n" "$devtmpfs/$urlader"
 					exit 1
 				fi
-				cat "$devtmpfs/$urlader" 2>$null
+				cat "$devtmpfs/$urlader" 2>"$null"
 				;;
 		esac
 	)
 	sblk() (
 		h=$(( $3 / 2 ))
 		s=$(( $4 / h ))
-		mo="$(dd if="$2" count=1 bs="$3" skip=$(( $4 / $3 )) 2>$null | grep -ao "$1" 2>$null)"
+		mo="$(dd if="$2" count=1 bs="$3" skip=$(( $4 / $3 )) 2>"$null" | grep -ao "$1" 2>"$null")"
 		[ -z "$mo" ] && printf -- "(not found)" && exit 1
-		if ! dd if="$2" count=1 bs="$h" skip="$s" 2>$null | grep -q -ao "$1" 2>$null; then
-			if [ "$(dd if="$2" count=1 bs="$h" skip=$(( s + 1 )) 2>$null | grep -ao "$1" 2>$null)" = "$mo" ]; then
+		if ! dd if="$2" count=1 bs="$h" skip="$s" 2>"$null" | grep -q -ao "$1" 2>"$null"; then
+			if [ "$(dd if="$2" count=1 bs="$h" skip=$(( s + 1 )) 2>"$null" | grep -ao "$1" 2>"$null")" = "$mo" ]; then
 				lwr=1
 			else
 				printf -- "%u\n" "$(( $4 + h - 16 ))"
@@ -535,30 +726,30 @@ check_urlader_configuration()
 		[ "$fo" = "(not found)" ] && printf -- "%s" "$fo" && exit 1
 		s=$(( fo - ( fo % 4096 ) - 4096 ))
 		[ "$s" -lt 0 ] && s=0
-		dd if="$f" of="$ut/try_here" bs=4096 count=2 skip=$(( s / 4096 )) 2>$null
+		dd if="$f" of="$ut/try_here" bs=4096 count=2 skip=$(( s / 4096 )) 2>"$null"
 		sz=$(( $(fsize "$ch") / 4 ))
 		fnd=0
 		o=$(( fo - s ))
 		while [ "$o" -gt 0 ]; do
-			if dd if="$ut/try_here" bs=4 skip=$(( o / 4 )) count="$sz" 2>$null | cmp -s -- - "$ch" 2>$null; then
+			if dd if="$ut/try_here" bs=4 skip=$(( o / 4 )) count="$sz" 2>"$null" | cmp -s -- - "$ch" 2>"$null"; then
 				fnd=1
 				break
 			fi
 			o=$(( o - 16 ))
 		done
 		if [ "$fnd" -eq 1 ]; then
-			dd if="$f" of="$ut/check_this" bs=16 count=64 skip=$(( ( s + o ) / 16 )) 2>$null
-			if chkcfg "$ut/check_this" 1>$null; then
+			dd if="$f" of="$ut/check_this" bs=16 count=64 skip=$(( ( s + o ) / 16 )) 2>"$null"
+			if chkcfg "$ut/check_this" 1>"$null"; then
 				printf -- "%u\n" "$(( s + o ))"
 				exit 0
 			fi
 		fi
-		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>$null
+		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>"$null"
 		fndo "$f" "$l" "$ch"
 	)
 	env_name="$1"
 	trap 'rm -rf "$ut" 2>$null' EXIT
-	if ! command -v grep 2>$null 1>&2; then
+	if ! command -v grep 2>"$null" 1>&2; then
 		msg "Missing command '%s'.\n" "grep"
 		exit 1
 	fi
@@ -567,8 +758,8 @@ check_urlader_configuration()
 		exit 1
 	fi
 	ut="$tempdir/urlader"
-	rm -rf "$ut" 2>$null
-	mkdir -p "$ut" 2>$null
+	rm -rf "$ut" 2>"$null"
+	mkdir -p "$ut" 2>"$null"
 	geteva >"$ut/dump" || exit 1
 	usize="$(fsize "$ut/dump")"
 	pow2=1
@@ -590,10 +781,10 @@ check_urlader_configuration()
 		fi
 		eval $value="$env_value"
 	done
-	touch "$ut/config_header" 2>$null
-	printf -- "\000\000\000\003" | tbo | append
+	touch "$ut/config_header" 2>"$null"
+	printf -- "\000\000\000\003" | native_byte_order_evacfg | append
 	[ "$(get_system_type)" = "Puma6/7" ] && memsize=$(( memsize / 2 ))
-	h2b "$(printf -- "%08x" "$memsize")" | tbo | append
+	hex2bin "$(printf -- "%08x" "$memsize")" | native_byte_order_evacfg | append
 	printf -- "\000\000\000\000" | append
 	i=0
 	while [ $i -lt 16 ]; do
@@ -606,19 +797,19 @@ check_urlader_configuration()
 			start="$(expr "$val" : "\(0[xX][0-9a-fA-F]*\),.*")"
 			end="$(expr "$val" : "[^,]*,\(0[xX][0-9a-fA-F]*\)")"
 			size=$(( end - start ))
-			h2b "$(printf -- "%08x" "$start")" | tbo | append
-			h2b "$(printf -- "%08x" "$size")" | tbo | append
+			hex2bin "$(printf -- "%08x" "$start")" | native_byte_order_evacfg | append
+			hex2bin "$(printf -- "%08x" "$size")" | native_byte_order_evacfg | append
 		fi
 	done
 	found=0
-	if [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>$null 1>&2; then
+	if [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>"$null" 1>&2; then
 		co="$(fndo "$ut/dump" "$wlan_key" "$ut/config_header")"
 		[ "$co" = "(not found)" ] && unset co
 		found=1
 	fi
 	if [ "$found" -eq 0 ]; then
 		[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
-		if grep -q -ao "$maca" "$ut/dump" 2>$null 1>&2; then
+		if grep -q -ao "$maca" "$ut/dump" 2>"$null" 1>&2; then
 			co="$(fndo "$ut/dump" "$maca" "$ut/config_header")"
 			[ "$co" = "(not found)" ] && unset config_offset
 			if [ -z "$co" ]; then
@@ -629,29 +820,29 @@ check_urlader_configuration()
 		fi
 	fi
 	[ $found -eq 0 ] && exit 1
-	dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>$null
-	rm -f "$ut/dump" "$ut/try_here" "$ut/check_this" "$ut/config_header" "$ut/8zeros" 2>$null
+	dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>"$null"
+	rm -f "$ut/dump" "$ut/try_here" "$ut/check_this" "$ut/config_header" "$ut/8zeros" 2>"$null"
 	kvs=$(( 0x98 / 8 ))
 	kvc=0
-	dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>$null
+	dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>"$null"
 	# shellcheck disable=SC2050
 	while [ 1 -eq 1 ]; do
-		dd if="$ut/config" bs=8 count=1 skip=$(( kvs )) 2>$null | cmp -s -- - "$ut/8zeros" 2>$null && break
+		dd if="$ut/config" bs=8 count=1 skip=$(( kvs )) 2>"$null" | cmp -s -- - "$ut/8zeros" 2>"$null" && break
 		kvc=$(( kvc + 1 ))
 		kvs=$(( kvs + 1 ))
 		[ "$kvc" -gt 256 ] && exit 1
 	done
-	defptr=$(dd if="$ut/config" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>$null | tbo | b2d)
+	defptr=$(dd if="$ut/config" bs=4 count=1 skip=$(( 0x94 / 4 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)
 	defoff=$(( ( kvs + 1 ) * 8 ))
 	cb=$(( defptr - defoff ))
 	kvs=$(( 0x98 / 4 ))
 	ent=0
 	dh=0
 	while [ "$ent" -lt "$kvc" ]; do
-		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>$null | tbo | b2d)"
-		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>$null | tbo | b2d)"
-		nm="$(str "$ut/config" "$(( kn - cb ))")"
-		val="$(str "$ut/config" "$(( kv - cb ))")"
+		kv="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)"
+		kn="$(dd if="$ut/config" bs=4 count=1 skip=$(( kvs + 1 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)"
+		nm="$(string_from_file "$ut/config" "$(( kn - cb ))")"
+		val="$(string_from_file "$ut/config" "$(( kv - cb ))")"
 		kvs=$(( kvs + 2 ))
 		ent=$(( ent + 1 ))
 		if [ -z "$env_name" ]; then
@@ -668,10 +859,10 @@ check_urlader_configuration()
 	done
 	coff="$defoff"
 	dh=0
-	while ! [ "$(dd if="$ut/config" bs=1 count=1 skip="$coff" 2>$null | base64)" = "/w==" ]; do
-		nm="$(str "$ut/config" "$coff")"
+	while ! [ "$(dd if="$ut/config" bs=1 count=1 skip="$coff" 2>"$null" | base64)" = "/w==" ]; do
+		nm="$(string_from_file "$ut/config" "$coff")"
 		coff=$(( coff + ${#nm} + 1 ))
-		val="$(str "$ut/config" "$coff")"
+		val="$(string_from_file "$ut/config" "$coff")"
 		coff=$(( coff + ${#val} + 1 ))
 		if [ -z "$env_name" ]; then
 			if [ "$dh" -eq 0 ]; then
@@ -711,8 +902,8 @@ get_fixed_branding()
 check_oem_kernel_cmdline()
 (
 	path="${1:-/}${1:+/}"
-	grep -q "^$yf_change_oem_marker\$" "$path$avm_rcconf" 2>$null || exit 1
-	grep -q "$yf_change_oem_script" "$path$avm_rcconf" 2>$null || exit 1
+	grep -q "^$yf_change_oem_marker\$" "$path$avm_rcconf" 2>"$null" || exit 1
+	grep -q "$yf_change_oem_script" "$path$avm_rcconf" 2>"$null" || exit 1
 	exit 0
 )
 #######################################################################################################
@@ -747,10 +938,10 @@ check_custom_environment()
 			suffix=""
 		fi
 		# shellcheck disable=SC2086
-		if grep -q $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null; then # script called from somewhere
+		if grep -q $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>"$null"; then # script called from somewhere
 			# shellcheck disable=SC2086,SC2013
-			for fn in $(grep -l $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>$null | sed -n -e 1p); do
-				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>$null | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\).*|\1|p")"
+			for fn in $(grep -l $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>"$null" | sed -n -e 1p); do
+				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>"$null" | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\).*|\1|p")"
 				[ "$st" = "VR9" ] && [ "$altsys" -eq 1 ] && v="$tempdir$v"
 				[ -f "$v" ] && exit 0
 			done
@@ -780,12 +971,7 @@ check_custom_environment()
 #######################################################################################################
 change_branding_support()
 {
-#	if is_fit_image_device; then
-#		# no branding support yet on Hawkeye platform
-#		printf -- "immutable"
-#		exit 0
-#	fi
-	get_fixed_branding "$1" >$null && printf -- "fixed_export" && exit 0
+	get_fixed_branding "$1" >"$null" && printf -- "fixed_export" && exit 0
 	check_oem_kernel_cmdline "$1" && printf -- "kernel_cmdline" && exit 0
 	check_custom_environment "$1" && printf -- "custom_environment" && exit 0
 	if [ -n "$2" ] && { [ "$2" = "immutable" ] || [ "$2" = "changeable" ]; }; then
@@ -867,8 +1053,8 @@ get_custom_env_branding()
 	[ -z "$minor" ] && exit 1
 	major="$(get_tffs_major)"
 	mknod "$tempdir/tffs_node" c "$major" "$minor" || exit 1
-	cat "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>$null
-	rm -f "$tempdir/tffs_node" 2>$null
+	cat "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>"$null"
+	rm -f "$tempdir/tffs_node" 2>"$null"
 	trap 'rm $tempdir/tffsnode' EXIT
 	branding="$(sed -n -e "s|^${branding_name}[ \t]\(.*\)|\1|p" "$tempdir/tffsnode")"
 	if [ -n "$branding" ]; then
@@ -889,11 +1075,11 @@ set_custom_env_branding()
 	[ -z "$minor" ] && exit 1
 	major="$(get_tffs_major)"
 	mknod "$tempdir/tffs_node" c "$major" "$minor" || exit 1
-	sed -e "/^$branding_name/d" "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>$null
+	sed -e "/^$branding_name/d" "$tempdir/tffs_node" >"$tempdir/tffsnode" 2>"$null"
 	printf -- "%s\t%s\n" "$branding_name" "$1" >>"$tempdir/tffsnode"
 	cat "$tempdir/tffsnode" >"$tempdir/tffs_node"
-	grep -q "^${branding_name}[[:space:]]$1\$" "$tempdir/tffs_node" 2>$null && rc=0 || rc=1
-	rm -f "$tempdir/tffs_node" "$tempdir/tffsnode" 2>$null
+	grep -q "^${branding_name}[[:space:]]$1\$" "$tempdir/tffs_node" 2>"$null" && rc=0 || rc=1
+	rm -f "$tempdir/tffs_node" "$tempdir/tffsnode" 2>"$null"
 	exit $rc
 )
 #######################################################################################################
@@ -1008,26 +1194,6 @@ get_system_type()
 }
 #######################################################################################################
 #                                                                                                     #
-# check whether this device uses FIT image format for firmware                                        #
-#                                                                                                     #
-#######################################################################################################
-is_fit_image_device()
-(
-	case "$(get_system_type)" in
-		("IPQ8074")
-			# shellcheck disable=SC2059
-			[ -z "$(get_fit_partition "$(printf -- "$fit_partition_name_mask" "0")")" ] && exit 1
-			# shellcheck disable=SC2059
-			[ -z "$(get_fit_partition "$(printf -- "$fit_partition_name_mask" "1")")" ] && exit 1
-			[ -x "$bootslot_tool" ] && exit 0
-			;;
-		(*)
-			exit 1
-			;;
-	esac
-)
-#######################################################################################################
-#                                                                                                     #
 # find partition number with given name                                                               #
 #                                                                                                     #
 #######################################################################################################
@@ -1044,19 +1210,19 @@ get_emmc_partition()
 (
 	[ -z "$1" ] && exit 1
 	if [ -L "$disk_by_label/$1" ]; then
-		command -v realpath 2>$null 1>&2 && realpath "$disk_by_label/$1" 2>$null && exit 0
-		command -v readlink 2>$null 1>&2 && readlink -f "$disk_by_label/$1" 2>$null && exit 0
+		command -v realpath 2>"$null" 1>&2 && realpath "$disk_by_label/$1" 2>"$null" && exit 0
+		command -v readlink 2>"$null" 1>&2 && readlink -f "$disk_by_label/$1" 2>"$null" && exit 0
 		p="$disk_by_label/$1"
 		l="$(ls -dl "$p")"
 		t="${l#*" $p -> "}"
 		d="$(pwd)"
 		# shellcheck disable=SC2164
-		cd "${p%/*}" 2>$null
+		cd "${p%/*}" 2>"$null"
 		# shellcheck disable=SC2164
-		cd -P "${t%/*}" 2>$null
+		cd -P "${t%/*}" 2>"$null"
 		r="$(pwd)/${t##*/}"
 		# shellcheck disable=SC2164
-		cd "$d" 2>$null
+		cd "$d" 2>"$null"
 		printf -- "%s\n" "$r"
 		exit 0
 	fi
@@ -1072,6 +1238,49 @@ get_mtd_partition()
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
 	if [ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ]; then
 		printf_ss "$mtdblock_mask" "$(eval get_mtd_number "$(printf -- "\${mtd_%s_name_%s}" "$1" "$2")")"
+		exit 0
+	fi
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# check whether this device uses FIT image format for firmware                                        #
+#                                                                                                     #
+#######################################################################################################
+is_fit_image_device()
+(
+	case "$(get_system_type)" in
+		("IPQ8074")
+			if [ -d "$disk_by_label" ]; then
+				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "0")")" ] && exit 1
+				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "1")")" ] && exit 1
+			else
+				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
+				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
+			fi
+			[ -x "$bootslot_tool" ] && exit 0
+			;;
+		(*)
+			exit 1
+			;;
+	esac
+)
+# TODO: wip - incomplete changes
+#######################################################################################################
+#                                                                                                     #
+# VR9: locate the MTD partition for kernel or the image name of root filesystem for the active or     #
+#      alternative system                                                                             #
+#                                                                                                     #
+#######################################################################################################
+mount_fit_image()
+(
+	[ "$1" = "$filesystem_name" ] || exit 1
+	if [ "$2" = "$active_name" ]; then
+		printf -- '%s' "$vr9_image_source_active"
+		exit 0
+	elif [ "$2" = "$inactive_name" ]; then
+		eval local_name="\${mtd_${1}_name_${2}}"
+		printf_ss "$vr9_image_source_inactive" "$(printf_ss "$mtdblock_mask" "$(eval get_mtd_number "$(printf -- "\${mtd_%s_name_%s}" "$1" "$2")")")"
 		exit 0
 	fi
 	exit 1
@@ -1104,8 +1313,9 @@ get_puma_partition()
 (
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
 	if [ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ]; then
-		eval name="\$puma_${1}_name_${2}"
-		sed -n -e "s|^$name=\(.*\)|\1|p" "$puma_partitions"
+		eval partname="\$puma_${1}_name_${2}"
+		# shellcheck disable=SC2154
+		sed -n -e "s|^$partname=\(.*\)|\1|p" "$puma_partitions"
 		exit 0
 	fi
 	exit 1
@@ -1231,7 +1441,7 @@ spinlock()
 					[ $i -ge $maxwait ] && exit 1
 				else
 					if [ -d "/proc" ]; then
-						rm "$semafile" 2>$null
+						rm "$semafile" 2>"$null"
 					fi
 				fi
 			done
@@ -1244,7 +1454,7 @@ spinlock()
 		[ -f "$semafile" ] || exit 0
 		pid="$(cat "$semafile")"
 		{ [ -z "$pid" ] || [ "$pid" != "$spinlock_pid" ]; } && exit 0
-		rm -f "$semafile" 2>$null
+		rm -f "$semafile" 2>"$null"
 		exit 0
 	fi
 )
@@ -1262,12 +1472,12 @@ compare_strings()
 	while [ -d "$t" ]; do
 		t="${t}_$$"
 	done
-	mkdir -p "$t" 2>$null
+	mkdir -p "$t" 2>"$null"
 	trap 'rm -r "$t" 2>$null' EXIT HUP INT
 	printf -- '%s\377' "$1" >"$t/left"
 	printf -- '%s\377' "$2" >"$t/right"
-	cmp -l "$t/left" "$t/right" 2>$null >"$t/out"
-	read -r pos left right 2>$null <"$t/out"
+	cmp -l "$t/left" "$t/right" 2>"$null" >"$t/out"
+	read -r pos left right 2>"$null" <"$t/out"
 	if [ -z "$left" ] || [ -z "$right" ]; then
 		printf -- '%d' "0"
 	else
@@ -1315,7 +1525,7 @@ is_kernel_present()
 		done
 		return 1
 	}
-	dd if="$1" bs=16 count=1 2>$null | cmp -l - $zeros 2>$null | __read_bytes
+	dd if="$1" bs=16 count=1 2>"$null" | cmp -l - $zeros 2>"$null" | __read_bytes
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1552,8 +1762,8 @@ get_system_version()
 #######################################################################################################
 parse_date_value()
 (
-	command -v date 2>$null 1>&2 || printf -- '%s' "$1"
-	date --help 2>&1 | grep -q BusyBox 2>$null || printf -- '%s' "$1"
+	command -v date 2>"$null" 1>&2 || printf -- '%s' "$1"
+	date --help 2>&1 | grep -q BusyBox 2>"$null" || printf -- '%s' "$1"
 	eval "$(printf -- '%s\n' "$1" | sed -n -e "s|\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\) \([0-9]*\):\([0-9]*\):\([0-9]*\)|day=\1 month=\2 year=\3 hour=\4 minutes=\5 seconds=\6|p")"
 	# shellcheck disable=SC2154
 	date +%s -d "$year$month$day$hour$minutes.$seconds"
@@ -1694,8 +1904,8 @@ get_loopdevice_backingfile()
 		dev="$(get_ids_of_mountpoint "${1:-/}")"
 		[ -z "$dev" ] && exit 1
 		for device in "$sysfs_block_dir"/*; do
-			if [ "$(cat "$device/dev" 2>$null)" = "$dev" ]; then
-				file="$(cat "$device/$loop_driver_name/$backing_file_name" 2>$null)"
+			if [ "$(cat "$device/dev" 2>"$null")" = "$dev" ]; then
+				file="$(cat "$device/$loop_driver_name/$backing_file_name" 2>"$null")"
 				[ "${#file}" -gt 0 ] && printf -- '%s\n' "$file" && exit 0
 			fi
 		done
@@ -1715,7 +1925,7 @@ mount_alternative_system()
 	export PATH=/sbin:/usr/sbin:/bin:/usr/bin
 	src="$(get_partition "$filesystem_name" "$inactive_name")"
 	mp="$tempdir/$alt_root_mount_name"
-	mkdir -p "$mp" 2>$null || exit 1
+	mkdir -p "$mp" 2>"$null" || exit 1
 	if ! [ "${src#mount:}" = "$src" ]; then
 		# shellcheck disable=SC2046
 		set -- $(printf -- '%s' "$src" | sed -e "s|:| |g")
@@ -1727,16 +1937,16 @@ mount_alternative_system()
 	fi
 	if [ -n "$device" ]; then
 		wr="$tempdir/$wrapper_mount_name"
-		mkdir -p "$wr" 2>$null || exit 1
+		mkdir -p "$wr" 2>"$null" || exit 1
 		wre="$(find_mountpoint_for_device "$device")"
 		# shellcheck disable=SC2181
 		if [ $? -ne 0 ]; then
-			mount -t yaffs2 -o ro "$device" "$wr" 2>$null || exit 1
+			mount -t yaffs2 -o ro "$device" "$wr" 2>"$null" || exit 1
 		else
 			wr="$wre"
 		fi
 	fi
-	mount -t squashfs -o ro "$wr$file" "$mp" 2>$null || exit 1
+	mount -t squashfs -o ro "$wr$file" "$mp" 2>"$null" || exit 1
 	printf -- '%s' "$mp"
 	exit 0
 )
@@ -1748,11 +1958,11 @@ mount_alternative_system()
 dismount_alternative_system()
 (
 	is_active_mountpoint "$tempdir/$alt_root_mount_name" || exit 0
-	umount -d "$tempdir/$alt_root_mount_name" 2>$null || exit 1
-	rmdir "$tempdir/$alt_root_mount_name" 2>$null
+	umount -d "$tempdir/$alt_root_mount_name" 2>"$null" || exit 1
+	rmdir "$tempdir/$alt_root_mount_name" 2>"$null"
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
-	umount -d "$tempdir/$wrapper_mount_name" 2>$null || exit 1
-	rmdir "$tempdir/$wrapper_mount_name" 2>$null
+	umount -d "$tempdir/$wrapper_mount_name" 2>"$null" || exit 1
+	rmdir "$tempdir/$wrapper_mount_name" 2>"$null"
 	exit 0
 )
 #######################################################################################################
@@ -1813,8 +2023,8 @@ bin2dec()
 		printf -- '%d' $v
 	}
 
-	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>$null | base64)" = "AQ==" ] && e=1 || e=0
-	{ cat; printf -- '%b' "\377"; } | cmp -l -- $zeros - 2>$null | bin2dec_read_octal $e
+	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | base64)" = "AQ==" ] && e=1 || e=0
+	{ cat; printf -- '%b' "\377"; } | cmp -l -- $zeros - 2>"$null" | bin2dec_read_octal $e
 	return 0
 )
 #######################################################################################################
@@ -1838,7 +2048,7 @@ get_mkfs_time()
 		[ "${#src}" -gt 0 ] && len=$(get_partition_size "$src") || len=0
 	fi
 	if [ "${#src}" -gt 0 ]; then
-		v="$(dd if="$src" bs=4 count=1 skip=2 2>$null | bin2dec)"
+		v="$(dd if="$src" bs=4 count=1 skip=2 2>"$null" | bin2dec)"
 		if [ "${#v}" -gt 0 ]; then
 			if [ "$v" -gt "$len" ]; then
 				printf -- '%s\n' "$v" && exit 0
@@ -1858,8 +2068,8 @@ get_mkfs_time()
 #######################################################################################################
 get_modified_date()
 (
-	command -v stat 2>$null 1>&2 || exit 1
-	v="$(stat -c %Y -- /proc/self/exe 2>$null)"
+	command -v stat 2>"$null" 1>&2 || exit 1
+	v="$(stat -c %Y -- /proc/self/exe 2>"$null")"
 	# shellcheck disable=SC2181
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
@@ -1901,12 +2111,12 @@ get_modified_date()
 cleanup()
 {
 	[ -z "$tempdir" ] && return
-	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount -d "$tempdir/$alt_root_mount_name" 2>$null
-	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount -d "$tempdir/$wrapper_mount_name" 2>$null
-	rm -r "$tempdir" 2>$null
+	is_active_mountpoint "$tempdir/$alt_root_mount_name" && umount -d "$tempdir/$alt_root_mount_name" 2>"$null"
+	is_active_mountpoint "$tempdir/$wrapper_mount_name" && umount -d "$tempdir/$wrapper_mount_name" 2>"$null"
+	rm -r "$tempdir" 2>"$null"
 	[ -z "$spinlock_pid" ] && return
 	[ -f "$semafile" ] || return
-	[ "$(cat $semafile 2>$null)" = "$spinlock_pid" ] && rm -f "$semafile" 2>$null
+	[ "$(cat $semafile 2>"$null")" = "$spinlock_pid" ] && rm -f "$semafile" 2>"$null"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2008,7 +2218,7 @@ get_values()
 	printf -- "switch_branding_support=%s\n" "$cb_support"
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
-	printf -- "bootmanager_version=\"%s-%s\"\n" "$(__yf_get_version)" "$yf_bootmanager_timestamp"
+	printf -- "bootmanager_version=\"%s-%s\"\n" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2030,7 +2240,7 @@ is_dualboot_supported()
 #######################################################################################################
 save_environment()
 (
-	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>$null
+	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>"$null"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2083,8 +2293,8 @@ debug_delim()
 		c="$1"
 		v="$2"
 		shift 2
-		left="$(dd if=$zeros bs=1 count=$(( ( max_delim - ${#1} ) / 2 )) 2>$null | tr '\000' '>')"
-		right="$(dd if=$zeros bs=1 count=$(( max_delim - ${#1} - ${#left} )) 2>$null | tr '\000' '<')"
+		left="$(dd if=$zeros bs=1 count=$(( ( max_delim - ${#1} ) / 2 )) 2>"$null" | tr '\000' '>')"
+		right="$(dd if=$zeros bs=1 count=$(( max_delim - ${#1} - ${#left} )) 2>"$null" | tr '\000' '<')"
 		mask="$(printf -- "{white}%s%s {%s}%s {white}%s%s{reset}" ">>>>>>>>>>" "$left" "$c" "$v" "$right" "<<<<<<<<<<")"
 		# shellcheck disable=SC2059
 		printf -- "$mask\n" "$@" | colorize
@@ -2151,7 +2361,7 @@ load_device_configuration()
 #######################################################################################################
 tempdir="$tmpdir/$$_$(date +%s)"
 readonly tempdir
-mkdir -p "$tempdir" 2>$null
+mkdir -p "$tempdir" 2>"$null"
 trap cleanup HUP EXIT INT TERM
 rc=127
 #######################################################################################################
@@ -2184,14 +2394,14 @@ case "$1" in
 		if [ -z "$color" ] && [ -t 1 ]; then
 			color=1
 		fi
-		debug "yf_bootmanager version = " "yellow" "%s-%s" "$(__yf_get_version)" "$yf_bootmanager_timestamp"
+		debug "yf_bootmanager version = " "yellow" "%s-%s" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
 		# shellcheck disable=SC2046
 		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
 		delim_2="running system"
 		delim_3="alternative system"
 		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
-		set | grep "^delim_[0-9]*=" 2>$null | \
+		set | grep "^delim_[0-9]*=" 2>"$null" | \
 		while read -r ln; do
 			lv="$(expr "$ln" : "[^=]*='\(.*\)'")"
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
@@ -2283,15 +2493,15 @@ case "$1" in
 					get_values >"$data_cache_file"
 				fi
 			fi
-			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>$null
+			[ "$2" = "nocache" ] || cat "$data_cache_file" 2>"$null"
 			rc=0
 		else
 			rc=1
 		fi
 		;;
 	("clear_cache")
-		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>$null
-		[ "$2" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>$null
+		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>"$null"
+		[ "$2" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>"$null"
 		rc=0
 		;;
 	("switch_to")
