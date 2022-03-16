@@ -67,7 +67,7 @@ find_filesystem_in_fit_image()
 	b2d() (
 		b2d_ro()
 		{
-			i=1; l=0; v=0; s=-8; ff=0
+			i=1; v=0; ff=0
 			while read -r p _ rt; do
 				if [ "$ff" -eq 1 ]; then
 					v=$(( v * 256 ))
