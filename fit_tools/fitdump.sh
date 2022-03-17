@@ -233,11 +233,12 @@ dissect_fit_image()
 
 		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
 		printf -- "Options:\n\n"
-		printf -- "-d or --debug   - show extra information (on STDERR) while reading FDT structure\n"
-		printf -- "-n or --no-its  - do not create an .its file as output\n"
-		printf -- "-c or --copy    - copy source file to a temporary location prior to processing\n"
-		printf -- "-m or --measure - measure execution time using /proc/timer-list and write log data to\n"
-		printf -- "                  a file named 'fitdump.measure' in the output directory\n"
+		printf -- "-d or --debug      - show extra information (on STDERR) while reading FDT structure\n"
+		printf -- "-n or --no-its     - do not create an .its file as output\n"
+		printf -- "-f or --filesystem - create a filesystem structure from FIT image properties\n"
+		printf -- "-c or --copy       - copy source file to a temporary location prior to processing\n"
+		printf -- "-m or --measure    - measure execution time using /proc/timer-list and write log data to\n"
+		printf -- "                     a file named 'fitdump.measure' in the output directory\n"
 		printf -- "\n"
 	}
 	nsecs() { sed -n -e "s|^now at \([0-9]*\).*|\1|p" /proc/timer_list; }
@@ -263,6 +264,17 @@ dissect_fit_image()
 		now=$(nsecs)
 		[ "$measr" -eq 1 ] && printf "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
 	}
+	cd_msg() {
+		cwd="$(pwd)"
+		cwd="${cwd#"$dump_dir"/}"
+		if [ -z "$1" ]; then
+			msg "Change directory to: %s/..\n" "$cwd"
+			cd "$(pwd)/.." || return
+		else
+			msg "Change directory to: %s/%s\n" "$cwd" "$1"
+			cd "$(pwd)/$name" || return
+		fi
+	}
 	entry() (
 		img="$1"
 		offset="$2"
@@ -279,7 +291,9 @@ dissect_fit_image()
 					msg "Begin node at offset 0x%08x, name=%s, level=%u\n" "$offset" "$name" "$level"
 					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
 					out "%s%s {\n" "$(indent "$level")" "$name" 1>&4
+					[ "$dirs" = "1" ] && mkdir "$name" 2>"$null" && cd_msg "$name"
 					eval "$(entry "$img" "$offset" "$(( level + 1 ))" 5>&1)"
+					[ "$dirs" = "1" ] && cd_msg
 					;;
 				("$fdt_end_node")
 					msg "End node at offset 0x%08x\n" "$offset"
@@ -293,7 +307,7 @@ dissect_fit_image()
 					name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
 					eval "$(measure get_string "$img" $name_off "name")"
 					msg "Property node at offset 0x%08x, value size=%u, name=%s\n" "$offset" "$value_size" "$name"
-					out "%s%s" "$(indent $level)" "$name" 1>&4
+					out "%s%s" "$(indent "$level")" "$name" 1>&4
 					data_offset=$(( offset + 3 * fdt32_size ))
 					eol=0
 					if [ "$value_size" -gt 512 ]; then
@@ -303,24 +317,34 @@ dissect_fit_image()
 						out " = " 1>&4
 						out "/incbin/(\"%s\"); // size: %u\n" "$file" "$value_size" 1>&4
 						eol=1
-						measure get_file "$img" "$data_offset" "$value_size" >"$file"
+						measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
 						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
+						[ "$dirs" = "1" ] && cp "$dump_dir/$file" "$name" 2>"$null"
 					elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
 						eval "$(measure get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
 						if [ -n "$str" ]; then
 							out " = " 1>&4
 							out "\"%s\"" "$str" 1>&4
 						fi
+						if [ "$dirs" = "1" ]; then
+							get_data "$img" "$value_size" "$data_offset" >"$name"
+						fi
 					elif [ $(( value_size % 4 )) -eq 0 ]; then
 						out " = " 1>&4
 						out "<%s>" "$(measure get_hex32 "$img" "$data_offset" "$value_size")" 1>&4
 						if [ "$level" -eq 1 ] && [ "$name" = "timestamp" ]; then
-							out "; // %s\n" "$(date -u -d @$(get_fdt32_be "$img" "$data_offset" 4))" 1>&4
+							out "; // %s\n" "$(date -u -d @"$(get_fdt32_be "$img" "$data_offset" 4)")" 1>&4
 							eol=1
+						fi
+						if [ "$dirs" = "1" ]; then
+							get_data "$img" "$value_size" "$data_offset" >"$name"
 						fi
 					else
 						out " = " 1>&4
 						out "[%s]" "$(measure get_hex8 "$img" "$data_offset" "$value_size")" 1>&4
+						if [ "$dirs" = "1" ]; then
+							get_data "$img" "$value_size" "$data_offset" >"$name"
+						fi
 					fi
 					[ "$eol" = "0" ] && out ";\n" 1>&4
 					offset=$(fdt32_align $(( data_offset + value_size )) )
@@ -336,18 +360,40 @@ dissect_fit_image()
 			esac
 			data=$(measure get_fdt32_be "$img" "$offset")
 		done
+		printf "offset=%u files=%u\n" "$offset" "$files" 1>&5
+	)
+	get_real_name() (
+		if command -v realpath 2>"$null" 1>&2; then
+			realpath "$1" 2>"$null"
+		elif command -v readlink 2>"$null" 1>&2; then
+			readlink -f "$1" 2>"$null"
+		else
+			p="$1"
+			l="$(ls -dl "$p")"
+			t="${l#*" $p -> "}"
+			d="$(pwd)"
+			# shellcheck disable=SC2164
+			cd "${p%/*}" 2>"$null"
+			# shellcheck disable=SC2164
+			cd -P "${t%/*}" 2>"$null"
+			r="$(pwd)/${t##*/}"
+			# shellcheck disable=SC2164
+			cd "$d" 2>"$null"
+			printf -- "%s\n" "$r"
+		fi
 	)
 
 	null="/dev/null"
 	zeros="/dev/zero"
 	dump_dir="./fit-dump"
+	image_dir_name="image"
 	its_name="image.its"
-	its_file="$its_name"
+	its_file="$dump_dir/$its_name"
 	image_file_mask="image_%03u.bin"
 	files=0
 	tmpcopy=0
 	measr=0
-	curr_indent=0
+	dirs=0
 	indent_template="$(dd if=$zeros bs=256 count=1 2>"$null" | tr '\000' ' ')"
 
 	debug=0
@@ -359,6 +405,9 @@ dissect_fit_image()
 			shift
 		elif [ "$1" = "-c" ] || [ "$1" = "--copy" ]; then
 			tmpcopy=1
+			shift
+		elif [ "$1" = "-f" ] || [ "$1" = "--filesystem" ]; then
+			dirs=1
 			shift
 		elif [ "$1" = "-n" ] || [ "$1" = "--no-its" ]; then
 			its_file="$null"
@@ -373,11 +422,6 @@ dissect_fit_image()
 			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
 	done
-
-	if [ "$debug" -eq 1 ] && [ -t 2 ]; then
-		its_file="$its_name"
-		exec 1>"$its_file"
-	fi
 
 	fdt_begin_node=1
 	fdt_end_node=2
@@ -394,13 +438,17 @@ dissect_fit_image()
 	fi
 	! mkdir "$dump_dir" && printf "Error creating subdirectory '%s', do you have write access?\a\n" "$dump_dir" 1>&2 && exit 1
 
-	img="$1"
-	if [ "${img#/}" = "${img}" ]; then
-		img="../$img"
-	fi
+	img="$(get_real_name "$1")"
+	dump_dir="$(get_real_name "$dump_dir")"
 	cd "$dump_dir" || exit 1
 
-	[ "$measr" -eq 1 ] && exec 3<>"fitdump.measure"
+	its_file="$dump_dir/$its_name"
+	[ -f "$its_file" ] && rm -f "$its_file" 2>"$null"
+	if [ "$debug" -eq 1 ] && [ -t 2 ]; then
+		exec 1>"$null"
+	fi
+
+	[ "$measr" -eq 1 ] && exec 3<>"$dump_dir/fitdump.measure"
 
 	duration "measure log initialized"
 
@@ -422,7 +470,7 @@ dissect_fit_image()
 		tmpdir="${TMP:-$TMPDIR}"
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
 		tmpimg="$tmpdir/fit-image-$$"
-		dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>$null
+		dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>"$null"
 		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 		img="$tmpimg"
 		duration "image copied to tmpfs"
@@ -433,7 +481,6 @@ dissect_fit_image()
 	msg "Data at offset 0x%02x, size %u:\n" "$offset" "$size"
 	[ "$debug" -eq 1 ] && measure get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
 
-	[ -f "$its_file" ] && rm -f "$its_file" 2>"$null"
 	out "/dts-v1/;\n"
 
 	offset=$(( offset + size ))
@@ -499,7 +546,9 @@ dissect_fit_image()
 
 	exec 4>&1
 	offset=$(( fdt_start + fdt_off_dt_struct ))
-	entry "$img" "$offset" 0
+	# shellcheck disable=SC2164
+	[ "$dirs" = "1" ] && mkdir -p "$dump_dir/$image_dir_name" 2>"$null" && cd "$dump_dir/$image_dir_name"
+	offset="$(entry "$img" "$offset" 0 5>&1)"
 
 	duration "processing finished"
 )
