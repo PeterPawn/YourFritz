@@ -145,9 +145,7 @@ dissect_fit_image()
 			duration "$(printf -- "cached string '%s' used" "$n")"
 		fi
 	}
-	indent() { printf -- "%s" "$(expr "$indent_template" : "\( \{$(( curr_indent * 4 ))\}\).*")"; }
-	incr_indent() { curr_indent=$(( curr_indent + 1 )); }
-	decr_indent() { curr_indent=$(( curr_indent - 1 )); [ $curr_indent -lt 0 ] && curr_indent=0; }
+	indent() { printf -- "%s" "$(expr "$indent_template" : "\( \{$(( $1 * 4 ))\}\).*")"; }
 	is_printable_string() (
 		ro() {
 			i=0
@@ -265,6 +263,80 @@ dissect_fit_image()
 		now=$(nsecs)
 		[ "$measr" -eq 1 ] && printf "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
 	}
+	entry() (
+		img="$1"
+		offset="$2"
+		level="$3"
+		data=$(get_fdt32_be "$img" "$offset")
+		# shellcheck disable=SC2050
+		while [ 1 -eq 1 ]; do
+			duration "fdt data read"
+			case "$data" in
+				("$fdt_begin_node")
+					name_off="$(( offset + fdt32_size ))"
+					eval "$(measure get_string "$img" $name_off "name")"
+					[ -z "$name" ] && name="/"
+					msg "Begin node at offset 0x%08x, name=%s, level=%u\n" "$offset" "$name" "$level"
+					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
+					out "%s%s {\n" "$(indent "$level")" "$name" 1>&4
+					eval "$(entry "$img" "$offset" "$(( level + 1 ))" 5>&1)"
+					;;
+				("$fdt_end_node")
+					msg "End node at offset 0x%08x\n" "$offset"
+					offset=$(( offset + fdt32_size ))
+					out "%s};\n" "$(indent "$(( level - 1 ))")" 1>&4
+					printf "offset=%u files=%u \n" "$offset" "$files" 1>&5
+					exit 0
+					;;
+				("$fdt_prop")
+					value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
+					name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
+					eval "$(measure get_string "$img" $name_off "name")"
+					msg "Property node at offset 0x%08x, value size=%u, name=%s\n" "$offset" "$value_size" "$name"
+					out "%s%s" "$(indent $level)" "$name" 1>&4
+					data_offset=$(( offset + 3 * fdt32_size ))
+					eol=0
+					if [ "$value_size" -gt 512 ]; then
+						files=$(( files + 1 ))
+						# shellcheck disable=SC2059
+						file="$(printf -- "$image_file_mask\n" "$files")"
+						out " = " 1>&4
+						out "/incbin/(\"%s\"); // size: %u\n" "$file" "$value_size" 1>&4
+						eol=1
+						measure get_file "$img" "$data_offset" "$value_size" >"$file"
+						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
+					elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
+						eval "$(measure get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
+						if [ -n "$str" ]; then
+							out " = " 1>&4
+							out "\"%s\"" "$str" 1>&4
+						fi
+					elif [ $(( value_size % 4 )) -eq 0 ]; then
+						out " = " 1>&4
+						out "<%s>" "$(measure get_hex32 "$img" "$data_offset" "$value_size")" 1>&4
+						if [ "$level" -eq 1 ] && [ "$name" = "timestamp" ]; then
+							out "; // %s\n" "$(date -u -d @$(get_fdt32_be "$img" "$data_offset" 4))" 1>&4
+							eol=1
+						fi
+					else
+						out " = " 1>&4
+						out "[%s]" "$(measure get_hex8 "$img" "$data_offset" "$value_size")" 1>&4
+					fi
+					[ "$eol" = "0" ] && out ";\n" 1>&4
+					offset=$(fdt32_align $(( data_offset + value_size )) )
+					;;
+				("$fdt_nop")
+					offset=$(( offset + fdt32_size ))
+						;;
+				("$fdt_end")
+					msg "FDT end found at offset 0x%08x\n" "$offset"
+					offset=$(( offset + fdt32_size ))
+					break
+					;;
+			esac
+			data=$(measure get_fdt32_be "$img" "$offset")
+		done
+	)
 
 	null="/dev/null"
 	zeros="/dev/zero"
@@ -334,11 +406,7 @@ dissect_fit_image()
 
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
-#	[ -f "$img" ] && fsize=$(( $(wc -c <"$img" 2>"$null" || printf -- "0") )) || fsize=0
-#	[ -f "$img" ] && [ "$fsize" -eq 0 ] && usage && exit 1
-#	msg "File: %s, size=%u\n" "$1" "$fsize"
-
-#	duration "input size read"
+	msg "File: %s" "$img"
 
 	[ "$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
@@ -429,71 +497,10 @@ dissect_fit_image()
 
 	duration "header data read"
 
+	exec 4>&1
 	offset=$(( fdt_start + fdt_off_dt_struct ))
-	data=$(get_fdt32_be "$img" "$offset")
-	# shellcheck disable=SC2050
-	while [ 1 -eq 1 ]; do
-		duration "fdt data read"
-		case "$data" in
-			("$fdt_begin_node")
-				name_off="$(( offset + fdt32_size ))"
-				eval "$(measure get_string "$img" $name_off "name")"
-				[ -z "$name" ] && name="/"
-				msg "Begin node at offset 0x%08x, name=%s\n" "$offset" "$name"
-				offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
-				out "%s%s {\n" "$(indent)" "$name"
-				incr_indent
-				;;
-			("$fdt_end_node")
-				msg "End node at offset 0x%08x\n" "$offset"
-				offset=$(( offset + fdt32_size ))
-				decr_indent
-				out "%s};\n" "$(indent)"
-				;;
-			("$fdt_prop")
-				value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
-				name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
-				eval "$(measure get_string "$img" $name_off "name")"
-				msg "Property node at offset 0x%08x, value size=%u, name=%s\n" "$offset" "$value_size" "$name"
-				out "%s%s" "$(indent)" "$name"
-				data_offset=$(( offset + 3 * fdt32_size ))
-				eol=0
-				if [ "$value_size" -gt 512 ]; then
-					files=$(( files + 1 ))
-					# shellcheck disable=SC2059
-					file="$(printf -- "$image_file_mask\n" "$files")"
-					out " = "
-					out "/incbin/(\"%s\"); // size: %u\n" "$file" "$value_size"
-					eol=1
-					measure get_file "$img" "$data_offset" "$value_size" >"$file"
-					msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
-				elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
-					eval "$(measure get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
-					if [ -n "$str" ]; then
-						out " = "
-						out "\"%s\"" "$str"
-					fi
-				elif [ $(( value_size % 4 )) -eq 0 ]; then
-					out " = "
-					out "<%s>" "$(measure get_hex32 "$img" "$data_offset" "$value_size")"
-				else
-					out " = "
-					out "[%s]" "$(measure get_hex8 "$img" "$data_offset" "$value_size")"
-				fi
-				[ "$eol" = "0" ] && out ";\n"
-				offset=$(fdt32_align $(( data_offset + value_size )) )
-				;;
-			("$fdt_nop")
-				offset=$(( offset + fdt32_size ))
-				;;
-			("$fdt_end")
-				msg "FDT end found at offset 0x%08x\n" "$offset"
-				offset=$(( offset + fdt32_size ))
-				break
-				;;
-		esac
-		data=$(measure get_fdt32_be "$img" "$offset")
-	done
+	entry "$img" "$offset" 0
+
 	duration "processing finished"
 )
 #######################################################################################################
