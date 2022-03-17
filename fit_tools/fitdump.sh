@@ -279,6 +279,9 @@ dissect_fit_image()
 		img="$1"
 		offset="$2"
 		level="$3"
+		filesystem_found=0
+		type_found=""
+		data_found=""
 		data=$(get_fdt32_be "$img" "$offset")
 		# shellcheck disable=SC2050
 		while [ 1 -eq 1 ]; do
@@ -300,6 +303,10 @@ dissect_fit_image()
 					offset=$(( offset + fdt32_size ))
 					out "%s};\n" "$(indent "$(( level - 1 ))")" 1>&4
 					printf "offset=%u files=%u \n" "$offset" "$files" 1>&5
+					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
+						msg "Found filesystem image in this node: ln -s %s %s\n" "$data_found" "$fs_image_name"
+						ln -s "$data_found" "$dump_dir/$fs_image_name" 2>"$null"
+					fi
 					exit 0
 					;;
 				("$fdt_prop")
@@ -320,6 +327,7 @@ dissect_fit_image()
 						measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
 						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
 						[ "$dirs" = "1" ] && cp "$dump_dir/$file" "$name" 2>"$null"
+						[ "$name" = "$data_name" ] && data_found="$file"
 					elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
 						eval "$(measure get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
 						if [ -n "$str" ]; then
@@ -329,10 +337,20 @@ dissect_fit_image()
 						if [ "$dirs" = "1" ]; then
 							get_data "$img" "$value_size" "$data_offset" >"$name"
 						fi
+						if [ "$name" = "$filesystem_indicator" ]; then
+							# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
+							if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
+								filesystem_found=1
+							fi
+						elif [ "$name" = "$type_name" ]; then
+							if [ "$str" = "$filesystem_type" ]; then
+								type_found="$str"
+							fi
+						fi
 					elif [ $(( value_size % 4 )) -eq 0 ]; then
 						out " = " 1>&4
 						out "<%s>" "$(measure get_hex32 "$img" "$data_offset" "$value_size")" 1>&4
-						if [ "$level" -eq 1 ] && [ "$name" = "timestamp" ]; then
+						if [ "$level" -eq 1 ] && [ "$name" = "$timestamp_name" ]; then
 							out "; // %s\n" "$(date -u -d @"$(get_fdt32_be "$img" "$data_offset" 4)")" 1>&4
 							eol=1
 						fi
@@ -395,6 +413,14 @@ dissect_fit_image()
 	measr=0
 	dirs=0
 	indent_template="$(dd if=$zeros bs=256 count=1 2>"$null" | tr '\000' ' ')"
+
+	filesystem_indicator="avm,kernel-args"
+	filesystem_indicator_marker="mtdparts_ext="
+	type_name="type"
+	data_name="data"
+	timestamp_name="timestamp"
+	filesystem_type="filesystem"
+	fs_image_name="filesystem.image"
 
 	debug=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
