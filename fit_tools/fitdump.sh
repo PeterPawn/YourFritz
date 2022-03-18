@@ -280,6 +280,7 @@ dissect_fit_image()
 		offset="$2"
 		level="$3"
 		filesystem_found=0
+		kernel_found=0
 		type_found=""
 		data_found=""
 		data=$(get_fdt32_be "$img" "$offset")
@@ -295,6 +296,10 @@ dissect_fit_image()
 					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
 					out "%s%s {\n" "$(indent "$level")" "$name" 1>&4
 					[ "$dirs" = "1" ] && mkdir "$name" 2>"$null" && cd_msg "$name"
+					if [ "$name" = "$kernel_indicator" ]; then
+						# kernel entries with 'avm,kallsyms' are taken into account
+						kernel_found=1
+					fi
 					eval "$(entry "$img" "$offset" "$(( level + 1 ))" 5>&1)"
 					[ "$dirs" = "1" ] && cd_msg
 					;;
@@ -302,10 +307,13 @@ dissect_fit_image()
 					msg "End node at offset 0x%08x\n" "$offset"
 					offset=$(( offset + fdt32_size ))
 					out "%s};\n" "$(indent "$(( level - 1 ))")" 1>&4
-					printf "offset=%u files=%u \n" "$offset" "$files" 1>&5
+					printf "offset=%u files=%u\n" "$offset" "$files" 1>&5
 					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
 						msg "Found filesystem image in this node: ln -s %s %s\n" "$data_found" "$fs_image_name"
 						ln -s "$data_found" "$dump_dir/$fs_image_name" 2>"$null"
+					elif [ "$kernel_found" = "1" ] && [ "$type_found" = "$kernel_type" ] && [ -n "$data_found" ]; then
+						msg "Found kernel image in this node: ln -s %s %s\n" "$data_found" "$kernel_image_name"
+						ln -sf "$data_found" "$dump_dir/$kernel_image_name" 2>"$null"
 					fi
 					exit 0
 					;;
@@ -343,9 +351,7 @@ dissect_fit_image()
 								filesystem_found=1
 							fi
 						elif [ "$name" = "$type_name" ]; then
-							if [ "$str" = "$filesystem_type" ]; then
-								type_found="$str"
-							fi
+							type_found="$str"
 						fi
 					elif [ $(( value_size % 4 )) -eq 0 ]; then
 						out " = " 1>&4
@@ -416,11 +422,14 @@ dissect_fit_image()
 
 	filesystem_indicator="avm,kernel-args"
 	filesystem_indicator_marker="mtdparts_ext="
+	kernel_indicator="avm,kallsyms"
 	type_name="type"
 	data_name="data"
 	timestamp_name="timestamp"
 	filesystem_type="filesystem"
+	kernel_type="kernel"
 	fs_image_name="filesystem.image"
+	kernel_image_name="kernel.image"
 
 	debug=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
