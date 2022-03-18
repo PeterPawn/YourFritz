@@ -236,7 +236,8 @@ dissect_fit_image()
 		printf -- "Usage: %s [ options ] <fit-image>\n\n" "$0"
 		printf -- "Options:\n\n"
 		printf -- "-d or --debug      - show extra information (on STDERR) while reading FDT structure\n"
-		printf -- "-n or --no-its     - do not create an .its file as output\n"
+		printf -- "-i or --no-its     - do not create an .its file as output\n"
+		printf -- "-n or --native     - input file is expected to use the format defined by 'U-boot' project\n"
 		printf -- "-f or --filesystem - create a filesystem structure from FIT image properties\n"
 		printf -- "-c or --copy       - copy source file to a temporary location prior to processing\n"
 		printf -- "-m or --measure    - measure execution time using /proc/timer-list and write log data to\n"
@@ -469,6 +470,7 @@ dissect_fit_image()
 	image_file_list=".image_number_to_node_name"
 	properties_order_list=".order"
 	files=0
+	native=0
 	tmpcopy=0
 	measr=0
 	dirs=0
@@ -497,13 +499,16 @@ dissect_fit_image()
 		if [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
 			debug=1
 			shift
+		elif [ "$1" = "-n" ] || [ "$1" = "--native" ]; then
+			native=1
+			shift
 		elif [ "$1" = "-c" ] || [ "$1" = "--copy" ]; then
 			tmpcopy=1
 			shift
 		elif [ "$1" = "-f" ] || [ "$1" = "--filesystem" ]; then
 			dirs=1
 			shift
-		elif [ "$1" = "-n" ] || [ "$1" = "--no-its" ]; then
+		elif [ "$1" = "-i" ] || [ "$1" = "--no-its" ]; then
 			its_file="$null"
 			shift
 		elif [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
@@ -516,6 +521,8 @@ dissect_fit_image()
 			printf -- "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
 	done
+
+	[ "$tmpcopy" = 1 ] && [ "$native" = 1 ] && printf "Input data with native format and copying file to temporary storage can't be used together.\a\n" 1>&2 && exit 1
 
 	fdt_begin_node=1
 	fdt_end_node=2
@@ -550,38 +557,46 @@ dissect_fit_image()
 
 	msg "File: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 
-	[ "$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
-	msg "Signature at offset 0x%02x: 0x%08x %s\n" "$offset" "$(dd if="$img" bs=4 count=1 2>"$null" | tbo | b2d)" "$end"
+	if ! [ "$native" = "1" ]; then
+		magic="$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)"
+		if ! [ "$magic" = "218164734" ]; then
+			printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
+			exit 1
+		fi
+		msg "Magic value at offset 0x%02x: 0x%08x %s\n" "$offset" "$(dd if="$img" bs=4 count=1 2>"$null" | tbo | b2d)" "$end"
 
-	offset=$(( offset + fdt32_size ))
-	payload_size="$(get_fdt32_cpu "$img" "$offset")"
-	msg "Overall length of data at offset 0x%02x: 0x%08x - dec.: %u %s\n" "$offset" "$payload_size" "$payload_size" "$end"
+		offset=$(( offset + fdt32_size ))
+		payload_size="$(get_fdt32_cpu "$img" "$offset")"
+		msg "Overall length of data at offset 0x%02x: 0x%08x - dec.: %u %s\n" "$offset" "$payload_size" "$payload_size" "$end"
 
-	duration "signature and data size read"
+		duration "signature and data size read"
 
-	if [ "$tmpcopy" = "1" ]; then
-		tmpdir="${TMP:-$TMPDIR}"
-		[ -z "$tmpdir" ] && tmpdir="/tmp"
-		tmpimg="$tmpdir/fit-image-$$"
-		dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>"$null"
-		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
-		img="$tmpimg"
-		duration "image copied to tmpfs"
+		if [ "$tmpcopy" = "1" ]; then
+			tmpdir="${TMP:-$TMPDIR}"
+			[ -z "$tmpdir" ] && tmpdir="/tmp"
+			tmpimg="$tmpdir/fit-image-$$"
+			dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>"$null"
+			trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
+			img="$tmpimg"
+			duration "image copied to tmpfs"
+		fi
+
+		offset=$(( offset + fdt32_size ))
+		size=64
+		msg "Data at offset 0x%02x, size %u:\n" "$offset" "$size"
+		[ "$debug" -eq 1 ] && measure get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
+		offset=$(( offset + size ))
+		fdt_magic="$(get_fdt32_be "$img" "$offset")"
+	else
+		# get_data at offset 0 isn't supported due to computations and divide by zero errors
+		fdt_magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
 	fi
 
-	offset=$(( offset + fdt32_size ))
-	size=64
-	msg "Data at offset 0x%02x, size %u:\n" "$offset" "$size"
-	[ "$debug" -eq 1 ] && measure get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
-
-	out "/dts-v1/;\n"
-
-	offset=$(( offset + size ))
-	fdt_magic="$(get_fdt32_be "$img" "$offset")"
 	msg "FDT magic at offset 0x%02x: 0x%08x %s\n" "$offset" "$fdt_magic" "(BE)"
-	[ "$fdt_magic" -ne 3490578157 ] && msg "Invalid FDT magic found.\n" && exit 1
+	[ "$fdt_magic" -ne 3490578157 ] && msg "Invalid FDT magic found.\a\n" && exit 1
 	fdt_start=$offset
+	out "/dts-v1/;\n"
 	out "// magic:\t\t0x%08x\n" "$fdt_magic"
 
 	offset=$(( offset + fdt32_size ))
