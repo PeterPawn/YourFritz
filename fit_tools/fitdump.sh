@@ -199,31 +199,33 @@ dissect_fit_image()
 		[ $wr -le 0 ] && exit
 		dd if="$img" bs=1 skip=$(( off )) count=$(( wr )) 2>"$null"
 	)
+	__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+	__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+	__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+	__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+	__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+	__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+	__yf_get_script_lines() {
+		sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+		sed -e '1d;$d' | \
+		sed -e 's|# \(.*\) *#$|\1|' | \
+		sed -e 's|^#*#$|--|p' | \
+		sed -e '$d' | \
+		sed -e 's| *$||'
+	}
+	__yf_show_script_name() {
+		[ -n "$1" ] && printf -- '%s' "$1"
+		printf -- '%s' "${0#*/}"
+		[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+	}
+	__yf_show_license() { __yf_get_script_lines 'LIC'; }
+	__yf_show_version() {
+		printf -- "\n%s%s%s, " "${__yf_ansi_bold__}" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "${__yf_ansi_reset__}"
+		v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+		printf -- "%s\n" "$v_display"
+	}
+	__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
 	usage() {
-		__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
-		__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
-		__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
-		__yf_get_script_lines() {
-			sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
-			sed -e '1d;$d' | \
-			sed -e 's|# \(.*\) *#$|\1|' | \
-			sed -e 's|^#*#$|--|p' | \
-			sed -e '$d' | \
-			sed -e 's| *$||'
-		}
-		__yf_show_script_name() {
-			[ -n "$1" ] && printf -- '%s' "$1"
-			printf -- '%s' "${0#*/}"
-			[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
-		}
-		__yf_show_license() { __yf_get_script_lines 'LIC'; }
-		__yf_show_version() {
-			printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
-			v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
-			printf "%s\n" "$v_display"
-		}
-		__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
-
 		exec 1>&2
 		__yf_show_version
 		__yf_show_copyright
@@ -257,12 +259,12 @@ dissect_fit_image()
 		"$@"
 		r=$?
 		end=$(nsecs)
-		[ "$measr" -eq 1 ] && printf "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && printf -- "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
 		return $r
 	}
 	duration() {
 		now=$(nsecs)
-		[ "$measr" -eq 1 ] && printf "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && printf -- "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
 	}
 	cd_msg() {
 		cwd="$(pwd)"
@@ -278,8 +280,11 @@ dissect_fit_image()
 	entry() (
 		img="$1"
 		offset="$2"
-		level="$3"
+		parent="$3"
+		level="$4"
 		filesystem_found=0
+		ramdisk_found=0
+		kernel_found=0
 		type_found=""
 		data_found=""
 		data=$(get_fdt32_be "$img" "$offset")
@@ -294,18 +299,34 @@ dissect_fit_image()
 					msg "Begin node at offset 0x%08x, name=%s, level=%u\n" "$offset" "$name" "$level"
 					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
 					out "%s%s {\n" "$(indent "$level")" "$name" 1>&4
-					[ "$dirs" = "1" ] && mkdir "$name" 2>"$null" && cd_msg "$name"
-					eval "$(entry "$img" "$offset" "$(( level + 1 ))" 5>&1)"
+					[ "$dirs" = "1" ] && printf -- "%s\n" "$name" >>"$properties_order_list" && mkdir "$name" 2>"$null" && cd_msg "$name"
+					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" 5>&1)"
 					[ "$dirs" = "1" ] && cd_msg
 					;;
 				("$fdt_end_node")
 					msg "End node at offset 0x%08x\n" "$offset"
 					offset=$(( offset + fdt32_size ))
 					out "%s};\n" "$(indent "$(( level - 1 ))")" 1>&4
-					printf "offset=%u files=%u \n" "$offset" "$files" 1>&5
+					{
+						[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u " "$fs_node_name" "$fs_image" "$fs_size"
+						[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u " "$rd_node_name" "$rd_image" "$rd_size"
+						[ -n "$kernel_image" ] && printf -- "kernel_image=\"%s\" " "$kernel_image"
+						printf -- "offset=%u files=%u" "$offset" "$files"
+					} 1>&5
 					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
-						msg "Found filesystem image in this node: ln -s %s %s\n" "$data_found" "$fs_image_name"
-						ln -s "$data_found" "$dump_dir/$fs_image_name" 2>"$null"
+						msg "%sFilesystem image:%s %s - size=%u\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$data_found" "$data_size"
+						printf -- " fs_size=%u fs_image=\"%s\" fs_node_name=\"%s\"" "$data_size" "$data_found" "$parent" 1>&5
+					fi
+					if [ "$ramdisk_found" = "1" ]; then
+						msg "%sRamdisk image:%s %s - size=%u, prev_size=%u\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$data_found" "$data_size" "$rd_size"
+						if [ "$fs_size" -eq 0 ] && [ "$rd_size" -lt "$data_size" ]; then
+							msg "%sNew ramdisk image selected:%s %s\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$data_found"
+							printf -- " rd_size=%u rd_image=\"%s\" rd_node_name=\"%s\"" "$data_size" "$data_found" "$parent" 1>&5
+						fi
+					fi
+					if [ -n "$data_found" ]; then
+						[ "$kernel_found" = "1" ] && msg "%sKernel image:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$data_found"
+						printf -- "%03u=%s\n" "$files" "$parent" >>"$image_file_list"
 					fi
 					exit 0
 					;;
@@ -316,6 +337,7 @@ dissect_fit_image()
 					msg "Property node at offset 0x%08x, value size=%u, name=%s\n" "$offset" "$value_size" "$name"
 					out "%s%s" "$(indent "$level")" "$name" 1>&4
 					data_offset=$(( offset + 3 * fdt32_size ))
+					[ "$dirs" = "1" ] && printf -- "%s\n" "$name" >>"$properties_order_list"
 					eol=0
 					if [ "$value_size" -gt 512 ]; then
 						files=$(( files + 1 ))
@@ -327,7 +349,7 @@ dissect_fit_image()
 						measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
 						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
 						[ "$dirs" = "1" ] && cp "$dump_dir/$file" "$name" 2>"$null"
-						[ "$name" = "$data_name" ] && data_found="$file"
+						[ "$name" = "$data_name" ] && data_found="$file" && data_size="$value_size"
 					elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
 						eval "$(measure get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
 						if [ -n "$str" ]; then
@@ -341,10 +363,14 @@ dissect_fit_image()
 							# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
 							if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
 								filesystem_found=1
+								fs_size="$data_size"
 							fi
 						elif [ "$name" = "$type_name" ]; then
-							if [ "$str" = "$filesystem_type" ]; then
-								type_found="$str"
+							type_found="$str"
+							if [ "$type_found" = "$ramdisk_type" ]; then
+								ramdisk_found=1
+							elif [ "$type_found" = "$kernel_type" ]; then
+								kernel_found=1
 							fi
 						fi
 					elif [ $(( value_size % 4 )) -eq 0 ]; then
@@ -378,7 +404,11 @@ dissect_fit_image()
 			esac
 			data=$(measure get_fdt32_be "$img" "$offset")
 		done
-		printf "offset=%u files=%u\n" "$offset" "$files" 1>&5
+		{
+			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u " "$fs_node_name" "$fs_image" "$fs_size"
+			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u " "$rd_node_name" "$rd_image" "$rd_size"
+			printf -- "offset=%u files=%u\n" "$offset" "$files"
+		} 1>&5
 	)
 	get_real_name() (
 		if command -v realpath 2>"$null" 1>&2; then
@@ -408,6 +438,8 @@ dissect_fit_image()
 	its_name="image.its"
 	its_file="$dump_dir/$its_name"
 	image_file_mask="image_%03u.bin"
+	image_file_list=".image_number_to_node_name"
+	properties_order_list=".order"
 	files=0
 	tmpcopy=0
 	measr=0
@@ -420,7 +452,11 @@ dissect_fit_image()
 	data_name="data"
 	timestamp_name="timestamp"
 	filesystem_type="filesystem"
+	ramdisk_type="ramdisk"
+	kernel_type="kernel"
 	fs_image_name="filesystem.image"
+	rd_image_name="ramdisk.image"
+	kernel_image_name="kernel.image"
 
 	debug=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
@@ -445,7 +481,7 @@ dissect_fit_image()
 			usage
 			exit 0
 		else
-			printf "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
+			printf -- "Unknown option: %s\a\n" "$1" 1>&2 && exit 1
 		fi
 	done
 
@@ -459,10 +495,10 @@ dissect_fit_image()
 	script_start=$(nsecs)
 
 	if [ -d "$dump_dir" ]; then
-		printf "Subdirectory '%s' does exist already. Remove it, before calling this script.\a\n" "$dump_dir" 1>&2
+		printf -- "Subdirectory '%s' does exist already. Remove it, before calling this script.\a\n" "$dump_dir" 1>&2
 		exit 1
 	fi
-	! mkdir "$dump_dir" && printf "Error creating subdirectory '%s', do you have write access?\a\n" "$dump_dir" 1>&2 && exit 1
+	! mkdir "$dump_dir" && printf -- "Error creating subdirectory '%s', do you have write access?\a\n" "$dump_dir" 1>&2 && exit 1
 
 	img="$(get_real_name "$1")"
 	dump_dir="$(get_real_name "$dump_dir")"
@@ -480,7 +516,7 @@ dissect_fit_image()
 
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
-	msg "File: %s" "$img"
+	msg "File: %s\n" "$img"
 
 	[ "$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
@@ -570,11 +606,38 @@ dissect_fit_image()
 
 	duration "header data read"
 
+	fs_image=""
+	rd_image=""
+	kernel_image=""
+	fs_size=0
+	rd_size=0
+	fs_node_name=""
+	rd_node_name=""
+	image_file_list="$(get_real_name "$image_file_list")"
+
 	exec 4>&1
 	offset=$(( fdt_start + fdt_off_dt_struct ))
 	# shellcheck disable=SC2164
 	[ "$dirs" = "1" ] && mkdir -p "$dump_dir/$image_dir_name" 2>"$null" && cd "$dump_dir/$image_dir_name"
-	offset="$(entry "$img" "$offset" 0 5>&1)"
+	eval "$(entry "$img" "$offset" "-" 0 5>&1)"
+
+	# restore CWD to '$dump_dir'
+	[ "$dirs" = "1" ] && cd_msg
+
+	if [ "$debug" = "1" ]; then
+		msg "Image number to node name translations:\n"
+		sed -n -e "s|=| -> |p" "$image_file_list" 1>&2
+	fi
+	[ -f "$image_file_list" ] && rm "$image_file_list" 2>"$null"
+
+	if [ -n "$fs_image" ]; then
+		ln -s "$fs_image" "$fs_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$fs_image_name" "$fs_image" "$__yf_ansi_reset__"
+	elif [ -n "$rd_image" ]; then
+		ln -s "$rd_image" "$rd_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$rd_image_name" "$rd_image" "$__yf_ansi_reset__"
+	fi
+	if [ -n "$kernel_image" ]; then
+		ln -s "$kernel_image" "$kernel_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$kernel_image_name" "$kernel_image" "$__yf_ansi_reset__"
+	fi
 
 	duration "processing finished"
 )
