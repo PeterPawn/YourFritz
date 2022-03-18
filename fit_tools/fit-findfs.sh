@@ -27,19 +27,18 @@
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
-# This script reads a FIT image in AVM's own format and searches the biggest BLOB of data with type   #
-# of 'filesystem'. The assumption is, that this data will be the filesystem used for the FRITZ!OS     #
-# main system, providing AVM's user frontend.                                                         #
+# This script reads a FIT image in AVM's own format and searches for the root filesystem of the       #
+# frontend OS by AVM.                                                                                 #
 #                                                                                                     #
-# If a filesystem was found, its offset in the FIT file and its data size will be written to STDOUT,  #
-# readily prepared to be set as variables using an 'eval' statement.                                  #
+# It uses the same techniques to find a root filesystem, as were implemented in the 'fitdump.sh'      #
+# script from project above.                                                                          #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
 # the whole logic as a sealed sub-function                                                            #
 #                                                                                                     #
 #######################################################################################################
-find_filesystem_in_fit_image()
+find_rootfs_in_fit_image()
 (
 	tbo() (
 		tbo_ro()
@@ -137,31 +136,33 @@ find_filesystem_in_fit_image()
 		get_data "$1" "$3" "$2" | cmp -l -- - "$zeros" 2>"$null" | ro "$3"
 		return $?
 	)
+	__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+	__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+	__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+	__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+	__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+	__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+	__yf_get_script_lines() {
+		sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+		sed -e '1d;$d' | \
+		sed -e 's|# \(.*\) *#$|\1|' | \
+		sed -e 's|^#*#$|--|p' | \
+		sed -e '$d' | \
+		sed -e 's| *$||'
+	}
+	__yf_show_script_name() {
+		[ -n "$1" ] && printf -- '%s' "$1"
+		printf -- '%s' "${0#*/}"
+		[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+	}
+	__yf_show_license() { __yf_get_script_lines 'LIC'; }
+	__yf_show_version() {
+		printf -- "\n%s%s%s, " "${__yf_ansi_bold__}" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "${__yf_ansi_reset__}"
+		v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+		printf -- "%s\n" "$v_display"
+	}
+	__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
 	usage() {
-		__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
-		__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
-		__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
-		__yf_get_script_lines() {
-			sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
-			sed -e '1d;$d' | \
-			sed -e 's|# \(.*\) *#$|\1|' | \
-			sed -e 's|^#*#$|--|p' | \
-			sed -e '$d' | \
-			sed -e 's| *$||'
-		}
-		__yf_show_script_name() {
-			[ -n "$1" ] && printf -- '%s' "$1"
-			printf -- '%s' "${0#*/}"
-			[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
-		}
-		__yf_show_license() { __yf_get_script_lines 'LIC'; }
-		__yf_show_version() {
-			printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
-			v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
-			printf "%s\n" "$v_display"
-		}
-		__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
-
 		exec 1>&2
 		__yf_show_version
 		__yf_show_copyright
@@ -173,23 +174,98 @@ find_filesystem_in_fit_image()
 		printf -- "-f or --force-copy - always create and use a copy on temporary storage,\n"
 		printf -- "                     even if input is a regular file\n"
 		printf -- "\n"
-		exec 1>&2
 	}
+	entry() (
+		img="$1"
+		offset="$2"
+		parent="$3"
+		level="$4"
+		filesystem_found=0
+		ramdisk_found=0
+		data=$(get_fdt32_be "$img" "$offset")
+		# shellcheck disable=SC2050
+		while [ 1 -eq 1 ]; do
+			case "$data" in
+				("$fdt_begin_node")
+					name_off="$(( offset + fdt32_size ))"
+					eval "$(get_string "$img" $name_off "name")"
+					[ -z "$name" ] && name="/"
+					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
+					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" 5>&1)"
+					offset="$next_offset"
+					;;
+				("$fdt_end_node")
+					offset=$(( offset + fdt32_size ))
+					{
+						[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_offset=%u fs_size=%u " "$fs_node_name" "$fs_offset" "$fs_size"
+						# shellcheck disable=SC2154
+						[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_offset=%u rd_size=%u " "$rd_node_name" "$rd_offset" "$rd_size"
+						printf -- "next_offset=%u" "$offset"
+					} 1>&5
+					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
+						printf -- " fs_size=%u fs_offset=%u fs_node_name=\"%s\"" "$fs_size" "$fs_offset" "$parent" 1>&5
+					fi
+					if [ "$ramdisk_found" = "1" ]; then
+						if [ "$fs_size" -eq 0 ] && [ "$rd_size" -lt "$new_rd_size" ]; then
+							printf -- " rd_size=%u rd_offset=%u rd_node_name=\"%s\"" "$new_rd_size" "$new_rd_offset" "$parent" 1>&5
+						fi
+					fi
+					exit 0
+					;;
+				("$fdt_prop")
+					value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
+					name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
+					eval "$(get_string "$img" $name_off "name")"
+					data_offset=$(( offset + 3 * fdt32_size ))
+					if [ "$value_size" -gt 512 ]; then
+						[ "$name" = "$data_name" ] && file_size="$value_size" && file_offset="$data_offset"
+					elif is_printable_string "$img" "$data_offset" "$value_size"; then
+						eval "$(get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
+						if [ "$name" = "$filesystem_indicator" ]; then
+							# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
+							# shellcheck disable=SC2154
+							if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
+								filesystem_found=1
+								fs_size="$file_size"
+								fs_offset="$file_offset"
+								fs_node_name="$parent"
+							fi
+						elif [ "$name" = "$type_name" ]; then
+							type_found="$str"
+							if [ "$type_found" = "$ramdisk_type" ]; then
+								ramdisk_found=1
+								new_rd_size="$file_size"
+								new_rd_offset="$file_offset"
+							fi
+						fi
+					fi
+					offset=$(fdt32_align $(( data_offset + value_size )) )
+					;;
+				("$fdt_nop")
+					offset=$(( offset + fdt32_size ))
+						;;
+				("$fdt_end")
+					offset=$(( offset + fdt32_size ))
+					break
+					;;
+			esac
+			data=$(get_fdt32_be "$img" "$offset")
+		done
+		{
+			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_offset=%u fs_size=%u " "$fs_node_name" "$fs_offset" "$fs_size"
+			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_offset=%u rd_size=%u " "$rd_node_name" "$rd_offset" "$rd_size"
+			printf -- "next_offset=%u\n" "$offset"
+		} 1>&5
+	)
 
 	null="/dev/null"
 	zeros="/dev/zero"
+	filesystem_indicator="avm,kernel-args"
+	filesystem_indicator_marker="mtdparts_ext="
+	data_name="data"
 	type_name="type"
 	filesystem_type="filesystem"
-
-	filesystem_offset=0
-	filesystem_size=0
-
-	fdt_begin_node=1
-	fdt_end_node=2
-	fdt_prop=3
-	fdt_nop=4
-	fdt_end=9
-	fdt32_size=4
+	ramdisk_type="ramdisk"
 
 	force_tmpcopy=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
@@ -206,11 +282,22 @@ find_filesystem_in_fit_image()
 		fi
 	done
 
-	img="$1"
-	[ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
+	fdt_begin_node=1
+	fdt_end_node=2
+	fdt_prop=3
+	fdt_nop=4
+	fdt_end=9
+	fdt32_size=4
 
-	offset=$(( offset + fdt32_size ))
-	payload_size="$(get_fdt32_cpu "$img" "$offset")"
+	img="$1"
+	magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
+	if ! [ "$magic" = "218164734" ]; then
+		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
+		exit 1
+	fi
+
+	next_offset=$(( next_offset + fdt32_size ))
+	payload_size="$(get_fdt32_cpu "$img" "$next_offset")"
 
 	if ! [ -f "$img" ] || [ "$force_tmpcopy" -eq 1 ]; then
 		tmpdir="${TMP:-$TMPDIR}"
@@ -221,103 +308,69 @@ find_filesystem_in_fit_image()
 		img="$tmpimg"
 	fi
 
-	offset=$(( offset + fdt32_size + 64 ))
-	fdt_magic="$(get_fdt32_be "$img" "$offset")"
+	next_offset=$(( next_offset + fdt32_size + 64 ))
+	fdt_magic="$(get_fdt32_be "$img" "$next_offset")"
 
 	[ "$fdt_magic" -ne 3490578157 ] && printf "Invalid FDT magic found.\a\n" 1>&2 && exit 1
 
-	fdt_start=$offset
-	offset=$(( offset + fdt32_size ))
+	fdt_start=$next_offset
+	next_offset=$(( next_offset + fdt32_size ))
 
-#	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
-	offset=$(( offset + fdt32_size ))
+#	fdt_totalsize="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
 
-	fdt_off_dt_struct="$(get_fdt32_be "$img" "$offset")"
-	offset=$(( offset + fdt32_size ))
+	fdt_off_dt_struct="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
 
-	fdt_off_dt_strings="$(get_fdt32_be "$img" "$offset")"
-	offset=$(( offset + fdt32_size ))
+	fdt_off_dt_strings="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
 
-#	fdt_off_mem_rsvmap="$(get_fdt32_be "$img" "$offset")"
-	offset=$(( offset + fdt32_size ))
+#	fdt_off_mem_rsvmap="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
 
-	fdt_version="$(get_fdt32_be "$img" "$offset")"
-	offset=$(( offset + fdt32_size ))
+	fdt_version="$(get_fdt32_be "$img" "$next_offset")"
+	next_offset=$(( next_offset + fdt32_size ))
 
-#	fdt_last_comp_version="$(get_fdt32_be "$img" "$offset")"
-
+#	fdt_last_comp_version="$(get_fdt32_be "$img" "$next_offset")"
 	if [ "$fdt_version" -ge 2 ]; then
-		offset=$(( offset + fdt32_size ))
-#		fdt_boot_cpuid_phys="$(get_fdt32_be "$img" "$offset")"
+		next_offset=$(( next_offset + fdt32_size ))
+#		fdt_boot_cpuid_phys="$(get_fdt32_be "$img" "$next_offset")"
 
 		if [ "$fdt_version" -ge 2 ]; then
-			offset=$(( offset + fdt32_size ))
-#			fdt_size_dt_strings="$(get_fdt32_be "$img" "$offset")"
+			next_offset=$(( next_offset + fdt32_size ))
+#			fdt_size_dt_strings="$(get_fdt32_be "$img" "$next_offset")"
 
 			if [ "$fdt_version" -ge 17 ]; then
-				offset=$(( offset + fdt32_size ))
-#				fdt_size_dt_struct="$(get_fdt32_be "$img" "$offset")"
+				next_offset=$(( next_offset + fdt32_size ))
+#				fdt_size_dt_struct="$(get_fdt32_be "$img" "$next_offset")"
 			fi
 		fi
 	fi
 
-	offset=$(( fdt_start + fdt_off_dt_struct ))
-	data=$(get_fdt32_be "$img" "$offset")
+	fs_size=0
+	fs_offset=0
+	rd_size=0
+	fs_offset=0
+	fs_node_name=""
+	rd_node_name=""
 
-	# shellcheck disable=SC2050
-	while [ 1 -eq 1 ]; do
-		case "$data" in
-			("$fdt_begin_node")
-				name_off="$(( offset + fdt32_size ))"
-				eval "$(get_string "$img" $name_off "name")"
-				[ -z "$name" ] && name="/"
-				offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
-				;;
-			("$fdt_end_node")
-				offset=$(( offset + fdt32_size ))
-				;;
-			("$fdt_prop")
-				value_size="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
-				name_off="$(( fdt_start + fdt_off_dt_strings + $(get_fdt32_be "$img" $(( offset + ( 2 * fdt32_size ) )) ) ))"
-				eval "$(get_string "$img" $name_off "name")"
-				data_offset=$(( offset + 3 * fdt32_size ))
-				if [ "$value_size" -gt 512 ]; then
-					last_blob_offset="$data_offset"
-					last_blob_size="$value_size"
-				elif is_printable_string "$img" "$data_offset" "$value_size"; then
-					eval "$(get_string "$img" $(( offset + 3 * fdt32_size )) "str")"
-					if [ -n "$str" ]; then
-						if [ "$name" = "$type_name" ] && [ "$str" = "$filesystem_type" ]; then
-							# assume 'data' entry was processed already, should be re-implemented with recursion for nodes
-							if [ "$last_blob_size" -gt "$filesystem_size" ]; then
-								filesystem_offset="$last_blob_offset"
-								filesystem_size="$last_blob_size"
-							fi
-						fi
-					fi
-				fi
-				offset=$(fdt32_align $(( data_offset + value_size )) )
-				;;
-			("$fdt_nop")
-				offset=$(( offset + fdt32_size ))
-				;;
-			("$fdt_end")
-				offset=$(( offset + fdt32_size ))
-				break
-				;;
-		esac
-		data=$(get_fdt32_be "$img" "$offset")
-	done
+	next_offset=$(( fdt_start + fdt_off_dt_struct ))
+	eval "$(entry "$img" "$next_offset" "-" 0 5>&1)"
 
-	printf -- "filesystem_offset=%u filesystem_size=%u\n" "$filesystem_offset" "$filesystem_size"
-
+	if [ "$fs_size" -gt 0 ]; then
+		printf "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
+	elif [ "$rd_size" -gt 0 ]; then
+		printf "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
+	else
+		printf "No rootfs candicates found.\a\n" 1>&2 && exit 1
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
 # invoke sealed function from above                                                                   #
 #                                                                                                     #
 #######################################################################################################
-find_filesystem_in_fit_image "$@"
+find_rootfs_in_fit_image "$@"
 #######################################################################################################
 #                                                                                                     #
 # end of script                                                                                       #
