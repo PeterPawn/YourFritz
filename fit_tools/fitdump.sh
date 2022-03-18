@@ -362,7 +362,7 @@ dissect_fit_image()
 						files=$(( files + 1 ))
 						file="$(printf_ss "$image_file_mask\n" "$files")"
 						out " = " 1>&4
-						out "/incbin/(\"%s\"); // size: %u\n" "$file" "$value_size" 1>&4
+						out "/incbin/(\"%s\"); // size: %u, offset=0x%08x\n" "$file" "$value_size" "$data_offset" 1>&4
 						eol=1
 						measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
 						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
