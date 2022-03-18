@@ -285,6 +285,7 @@ dissect_fit_image()
 		filesystem_found=0
 		ramdisk_found=0
 		kernel_found=0
+		cfg_found=0
 		type_found=""
 		data_found=""
 		data=$(get_fdt32_be "$img" "$offset")
@@ -300,6 +301,16 @@ dissect_fit_image()
 					offset=$(fdt32_align $(( offset + fdt32_size + ${#name} + 1 )) )
 					out "%s%s {\n" "$(indent "$level")" "$name" 1>&4
 					[ "$dirs" = "1" ] && printf -- "%s\n" "$name" >>"$properties_order_list" && mkdir "$name" 2>"$null" && cd_msg "$name"
+					if [ "$name" = "$configurations_name" ]; then
+						msg "%sConfigurations node starts here%s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__"
+						[ -n "$fs_node_name" ] && msg "%sLook for kernel image used with:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$fs_node_name"
+						[ -n "$rd_node_name" ] && msg "%sLook for kernel image used with:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$rd_node_name"
+						cfg=1
+					elif [ "$cfg" = "1" ]; then
+						cfg_name="$name"
+						krnl_node=""
+						msg "%sNew configuration:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$cfg_name"
+					fi
 					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" 5>&1)"
 					[ "$dirs" = "1" ] && cd_msg
 					;;
@@ -328,6 +339,13 @@ dissect_fit_image()
 						[ "$kernel_found" = "1" ] && msg "%sKernel image:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$data_found"
 						printf -- "%03u=%s\n" "$files" "$parent" >>"$image_file_list"
 					fi
+					if [ "$cfg_found" -eq 1 ]; then
+						msg "%sConfiguration using '%s' found:%s %s\n" "$__yf_ansi_bright_green__" "$fs_node_name" "$__yf_ansi_reset__" "$parent"
+						msg "%sKernel entry name:%s %s\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$krnl_node"
+						kernel_image_number="$(sed -n -e "s|^\([0-9]\{3\}\)=$krnl_node\$|\1|p" "$image_file_list")"
+						kernel_image="$(printf_ss "$image_file_mask" "$kernel_image_number")"
+						printf -- " kernel_image=\"%s\" " "$kernel_image" 1>&5
+					fi
 					exit 0
 					;;
 				("$fdt_prop")
@@ -341,8 +359,7 @@ dissect_fit_image()
 					eol=0
 					if [ "$value_size" -gt 512 ]; then
 						files=$(( files + 1 ))
-						# shellcheck disable=SC2059
-						file="$(printf -- "$image_file_mask\n" "$files")"
+						file="$(printf_ss "$image_file_mask\n" "$files")"
 						out " = " 1>&4
 						out "/incbin/(\"%s\"); // size: %u\n" "$file" "$value_size" 1>&4
 						eol=1
@@ -359,18 +376,28 @@ dissect_fit_image()
 						if [ "$dirs" = "1" ]; then
 							get_data "$img" "$value_size" "$data_offset" >"$name"
 						fi
-						if [ "$name" = "$filesystem_indicator" ]; then
-							# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
-							if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
-								filesystem_found=1
-								fs_size="$data_size"
+						if [ "$cfg" -eq 1 ] && [ "$cfg_found" -eq 0 ]; then
+							if [ "$name" = "$kernel_cfg_name" ]; then
+								krnl_node="$str"
+							elif [ -n "$fs_node_name" ] && [ "$name" = "$fs_cfg_name" ] && [ "$fs_node_name" = "$str" ]; then
+								cfg_found=1
+							elif [ -n "$rd_node_name" ] && [ "$name" = "$rd_cfg_name" ] && [ "$rd_node_name" = "$str" ]; then
+								cfg_found=1
 							fi
-						elif [ "$name" = "$type_name" ]; then
-							type_found="$str"
-							if [ "$type_found" = "$ramdisk_type" ]; then
-								ramdisk_found=1
-							elif [ "$type_found" = "$kernel_type" ]; then
-								kernel_found=1
+						else
+							if [ "$name" = "$filesystem_indicator" ]; then
+								# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
+								if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
+									filesystem_found=1
+									fs_size="$data_size"
+								fi
+							elif [ "$name" = "$type_name" ]; then
+								type_found="$str"
+								if [ "$type_found" = "$ramdisk_type" ]; then
+									ramdisk_found=1
+								elif [ "$type_found" = "$kernel_type" ]; then
+									kernel_found=1
+								fi
 							fi
 						fi
 					elif [ $(( value_size % 4 )) -eq 0 ]; then
@@ -407,6 +434,7 @@ dissect_fit_image()
 		{
 			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u " "$fs_node_name" "$fs_image" "$fs_size"
 			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u " "$rd_node_name" "$rd_image" "$rd_size"
+			[ -n "$kernel_image" ] && printf -- "kernel_image=\"%s\" " "$kernel_image"
 			printf -- "offset=%u files=%u\n" "$offset" "$files"
 		} 1>&5
 	)
@@ -448,9 +476,13 @@ dissect_fit_image()
 
 	filesystem_indicator="avm,kernel-args"
 	filesystem_indicator_marker="mtdparts_ext="
-	type_name="type"
 	data_name="data"
+	configurations_name="configurations"
+	kernel_cfg_name="kernel"
+	fs_cfg_name="squashFS"
+	rd_cfg_name="ramdisk"
 	timestamp_name="timestamp"
+	type_name="type"
 	filesystem_type="filesystem"
 	ramdisk_type="ramdisk"
 	kernel_type="kernel"
@@ -516,7 +548,7 @@ dissect_fit_image()
 
 	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
 
-	msg "File: %s\n" "$img"
+	msg "File: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 
 	[ "$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ] || exit 1
 	offset=0
@@ -614,6 +646,7 @@ dissect_fit_image()
 	fs_node_name=""
 	rd_node_name=""
 	image_file_list="$(get_real_name "$image_file_list")"
+	cfg=0
 
 	exec 4>&1
 	offset=$(( fdt_start + fdt_off_dt_struct ))
