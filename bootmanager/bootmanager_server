@@ -63,6 +63,7 @@ basename="bootmanager"
 rundir="/var/run/$basename"
 input="$rundir/input"
 output="$rundir/output"
+log="$rundir/log"
 reader_pid="$rundir/reader.pid"
 writer_pid="$rundir/writer.pid"
 #######################################################################################################
@@ -84,6 +85,7 @@ cleanup()
 	kill_pid "$reader_pid"
 	[ -p "$output" ] && rm -f "$output" 2>/dev/null
 	[ -p "$input" ] && rm -f "$input" 2>/dev/null
+	[ -f "$log" ] && mv "$log" /var/log/$basename.log 2>/dev/null
 	[ -d "$rundir" ] && rm -r "$rundir" 2>/dev/null
 }
 #######################################################################################################
@@ -95,14 +97,27 @@ reader()
 {
 	trap - INT EXIT
 	exec 0<"$1"
+	debug="/dev/null"
 	while read -r cmd p1 p2; do
+		printf "%s [%s] - command: %s\n" "$(date)" "$$" "$cmd $p1 $p2" >>"$log"
 		case "$cmd" in
 			("switch_to")
-				/usr/bin/$basename switch_to "$p1" "$p2" 2>/dev/null 1>&2
+				/bin/busybox sh $dbgopt /usr/bin/$basename switch_to "$p1" "$p2" 2>>"$debug" 1>&2
 				;;
 			("clear_cache")
-				/usr/bin/$basename clear_cache 2>/dev/null 1>&2
-				/usr/bin/$basename get_values 2>/dev/null 1>&2
+				/bin/busybox sh $dgbopt /usr/bin/$basename clear_cache 2>>"$debug" 1>&2
+				/bin/busybox sh $dbgopt /usr/bin/$basename get_values 2>>"$debug" 1>&2
+				;;
+			("debug")
+				if [ "$p1" = "on" ]; then
+					dgbopt="-x"
+					debug="$log"
+				elif [ "$p1" = "off" ]; then
+					unset dbgopt
+					debug="/dev/null"
+				else
+					printf "Unknown state: %s\n" "$p1" >>"$log"
+				fi
 				;;
 			("stop")
 				break
