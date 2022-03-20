@@ -1,6 +1,8 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
-# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
+yf_bootmanager_version="0.8.4"
+yf_bootmanager_timestamp=202203201227
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -8,7 +10,7 @@
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.3                                                                          #
+# bootmanager, version 0.8.4                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -217,6 +219,63 @@ readonly puma_kernel_name_inactive="${kernel_name}_${reserved_prefix}_ATOM"
 #######################################################################################################
 #                                                                                                     #
 # sub-functions                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# imported from framework - it's not allowed to copy the functions below (up to the next comment box) #
+# to other works                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+__yf_get_script_lines() {
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d' | \
+	sed -e 's| *$||'
+}
+__yf_show_script_name() {
+	[ -n "$1" ] && printf -- '%s' "$1"
+	printf -- '%s' "${0#*/}"
+	[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+}
+__yf_show_license() { __yf_get_script_lines 'LIC'; }
+__yf_show_version() {
+	printf -- "\n%s%s%s, " "${__yf_ansi_bold__}" "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")" "${__yf_ansi_reset__}"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	printf -- "%s\n" "$v_display"
+}
+__yf_get_version() { __yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, version \(.*\)|\1|p"; }
+__yf_show_copyright() { __yf_get_script_lines 'CPY'; }
+boot_manager_usage() {
+	__yf_show_version
+	__yf_show_copyright
+	__yf_show_license
+	printf -- "\n"
+	printf -- "%sbootmanager%s - collect data and set values for yf_bootmanager project\n\n" "${__yf_ansi_bold__}" "${__yf_ansi_reset__}"
+	printf -- "See https://github.com/PeterPawn/YourFritz/tree/main/bootmanager for further info.\n\n"
+	printf -- "Usage: %s <command>\n\n" "$0"
+	printf -- "<command> is one of:\n\n"
+	printf -- "is_supported\n"
+	printf -- "is_blocked\n"
+	printf -- "switch_to { running | alternative } [ branding ]\n"
+	printf -- "get_values [ no_cache ]\n"
+	printf -- "clear_cache [ with_eva_config ]\n"
+	printf -- "debug [ verbose ]\n"
+	printf -- "show_eva_cfg\n\n"
+	printf -- "Please check the 'header' of this script file for further info regarding those commands or.\n"
+	printf -- "the URL mentioned above.\n"
+	printf -- "\n"
+}
+#######################################################################################################
+#                                                                                                     #
+# end of functions imported from YF framework                                                         #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -1949,6 +2008,7 @@ get_values()
 	printf -- "switch_branding_support=%s\n" "$cb_support"
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
+	printf -- "bootmanager_version=\"%s-%s\"\n" "$(__yf_get_version)" "$yf_bootmanager_timestamp"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2089,7 +2149,6 @@ load_device_configuration()
 # prepare a temporary directory and a clean exit routine                                              #
 #                                                                                                     #
 #######################################################################################################
-exec 2>&1
 tempdir="$tmpdir/$$_$(date +%s)"
 readonly tempdir
 mkdir -p "$tempdir" 2>$null
@@ -2125,6 +2184,7 @@ case "$1" in
 		if [ -z "$color" ] && [ -t 1 ]; then
 			color=1
 		fi
+		debug "yf_bootmanager version = " "yellow" "%s-%s" "$(__yf_get_version)" "$yf_bootmanager_timestamp"
 		# shellcheck disable=SC2046
 		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
@@ -2240,9 +2300,18 @@ case "$1" in
 		switch_system_to "$2" "$3"
 		rc=$?
 		;;
-	("*")
-		printf -- "Unknown operation '%s'.\n" "$1" 1>&2
-		rc=1
+	("-h" | "--help")
+		boot_manager_usage
+		rc=0
+		;;
+	(*)
+		if [ -z "$1" ]; then
+			boot_manager_usage 1>&2
+			rc=1
+		else
+			printf -- "Unknown operation '%s'.\n" "$1" 1>&2
+			rc=1
+		fi
 		;;
 esac
 #######################################################################################################
