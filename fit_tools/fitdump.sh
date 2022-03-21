@@ -592,6 +592,7 @@ dissect_fit_image()
 	else
 		# get_data at offset 0 isn't supported due to computations and divide by zero errors
 		fdt_magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
+		payload_size=0
 	fi
 
 	msg "FDT magic at offset 0x%02x: 0x%08x %s\n" "$offset" "$fdt_magic" "(BE)"
@@ -604,6 +605,11 @@ dissect_fit_image()
 	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
 	msg "FDT total size at offset 0x%02x: 0x%08x (dec.: %u) %s\n" "$offset" "$fdt_totalsize" "$fdt_totalsize" "(BE)"
 	out "// totalsize:\t\t0x%x (%u)\n" "$fdt_totalsize" "$fdt_totalsize"
+
+	if ! [ "$native" = "1" ] && [ "$fdt_totalsize" -ne "$payload_size" ]; then
+		printf "Payload size (%u = %#x) at offset 0x%02x doesn't match FDT data size at offset 0x%02x (%u = %#x), processing aborted.\a\n" "$payload_size" "$payload_size" "4" "$offset" "$fdt_totalsize" "$fdt_totalsize" 1>&2
+		exit 1
+	fi
 
 	offset=$(( offset + fdt32_size ))
 	fdt_off_dt_struct="$(get_fdt32_be "$img" "$offset")"

@@ -316,8 +316,10 @@ find_rootfs_in_fit_image()
 	fdt_start=$next_offset
 	next_offset=$(( next_offset + fdt32_size ))
 
-#	fdt_totalsize="$(get_fdt32_be "$img" "$next_offset")"
+	fdt_totalsize="$(get_fdt32_be "$img" "$next_offset")"
 	next_offset=$(( next_offset + fdt32_size ))
+
+	[ "$fdt_totalsize" -ne "$payload_size" ] && printf "Data size mismatch in image file.\a\n" 1>&2 && exit 1
 
 	fdt_off_dt_struct="$(get_fdt32_be "$img" "$next_offset")"
 	next_offset=$(( next_offset + fdt32_size ))
