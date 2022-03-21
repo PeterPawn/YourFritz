@@ -586,7 +586,11 @@ find_rootfs_in_fit_image()
 	fdt32_size=4
 
 	next_offset=0
-	img="$1"
+	if [ -n "$BM_DEBUG_FIT_IMAGE" ]; then
+		img="$BM_DEBUG_FIT_IMAGE"
+	else
+		img="$1"
+	fi
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | bin2dec_be)"
 	if ! [ "$magic" = "218164734" ]; then
 		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
@@ -760,7 +764,11 @@ check_urlader_configuration()
 	ut="$tempdir/urlader"
 	rm -rf "$ut" 2>"$null"
 	mkdir -p "$ut" 2>"$null"
-	geteva >"$ut/dump" || exit 1
+	if [ -n "$BM_DEBUG_EVA_IMAGE" ]; then
+		cat "$BM_DEBUG_EVA_IMAGE" >"$ut/dump"
+	else
+		geteva >"$ut/dump" || exit 1
+	fi
 	usize="$(fsize "$ut/dump")"
 	pow2=1
 	while [ "$pow2" -lt "$usize" ]; do pow2=$(( pow2 * 2 )); done
