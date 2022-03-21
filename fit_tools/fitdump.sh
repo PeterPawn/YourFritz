@@ -244,7 +244,7 @@ dissect_fit_image()
 		printf -- "                     a file named 'fitdump.measure' in the output directory\n"
 		printf -- "\n"
 	}
-	nsecs() { sed -n -e "s|^now at \([0-9]*\).*|\1|p" /proc/timer_list; }
+	nsecs() { [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || printf -- "0\n"; }
 	format_duration() (
 		if [ $(( $1 - $2 )) -gt 1000000000 ]; then
 			printf -- "%u." "$(( ( $1 - $2 ) / 1000000000 ))"
@@ -260,12 +260,12 @@ dissect_fit_image()
 		"$@"
 		r=$?
 		end=$(nsecs)
-		[ "$measr" -eq 1 ] && printf -- "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && [ "$start" -gt 0 ] && printf -- "measured time %s for: %s\n" "$(format_duration "$end" "$start")" "$*" 1>&3
 		return $r
 	}
 	duration() {
 		now=$(nsecs)
-		[ "$measr" -eq 1 ] && printf -- "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
+		[ "$measr" -eq 1 ] && [ "$now" -gt 0 ] && printf -- "overall duration: %s: %s\n" "$(format_duration "$now" "$script_start")" "$*" 1>&3
 	}
 	cd_msg() {
 		cwd="$(pwd)"
@@ -462,6 +462,7 @@ dissect_fit_image()
 
 	null="/dev/null"
 	zeros="/dev/zero"
+	timer="/proc/timer-list"
 	dump_dir="./fit-dump"
 	image_dir_name="image"
 	its_name="image.its"
@@ -512,7 +513,7 @@ dissect_fit_image()
 			its_file="$null"
 			shift
 		elif [ "$1" = "-m" ] || [ "$1" = "--measure" ]; then
-			measr=1
+			[ "$(nsecs)" = "0" ] && printf -- "Missing '%s', time measurements aren't available.\a\n" "$timer" 1>&2 || measr=1
 			shift
 		elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 			usage
