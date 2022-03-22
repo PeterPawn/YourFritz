@@ -304,7 +304,7 @@ printf_ss()
 	mask="$1"
 	shift
 	# shellcheck disable=SC2059
-	printf -- "$(printf -- '%s' "$mask")" "$*"
+	printf -- "$(printf -- '%s' "$mask")" "$@"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -317,7 +317,7 @@ get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1
 # get a value from urlader environment                                                                #
 #                                                                                                     #
 #######################################################################################################
-get_environment() (	sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "$urlader_environment" 2>"$null"; )
+get_environment() ( sed -n -e "s|^$1[ \t]\(.*\)\$|\1|p" "${2:-$urlader_environment}" 2>"$null"; )
 #######################################################################################################
 #                                                                                                     #
 # set a new value on urlader environment and verify successful change                                 #
@@ -432,13 +432,7 @@ native_byte_order() (
 		cat - 2>"$null"
 	fi
 )
-native_byte_order_evacfg() (
-	if ! [ "$(get_system_type)" = "Puma6/7" ]; then
-		native_byte_order
-	else
-		cat - 2>"$null"
-	fi
-)
+native_byte_order_evacfg() { { [ "$is_puma_device" = "0" ] || [ -n "$BM_DEBUG_EVA_LE" ]; } && native_byte_order || cat - 2>"$null"; }
 get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
 string_from_file() (
 	strlen()
@@ -645,12 +639,13 @@ check_urlader_configuration()
 (
 	msg() { [ "$verbose" -eq 1 ] || return; printf_ss "$@" 1>&2; }
 	append() { cat - >>"$ut/config_header"; }
-	env() { get_environment "$1"; }
+	env() { [ -n "$BM_DEBUG_EVA_ENV" ] && get_environment "$1" "$BM_DEBUG_EVA_ENV" || get_environment "$1"; }
 	fsize() { wc -c <"$1" 2>"$null" | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
 	chkgrep() { [ "$(printf -- "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC" 2>"$null")" = "$(printf -- "ABC\nABC\n")" ] && return 0 || return 1; }
 	chkcfg() {
 		_f="$1"
-		[ "$(dd if="$_f" bs=2 count=2 skip=$(( 0x8C / 2 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)" = "25609" ] || return 1
+		v="$(dd if="$_f" bs=4 count=1 skip=$(( 0x8C / 4 )) 2>"$null" | native_byte_order_evacfg | bin2dec_be)"
+		[ "$(( v & ( ( 1 << 16 ) - 1 ) ))" = "25609" ] || return 1
 		_kv=0
 		dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>"$null"
 		# shellcheck disable=SC2050
@@ -742,10 +737,14 @@ check_urlader_configuration()
 			o=$(( o - 16 ))
 		done
 		if [ "$fnd" -eq 1 ]; then
+			[ "$BM_DEBUG_EVA" = "1" ] && msg "Configuration area candidate found at offset: %u (%#x)\n" "$(( s + o ))" "$(( s + o ))"
 			dd if="$f" of="$ut/check_this" bs=16 count=64 skip=$(( ( s + o ) / 16 )) 2>"$null"
 			if chkcfg "$ut/check_this" 1>"$null"; then
+				[ "$BM_DEBUG_EVA" = "1" ] && msg "Configuration area found at offset: %u (%#x)\n" "$(( s + o ))" "$(( s + o ))"
 				printf -- "%u\n" "$(( s + o ))"
 				exit 0
+			else
+				[ "$BM_DEBUG_EVA" = "1" ] && msg "Configuration area candidate ignored at offset: %u (%#x)\n" "$(( s + o ))" "$(( s + o ))"
 			fi
 		fi
 		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>"$null"
@@ -785,13 +784,15 @@ check_urlader_configuration()
 		env_value="$(env "$value")"
 		if [ -z "$env_value" ]; then
 			msg "Missing '%s' value from urlader environment.\n" "$value"
-			exit 1
+		else
+			[ -n "$BM_DEBUG_EVA" ] && msg "Read '%s' value from urlader environment: %s\n" "$value" "$env_value"
 		fi
 		eval $value="$env_value"
 	done
+	[ -z "$memsize" ] && exit 1
 	touch "$ut/config_header" 2>"$null"
 	printf -- "\000\000\000\003" | native_byte_order_evacfg | append
-	[ "$(get_system_type)" = "Puma6/7" ] && memsize=$(( memsize / 2 ))
+	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA" ] && memsize=$(( memsize / 2 ))
 	hex2bin "$(printf -- "%08x" "$memsize")" | native_byte_order_evacfg | append
 	printf -- "\000\000\000\000" | append
 	i=0
@@ -799,6 +800,7 @@ check_urlader_configuration()
 		mtd=$(printf -- "mtd%u" "$i")
 		i=$(( i + 1 ))
 		val="$(env "$mtd")"
+		[ -n "$BM_DEBUG_EVA" ] && msg "Read '%s' value from urlader environment: %s\n" "$mtd" "$([ -z "$val" ] && printf -- "(empty)" || printf -- "%s" "$val")"
 		if [ -z "$val" ]; then
 			printf -- "\000\000\000\000\000\000\000\000" | append
 		else
@@ -810,26 +812,31 @@ check_urlader_configuration()
 		fi
 	done
 	found=0
-	if [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>"$null" 1>&2; then
-		co="$(fndo "$ut/dump" "$wlan_key" "$ut/config_header")"
-		[ "$co" = "(not found)" ] && unset co
-		found=1
-	fi
-	if [ "$found" -eq 0 ]; then
-		[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
-		if grep -q -ao "$maca" "$ut/dump" 2>"$null" 1>&2; then
-			co="$(fndo "$ut/dump" "$maca" "$ut/config_header")"
-			[ "$co" = "(not found)" ] && unset config_offset
-			if [ -z "$co" ]; then
-				msg "Unable to locate configuration area in urlader dump file.\n"
-				exit 1
-			fi
-			found=1
+	if [ -z "$BM_DEBUG_EVA_CONFIG" ]; then
+		if [ -n "$wlan_key" ] && grep -q -ao "$wlan_key" "$ut/dump" 2>"$null" 1>&2; then
+			co="$(fndo "$ut/dump" "$wlan_key" "$ut/config_header")"
+			[ "$co" = "(not found)" ] && unset co || found=1
 		fi
+		if [ "$found" -eq 0 ]; then
+			[ -z "maca" ] && msg "No usable anchor value found, processing aborted.\a\n" && exit 1
+			[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
+			if grep -q -ao "$maca" "$ut/dump" 2>"$null" 1>&2; then
+				co="$(fndo "$ut/dump" "$maca" "$ut/config_header")"
+				[ "$co" = "(not found)" ] && unset co
+				if [ -z "$co" ]; then
+					msg "Unable to locate configuration area in urlader dump file.\n"
+					exit 1
+				fi
+				found=1
+			fi
+		fi
+		[ $found -eq 0 ] && exit 1
+		dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>"$null"
+		rm -f "$ut/dump" "$ut/try_here" "$ut/check_this" "$ut/config_header" "$ut/8zeros" 2>"$null"
+		[ -n "$BM_DEBUG_EVA" ] && ! [ "$co" = "(not found)" ] && msg "EVA configuration found at offset: %u (%#x)\n" "$co" "$co"
+	else
+		cp "$BM_DEBUG_EVA_CONFIG" "$ut/config"
 	fi
-	[ $found -eq 0 ] && exit 1
-	dd if="$ut/dump" of="$ut/config" bs=1 count=1024 skip="$co" 2>"$null"
-	rm -f "$ut/dump" "$ut/try_here" "$ut/check_this" "$ut/config_header" "$ut/8zeros" 2>"$null"
 	kvs=$(( 0x98 / 8 ))
 	kvc=0
 	dd if="$zeros" of="$ut/8zeros" bs=8 count=1 2>"$null"
@@ -1356,7 +1363,7 @@ get_partition()
 	rc=0
 	[ "$1" = "$kernel_name" ] || [ "$1" = "$filesystem_name" ] || exit 1
 	[ "$2" = "$active_name" ] || [ "$2" = "$inactive_name" ] || exit 1
-	if is_puma_based_device; then
+	if [ "$is_puma_device" = "1" ]; then
 		get_puma_partition "$1" "$2"
 		rc=$?
 	else
@@ -1384,7 +1391,7 @@ get_partition()
 #######################################################################################################
 get_partition_size()
 (
-	if is_puma_based_device; then
+	if [ "$is_puma_device" = "1" ]; then
 		symname="$(sed -n -e "s|\(.*\)=$1|\1|p" "$puma_partitions")"
 		size="$(sed -n -e "s|${symname}_SIZE=\(.*\)|\1|p" "$puma_partitions")"
 	else
@@ -2135,6 +2142,7 @@ collect_data()
 {
 	datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 	system_type="$(get_system_type)"
+	[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 	running_version="$(get_system_version)"
 	running_date_epoch="$(get_system_date)"
 	running_date="$(get_localized_date "$datetime_mask" "$running_date_epoch")"
@@ -2379,6 +2387,8 @@ rc=127
 #######################################################################################################
 save_environment
 verbose=0
+system_type=""
+is_puma_device=0
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -2416,6 +2426,7 @@ case "$1" in
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 		system_type="$(get_system_type)"
+		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
 		debug "system type = " "yellow" "%s" "$system_type"
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
@@ -2485,6 +2496,9 @@ case "$1" in
 		rc=0
 		;;
 	("show_eva_cfg")
+		verbose=1
+		system_type="$(get_system_type)"
+		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 		check_urlader_configuration
 		exit 0
 		;;
