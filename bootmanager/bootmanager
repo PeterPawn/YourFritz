@@ -101,9 +101,11 @@ readonly sysfs="/sys"
 readonly tmp="$tmpfs/tmp"
 readonly null="$devtmpfs/null"
 readonly zeros="$devtmpfs/zero"
+readonly timer="$procfs/timer_list"
 readonly data_cache_file="$tmp/bootmanager.data"
 readonly boot_cache_file="$tmp/bootmanager.boot"
 readonly device_cache_file="$tmp/bootmanager.dev"
+readonly inactive_fit_cache_file="$tmp/bootmanager.inactive.fit"
 readonly urlader_environment="$procfs/sys/urlader/environment"
 readonly system_select_name="linux_fs_start"
 readonly active_name="active"
@@ -306,6 +308,12 @@ printf_ss()
 	# shellcheck disable=SC2059
 	printf -- "$(printf -- '%s' "$mask")" "$@"
 )
+#######################################################################################################
+#                                                                                                     #
+# get a time-stamdevice ID from /proc/devices                                                         #
+#                                                                                                     #
+#######################################################################################################
+timestamp() { false && [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
 #######################################################################################################
 #                                                                                                     #
 # get TFFS major device ID from /proc/devices                                                         #
@@ -2346,15 +2354,36 @@ colorize()
 )
 #######################################################################################################
 #                                                                                                     #
+# detect root filesystem from FIT image in inactive slot                                              #
+#                                                                                                     #
+#######################################################################################################
+find_fit_inactive_rootfs_parameters()
+{
+	if ! [ -f "$inactive_fit_cache_file" ]; then
+		time1=$(timestamp)
+		find_rootfs_in_fit_image "$1" >"$inactive_fit_cache_file"
+		retc=$?
+		time2=$(timestamp)
+		dura=$(( time2 - time1 ))
+		[ -f "$timer" ] && duration="$(printf -- "%.9f" "$dura")" || duration="$(printf -- "%u" "$dura")"
+		printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$duration" 1>&2
+	fi
+	cat "$inactive_fit_cache_file"
+}
+#######################################################################################################
+#                                                                                                     #
 # load device configuration findings from cache file, if it exists                                    #
 #                                                                                                     #
 #######################################################################################################
 load_device_configuration()
 {
 	if ! [ -f "$device_cache_file" ]; then
+		time1=$(timestamp)
 		device_branding="$(check_urlader_configuration "$branding_name")"
+		retc=$?
+		time2=$(timestamp)
 		# shellcheck disable=SC2181
-		if [ "$?" -eq 0 ]; then
+		if [ "$retc" -eq 0 ]; then
 			[ -z "$device_branding" ] && exit 1
 			device_branding_is_changeable="true"
 			printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
@@ -2363,6 +2392,9 @@ load_device_configuration()
 			device_branding_is_changeable="false"
 			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
 		fi
+		dura=$(( time2 - time1 ))
+		[ -f "$timer" ] && duration="$(printf -- "%.9f" "$dura")" || duration="$(printf -- "%u" "$dura")"
+		printf -- "EVA device configuration lookup lasted %s seconds.\n" "$duration" 1>&2
 	else
 		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
 		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
