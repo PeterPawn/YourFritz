@@ -310,10 +310,11 @@ printf_ss()
 )
 #######################################################################################################
 #                                                                                                     #
-# get a time-stamdevice ID from /proc/devices                                                         #
+# handle timestamps and format time-span values according to precision                                #
 #                                                                                                     #
 #######################################################################################################
-timestamp() { false && [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
+timestamp() { [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
+duration() { [ -f "$timer" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
 #######################################################################################################
 #                                                                                                     #
 # get TFFS major device ID from /proc/devices                                                         #
@@ -2364,9 +2365,7 @@ find_fit_inactive_rootfs_parameters()
 		find_rootfs_in_fit_image "$1" >"$inactive_fit_cache_file"
 		retc=$?
 		time2=$(timestamp)
-		dura=$(( time2 - time1 ))
-		[ -f "$timer" ] && duration="$(printf -- "%.9f" "$dura")" || duration="$(printf -- "%u" "$dura")"
-		printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$duration" 1>&2
+		printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
 	fi
 	cat "$inactive_fit_cache_file"
 }
@@ -2392,9 +2391,7 @@ load_device_configuration()
 			device_branding_is_changeable="false"
 			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
 		fi
-		dura=$(( time2 - time1 ))
-		[ -f "$timer" ] && duration="$(printf -- "%.9f" "$dura")" || duration="$(printf -- "%u" "$dura")"
-		printf -- "EVA device configuration lookup lasted %s seconds.\n" "$duration" 1>&2
+		printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
 	else
 		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
 		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
