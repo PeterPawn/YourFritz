@@ -313,6 +313,7 @@ printf_ss()
 # handle timestamps and format time-span values according to precision                                #
 #                                                                                                     #
 #######################################################################################################
+# shellcheck disable=SC2015
 timestamp() { [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
 duration() { [ -f "$timer" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
 #######################################################################################################
@@ -441,6 +442,7 @@ native_byte_order() (
 		cat - 2>"$null"
 	fi
 )
+# shellcheck disable=SC2015
 native_byte_order_evacfg() { { [ "$is_puma_device" = "0" ] || [ -n "$BM_DEBUG_EVA_LE" ]; } && native_byte_order || cat - 2>"$null"; }
 get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
 string_from_file() (
@@ -648,6 +650,7 @@ check_urlader_configuration()
 (
 	msg() { [ "$verbose" -eq 1 ] || return; printf_ss "$@" 1>&2; }
 	append() { cat - >>"$ut/config_header"; }
+	# shellcheck disable=SC2015
 	env() { [ -n "$BM_DEBUG_EVA_ENV" ] && get_environment "$1" "$BM_DEBUG_EVA_ENV" || get_environment "$1"; }
 	fsize() { wc -c <"$1" 2>"$null" | sed -n -e "s|^\([0-9]*\).*\$|\1|p"; }
 	chkgrep() { [ "$(printf -- "\n\000ABCDEFGH\000\r\n12345678ABC\000\n" | grep -ao "ABC" 2>"$null")" = "$(printf -- "ABC\nABC\n")" ] && return 0 || return 1; }
@@ -827,7 +830,7 @@ check_urlader_configuration()
 			[ "$co" = "(not found)" ] && unset co || found=1
 		fi
 		if [ "$found" -eq 0 ]; then
-			[ -z "maca" ] && msg "No usable anchor value found, processing aborted.\a\n" && exit 1
+			[ -z "$maca" ] && msg "No usable anchor value found, processing aborted.\a\n" && exit 1
 			[ -n "$wlan_key" ] && msg "Unable to find value of WLAN key (%s) in dump file, try again with maca value (%s).\n" "$wlan_key" "$maca"
 			if grep -q -ao "$maca" "$ut/dump" 2>"$null" 1>&2; then
 				co="$(fndo "$ut/dump" "$maca" "$ut/config_header")"
@@ -1185,28 +1188,44 @@ get_device_branding()
 #                                                                                                     #
 # Supported models/chipsets:                                                                          #
 #                                                                                                     #
-# - all VR9-based devices with two slots for a system (kernel + filesystem)                           #
-# - all GRX5-based devices (no single slot devices known so far)                                      #
-# - all Puma6 and Puma7 devices (no single slot devices found yet)                                    #
-# - IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                           #
-# - IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                   #
+# (x) all VR9-based devices with two slots for a system (kernel + filesystem)                         #
+# (x) all GRX5-based devices (no single slot devices known so far)                                    #
+# (x) all Puma6 and Puma7 devices (no single slot devices found yet)                                  #
+# (x) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
+# ( ) IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                 #
+# ( ) BRCMA9 devices with nand flash (7581, 7582 - BCM963 family)                                     #
+# ( ) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
+# ( ) IPQ5010/IPQ5018-based devices with nand flash and using FIT image format (7510, FR1200ax)       #
+# ( ) PRX300-based devices with NAND flash and using FIT image format (5530)                          #
 #                                                                                                     #
 #######################################################################################################
 get_system_type()
 {
 	# Puma6 and Puma7 devices with '/proc/avm_partitions' pseudo file, platform selection based on AVM's script 'puma6_helper.sh'
 	is_puma_based_device && printf -- "%s\n" "Puma6/7" && return 0
-	# VR9 and GRX5 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
+	# VR9, GRX5 and PRX300 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
+	# TODO: PRX300 is based on kernel source reviews, not confirmed so far
 	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
 	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
 	# ARM-based devices with Qualcomm chipsets in 32-bit mode, selected by content of '/proc/cpuinfo' and further properties
 	type="$(sed -n -e "$ipq_cpuinfo_check" "$proc_cpuinfo")"
 	if [ -n "$type" ] && [ "$type" = "IPQ" ]; then
 		fsize="$(get_environment "$flash_size")"
-		# Hawkeye family with eMMC storage using FIT image format, partitions accessible via '/dev/disk/by-partlabel/fit[01]'
+		# IPQ8074 (Hawkeye family) with eMMC storage using FIT image format, partitions accessible via '/dev/disk/by-partlabel/fit[01]'
 		if [ -n "$(expr "$fsize" : ".*${emmc_mask}=\([^ ]*\).*")" ]; then
 			printf -- "%s\n" "IPQ8074" && return 0
-		# TODO: additional checks to identify other ARM-based chipsets by Qualcomm
+		# BCM963 using kernel and filesystem partitions in NAND flash
+		# TODO: find characteristics for 7581/7582 models
+		elif false; then
+			printf -- "%s\n" "BCM963" && return 0
+		# BCM963 using FIT format in NAND flash
+		# TODO: find characteristics for 7530ax model
+		elif false; then
+			printf -- "%s\n" "BCM963" && return 0
+		# IPQ501x using FIT format in NAND flash
+		# TODO: find characteristics for 7510 and FR1200ax models
+		elif false; then
+			printf -- "%s\n" "IPQ501X" && return 0
 		# IPQ4019 with NAND flash and partitions in '/proc/mtd'
 		else
 			printf -- '%s\n' "IPQ4019" && return 0
@@ -1280,7 +1299,7 @@ is_fit_image_device()
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "1")")" ] && exit 1
 			else
 				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
-				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
+				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "1")")" ] && exit 1
 			fi
 			[ -x "$bootslot_tool" ] && exit 0
 			;;
@@ -1289,24 +1308,16 @@ is_fit_image_device()
 			;;
 	esac
 )
-# TODO: wip - incomplete changes
 #######################################################################################################
 #                                                                                                     #
-# VR9: locate the MTD partition for kernel or the image name of root filesystem for the active or     #
-#      alternative system                                                                             #
+# find rootfs offset in a FIT image partition and mount the found filesystem                          #
 #                                                                                                     #
 #######################################################################################################
-mount_fit_image()
+#TODO: implement mount with offset and prior checks for supported mount options
+mount_fit_alternative_system()
 (
-	[ "$1" = "$filesystem_name" ] || exit 1
-	if [ "$2" = "$active_name" ]; then
-		printf -- '%s' "$vr9_image_source_active"
-		exit 0
-	elif [ "$2" = "$inactive_name" ]; then
-		eval local_name="\${mtd_${1}_name_${2}}"
-		printf_ss "$vr9_image_source_inactive" "$(printf_ss "$mtdblock_mask" "$(eval get_mtd_number "$(printf -- "\${mtd_%s_name_%s}" "$1" "$2")")")"
-		exit 0
-	fi
+	in="$1"
+	off="$2"
 	exit 1
 )
 #######################################################################################################
@@ -1570,7 +1581,7 @@ is_switched()
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
 			if is_fit_image_device; then
-				exit 1
+				! [ "$(get_system_switch)" = "$("$bootslot_tool" get_active)" ]
 			else
 				k1="$(get_partition "$kernel_name" "$active_name")"
 				k2="$(get_partition "$kernel_name" "$inactive_name")"
@@ -1588,7 +1599,12 @@ is_switched()
 #######################################################################################################
 switch_system()
 (
-	printf -- '%s\t%d%s\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) "$(get_system_switch "$urlader_environment" 1)" >"$urlader_environment"
+	if [ -x "$bootslot_tool" ] && ! is_switched; then
+		"$bootslot_tool" activate_other
+		exit $?
+	fi
+	printf -- '%s\t%d\n' "$system_select_name" $(( ( $(get_system_switch) + 1 ) % 2 )) >"$urlader_environment"
+	exit 0
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2188,6 +2204,35 @@ collect_data()
 			fi
 			spinlock release
 		fi
+	else
+		fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
+		fpd="$(get_partition "$fp")"
+		v="$(find_fit_inactive_rootfs_parameters "$fpd")"
+		if [ -n "$v" ]; then
+			alternative_is_missing=0
+			eval "$v"
+			if [ "$rootfs_type" = "squashfs" ]; then
+				spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fp" "$rootfs_offset")")"
+				if [ -n "$mp" ]; then
+					alternative_version="$(get_system_version "$mp")"
+					readonly alternative_version
+					if [ -n "$alternative_version" ]; then
+						alternative_date_epoch="$(get_system_date "$mp")"
+						alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
+						alternative_fsdate_epoch="$(get_modified_date "$mp")"
+						alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
+						alternative_modified="$(get_modified_by "$mp")"
+						readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+						alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
+						alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
+						alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
+						readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
+					fi
+					dismount_alternative_system
+				fi
+				spinlock release
+			fi
+		fi
 	fi
 }
 #######################################################################################################
@@ -2488,6 +2533,10 @@ case "$1" in
 			debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
+		rootfs_type=""
+		rootfs_offset=0
+		# shellcheck disable=SC2034
+		rootfs_size=0
 		if ! is_fit_image_device; then
 			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
@@ -2520,7 +2569,45 @@ case "$1" in
 			fi
 			spinlock release
 		else
-			debug "" "red" "%s" "inactive system checks skipped"
+			fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
+			fpd="$(get_partition "$fp")"
+			debug "inactive slot = " "yellow" "%s" "$fpd"
+			v="$(find_fit_inactive_rootfs_parameters "$fpd")"
+			if [ -n "$v" ]; then
+				eval "$v"
+				spinlock_pid=$$
+				debug "rootfs_type = " "yellow" "%s" "$rootfs_type"
+				debug "rootfs_offset = " "yellow" "%u (%#x)" "$rootfs_offset" "$rootfs_offset"
+				if [ "$rootfs_type" = "squashfs" ]; then
+					spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fpd" "$rootfs_offset")")"
+					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "rootfs from inactive slot mounted on %s" "$mp")"
+					if [ -n "$mp" ]; then
+						debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
+						value="$(get_system_date "$mp")"
+						debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+						altmodby="$(get_modified_by "$mp")"
+						if [ "$altmodby" = "-" ]; then
+							debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+						else
+							value="$(get_modified_date "$mp")"
+							debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+							debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+						fi
+						altcbs="$(change_branding_support "$mp")"
+						debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
+						if ! [ "$altcbs" = "changeable" ]; then
+							debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
+						fi
+					fi
+					dismount_alternative_system
+					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "rootfs from inactive slot dismounted"
+					spinlock release
+				else
+					:
+				fi
+			else
+				debug "" "red" "%s" "FIT image not found for inactive slot"
+			fi
 		fi
 		rc=0
 		;;
