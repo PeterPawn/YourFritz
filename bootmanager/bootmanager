@@ -135,6 +135,7 @@ readonly bootslot_tool="/sbin/bootslotctl"
 readonly filesystem_name="filesystem"
 readonly reserved_prefix="reserved"
 readonly alt_root_mount_name="alt_root"
+readonly alt_root_image_name="alt_root_image"
 readonly defaults_dir="etc/default.%s"
 readonly sysfs_block_dir="$sysfs/block"
 readonly loop_driver_name="loop"
@@ -658,7 +659,7 @@ find_rootfs_in_fit_image()
 	fi
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | bin2dec_be)"
 	if ! [ "$magic" = "218164734" ]; then
-		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
+		printf -- "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 		exit 1
 	fi
 
@@ -675,7 +676,7 @@ find_rootfs_in_fit_image()
 	next_offset=$(( next_offset + fdt32_size + 64 ))
 	fdt_magic="$(get_fdt32_be "$img" "$next_offset")"
 
-	[ "$fdt_magic" -ne 3490578157 ] && printf "Invalid FDT magic found.\a\n" 1>&2 && exit 1
+	[ "$fdt_magic" -ne 3490578157 ] && printf -- "Invalid FDT magic found.\a\n" 1>&2 && exit 1
 
 	fdt_start=$next_offset
 	next_offset=$(( next_offset + 2 * fdt32_size ))
@@ -694,11 +695,11 @@ find_rootfs_in_fit_image()
 	eval "$(entry "$img" "$next_offset" "-" 0 5>&1)"
 
 	if [ "$fs_size" -gt 0 ]; then
-		printf "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
+		printf -- "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
 	elif [ "$rd_size" -gt 0 ]; then
-		printf "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
+		printf -- "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
 	else
-		printf "No rootfs candicates found.\a\n" 1>&2 && exit 1
+		printf -- "No rootfs candicates found.\a\n" 1>&2 && exit 1
 	fi
 )
 #######################################################################################################
@@ -1383,11 +1384,34 @@ extract_rootfs_ramdisk_etc()
 # find rootfs offset in a FIT image partition and mount the found filesystem                          #
 #                                                                                                     #
 #######################################################################################################
-#TODO: implement mount with offset and prior checks for supported mount options
 mount_fit_alternative_system()
 (
-	in="$1"
-	off="$2"
+	mp="$tempdir/$alt_root_mount_name"
+	mkdir -p "$mp" 2>"$null" || exit 1
+	mount -t squashfs -o offset="$2" "$1" "$mp" && printf -- "%s\n" "$mp" && exit 0
+	# mount doesn't support offset option (BusyBox versions from the past)
+	if ! command -v losetup 2>"$null" 1>&2 && busybox --list | grep -q "losetup"; then
+		# losetup exists as applet, but there's no symlink for it
+		ln -s "$(command -v busybox 2>"$null")" "$tempdir/losetup"
+		losetup="$tempdir/losetup"
+	elif command -v losetup 2>"$null"; then
+		# losetup exists
+		losetup="$(command -v losetup 2>"$null")"
+	else
+		# no losetup available
+		unset losetup
+	fi
+	if [ -n "$losetup" ]; then
+		"$losetup" -r -f -o "$2" "$1" 2>"$null"
+		dev="$("$losetup" -a | sed -n -e "s|^\(/dev/loop.*\):.*$1.*|\1|p")"
+		mount -t squashfs "$dev" "$mp" && printf -- "%s\n" "$mp" && exit 0
+		"$losetup" -d "$dev" 2>"$null"
+	else
+		# no losetup, create a copy of whole squashfs image and try to mount this
+		if copy_optimized "$1" "$2" "$3" >"$tempdir/$alt_root_image_name" 2>"$null"; then
+			mount -t squashfs "$tempdir/$alt_root_image_name" "$mp" && printf -- "%s\n" "$mp" && exit 0
+		fi
+	fi
 	exit 1
 )
 #######################################################################################################
@@ -2070,6 +2094,9 @@ dismount_alternative_system()
 	is_active_mountpoint "$tempdir/$alt_root_mount_name" || exit 0
 	umount -d "$tempdir/$alt_root_mount_name" 2>"$null" || exit 1
 	rmdir "$tempdir/$alt_root_mount_name" 2>"$null"
+	losetup -a | grep -q "$tempdir/" 2>"$null" && \
+		losetup -d "$(losetup -a | sed -n -e "s|^\(/dev/loop.*\):.*$tempdir/.*|\1|p")"
+	[ -f "$tempdir/$alt_root_image_name" ] && rm -f "$tempdir/$alt_root_image_name" 2>"$null"
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
 	umount -d "$tempdir/$wrapper_mount_name" 2>"$null" || exit 1
 	rmdir "$tempdir/$wrapper_mount_name" 2>"$null"
@@ -2282,7 +2309,7 @@ collect_data()
 			alternative_is_missing=0
 			eval "$v"
 			if [ "$rootfs_type" = "squashfs" ]; then
-				spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fp" "$rootfs_offset")")"
+				spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fp" "$rootfs_offset" "$rootfs_size")")"
 			else
 				mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")"
 			fi
@@ -2658,7 +2685,7 @@ case "$1" in
 				debug "rootfs_offset = " "yellow" "%u (%#x)" "$rootfs_offset" "$rootfs_offset"
 				debug "rootfs_size = " "yellow" "%u (%#x)" "$rootfs_size" "$rootfs_size"
 				if [ "$rootfs_type" = "squashfs" ]; then
-					spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fpd" "$rootfs_offset")")"
+					spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fpd" "$rootfs_offset" "$rootfs_size")")"
 					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "rootfs from inactive slot mounted on %s" "$mp")"
 				else
 					mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")"
