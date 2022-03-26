@@ -658,6 +658,7 @@ find_rootfs_in_fit_image()
 		img="$1"
 	fi
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | bin2dec_be)"
+	[ "$magic" -lt 0 ] && magic=$(( magic & 0xffffffff ))
 	if ! [ "$magic" = "218164734" ]; then
 		printf -- "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 		exit 1
@@ -676,7 +677,9 @@ find_rootfs_in_fit_image()
 	next_offset=$(( next_offset + fdt32_size + 64 ))
 	fdt_magic="$(get_fdt32_be "$img" "$next_offset")"
 
-	[ "$fdt_magic" -ne 3490578157 ] && printf -- "Invalid FDT magic found.\a\n" 1>&2 && exit 1
+	if { [ "$fdt_magic" -gt 0 ] && [ "$fdt_magic" -ne 3490578157 ]; } || { [ "$fdt_magic" -lt 0 ] && [ "$fdt_magic" -ne -804389139 ]; }; then
+		printf "Invalid FDT magic found.\a\n" 1>&2 && exit 1
+	fi
 
 	fdt_start=$next_offset
 	next_offset=$(( next_offset + 2 * fdt32_size ))
