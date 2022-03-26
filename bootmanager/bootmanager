@@ -315,8 +315,8 @@ printf_ss()
 #                                                                                                     #
 #######################################################################################################
 # shellcheck disable=SC2015
-timestamp() { [ -f "$timer" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
-duration() { [ -f "$timer" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
+timestamp() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && sed -n -e "s|^now at \([0-9]*\).*|\1|p" "$timer" || date +%s; }
+duration() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
 #######################################################################################################
 #                                                                                                     #
 # get TFFS major device ID from /proc/devices                                                         #
@@ -752,7 +752,7 @@ check_urlader_configuration()
 			msg "'%s' missing.\n" "$procfs"
 			exit 1
 		fi
-		case "$(get_system_type)" in
+		case "$system_type" in
 			("IPQ8074")
 				cat "$disk_by_label/$ipq8074_eva_config_name" 2>"$null"
 				;;
@@ -805,7 +805,7 @@ check_urlader_configuration()
 		sz=$(( $(fsize "$ch") / 4 ))
 		fnd=0
 		o=$(( fo - s ))
-		while [ "$o" -gt 0 ]; do
+		while [ "$o" -ge 0 ]; do
 			if dd if="$ut/try_here" bs=4 skip=$(( o / 4 )) count="$sz" 2>"$null" | cmp -s -- - "$ch" 2>"$null"; then
 				fnd=1
 				break
@@ -868,7 +868,7 @@ check_urlader_configuration()
 	[ -z "$memsize" ] && exit 1
 	touch "$ut/config_header" 2>"$null"
 	printf -- "\000\000\000\003" | native_byte_order_evacfg | append
-	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA" ] && memsize=$(( memsize / 2 ))
+	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA_CONFIG" ] && memsize=$(( memsize / 2 ))
 	hex2bin "$(printf -- "%08x" "$memsize")" | native_byte_order_evacfg | append
 	printf -- "\000\000\000\000" | append
 	i=0
@@ -1006,8 +1006,7 @@ check_oem_kernel_cmdline()
 #######################################################################################################
 check_custom_environment()
 (
-	st="$(get_system_type)"
-	if [ "$st" = "VR9" ]; then
+	if [ "$system_type" = "VR9" ]; then
 		if is_active_mountpoint "$tempdir/$wrapper_mount_name"; then
 			# shellcheck disable=SC2034
 			wrapper="$tempdir/$wrapper_mount_name"
@@ -1033,7 +1032,7 @@ check_custom_environment()
 			# shellcheck disable=SC2086,SC2013
 			for fn in $(grep -l $recursive -- "$yf_custom_environment_script" "$dir"$suffix 2>"$null" | sed -n -e 1p); do
 				v="$(grep -- "$yf_custom_environment_script" "$fn" 2>"$null" | sed -n -e "s|.*[ \t]\([^ \t]*$yf_custom_environment_script\).*|\1|p")"
-				[ "$st" = "VR9" ] && [ "$altsys" -eq 1 ] && v="$tempdir$v"
+				[ "$system_type" = "VR9" ] && [ "$altsys" -eq 1 ] && v="$tempdir$v"
 				[ -f "$v" ] && exit 0
 			done
 		fi
@@ -1077,7 +1076,7 @@ change_branding_support()
 				printf -- "immutable"
 				exit 1
 			fi
-		elif ! [ "$(get_system_type)" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
+		elif ! [ "$system_type" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
 			device_branding_is_changeable="true"
 			printf -- "changeable"
 			exit 0
@@ -1356,7 +1355,8 @@ get_mtd_partition()
 #######################################################################################################
 is_fit_image_device()
 (
-	case "$(get_system_type)" in
+	[ -n "$BM_DEBUG_FIT" ] && exit 0
+	case "$system_type" in
 		("IPQ8074")
 			if [ -d "$disk_by_label" ]; then
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "0")")" ] && exit 1
@@ -1484,15 +1484,14 @@ get_partition()
 		get_puma_partition "$1" "$2"
 		rc=$?
 	else
-		st="$(get_system_type)"
-		if [ "$st" = "VR9" ] || [ "$st" = "AR10" ]; then
+		if [ "$system_type" = "VR9" ] || [ "$system_type" = "AR10" ]; then
 			if [ "$1" = "$kernel_name" ]; then
 				get_mtd_partition "$1" "$2"
 			else
 				get_vr9_image "$1" "$2"
 			fi
 			rc=$?
-		elif [ "$st" = "GRX500" ] || [ "$st" = "GRX350" ] || [ "$st" = "IPQ4019" ]; then
+		elif [ "$system_type" = "GRX500" ] || [ "$system_type" = "GRX350" ] || [ "$system_type" = "IPQ4019" ]; then
 			get_mtd_partition "$1" "$2"
 			rc=$?
 		else
@@ -1778,7 +1777,6 @@ get_brandings()
 	if [ -z "$1" ] || [ "$1" = "/" ]; then
 		eval PRODUKT="\$$avm_product_name"
 	else
-		is_fit_image_device && printf -- "(unsupported)\n" && exit
 		PRODUKT="$(get_product_name "$1")"
 	fi
 	path="$(printf -- '%s%s%s' "${1:-/}" "${1:+/}" "$(printf_ss "$defaults_dir" "$PRODUKT")")"
@@ -1882,12 +1880,8 @@ get_version_values()
 #######################################################################################################
 get_system_version()
 (
-	if is_fit_image_device; then
-		get_fit_version_values "$1"
-		exit $?
-	fi
 	eval "$(get_version_values "$1")"
-	[ -z "$SUBVERSION" ] && SUBVERSION="-$BUILDNUMBER"
+	[ -z "$SUBVERSION" ] && [ -n "$BUILDNUMBER" ] && SUBVERSION="-$BUILDNUMBER"
 	has_old_version_info "$1" && printf -- '%s%s' "$VERSION" "$SUBVERSION" || printf -- '%s.%s%s' "$(get_version_major "$1")" "$VERSION" "$SUBVERSION"
 )
 #######################################################################################################
@@ -1964,7 +1958,6 @@ get_localized_date()
 #######################################################################################################
 get_system_date()
 (
-	is_fit_image_device && [ -n "$1" ] && printf -- "0" && exit
 	path="${1:-/}${1:+/}$avm_version_file_old"
 	if has_old_version_info "$1"; then
 		d="$(sed -n -e "s|^[ \t]*export $avm_version_file_old_prefix$avm_version_date=\"\?\([^\"]*\)\"\?\$|\1|p" "$path")"
@@ -2097,8 +2090,19 @@ dismount_alternative_system()
 	is_active_mountpoint "$tempdir/$alt_root_mount_name" || exit 0
 	umount -d "$tempdir/$alt_root_mount_name" 2>"$null" || exit 1
 	rmdir "$tempdir/$alt_root_mount_name" 2>"$null"
-	losetup -a | grep -q "$tempdir/" 2>"$null" && \
-		losetup -d "$(losetup -a | sed -n -e "s|^\(/dev/loop.*\):.*$tempdir/.*|\1|p")"
+	if [ -L "$tempdir/losetup" ]; then
+		losetup="$tempdir/losetup"
+	else
+		if command -v losetup 2>"$null" 1>&2; then
+			losetup="$(command -v losetup 2>"$null")"
+		else
+			unset losetup
+		fi
+	fi
+	if [ -n "$losetup" ]; then
+		"$losetup" -a | grep -q "$tempdir/" 2>"$null" && \
+			"$losetup" -d "$("$losetup" -a | sed -n -e "s|^\(/dev/loop.*\):.*$tempdir/.*|\1|p")"
+	fi
 	[ -f "$tempdir/$alt_root_image_name" ] && rm -f "$tempdir/$alt_root_image_name" 2>"$null"
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
 	umount -d "$tempdir/$wrapper_mount_name" 2>"$null" || exit 1
@@ -2114,7 +2118,6 @@ dismount_alternative_system()
 #######################################################################################################
 get_modified_by()
 (
-	is_fit_image_device && [ -n "$1" ] && printf -- "-" && exit
 	base="${1:-}"
 	i=1
 	for f in $version_files; do
@@ -2213,7 +2216,6 @@ get_modified_date()
 	# shellcheck disable=SC2181
 	[ $? -ne 0 ] && exit 1
 	[ "$(expr "$v" : "\([0-9]*\)")" = "$v" ] || exit 1
-	is_fit_image_device && [ -n "$1" ] && printf -- "0" && exit 0
 	base="${1:-}"
 	unset v
 	for f in $version_files; do
@@ -2266,8 +2268,6 @@ cleanup()
 collect_data()
 {
 	datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
-	system_type="$(get_system_type)"
-	[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 	running_version="$(get_system_version)"
 	running_date_epoch="$(get_system_date)"
 	running_date="$(get_localized_date "$datetime_mask" "$running_date_epoch")"
@@ -2405,6 +2405,7 @@ is_dualboot_supported()
 (
 	[ -z "$(get_system_switch)" ] && exit 1
 	is_fit_image_device && [ -x "$bootslot_tool" ] && exit 0
+	[ -n "$BM_DEBUG_FIT" ] && exit 0
 	[ -z "$(get_partition "$kernel_name" "$inactive_name")" ] && exit 1
 	[ -z "$(get_partition "$filesystem_name" "$inactive_name")" ] && exit 1
 	exit 0
@@ -2414,10 +2415,7 @@ is_dualboot_supported()
 # save initial environment at first call                                                              #
 #                                                                                                     #
 #######################################################################################################
-save_environment()
-(
-	[ -f "$boot_cache_file" ] || cat "$urlader_environment" > "$boot_cache_file" 2>"$null"
-)
+save_environment() ( [ -f "$boot_cache_file" ] || cat "$urlader_environment" >"$boot_cache_file" 2>"$null"; )
 #######################################################################################################
 #                                                                                                     #
 # display debug line with optional colorization                                                       #
@@ -2516,7 +2514,9 @@ find_fit_inactive_rootfs_parameters()
 		find_rootfs_in_fit_image "$1" >"$inactive_fit_cache_file"
 		retc=$?
 		time2=$(timestamp)
-		printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+	else
+		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image info loaded from cache file.\n" 1>&2
 	fi
 	cat "$inactive_fit_cache_file"
 }
@@ -2542,11 +2542,12 @@ load_device_configuration()
 			device_branding_is_changeable="false"
 			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
 		fi
-		printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
 	else
 		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
 		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
 		[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2
 	fi
 	printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
 }
@@ -2569,6 +2570,7 @@ save_environment
 verbose=0
 system_type=""
 is_puma_device=0
+[ "$(( 0x80000000 ))" = "-2147483648" ] && shell_32bit_arithmetics=1 || shell_32bit_arithmetics=0
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -2593,6 +2595,8 @@ case "$1" in
 			color=1
 		fi
 		debug "yf_bootmanager version = " "yellow" "%s-%s" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
+		system_type="$(get_system_type)"
+		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 		# shellcheck disable=SC2046
 		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
@@ -2605,8 +2609,6 @@ case "$1" in
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
-		system_type="$(get_system_type)"
-		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
 		debug "system type = " "yellow" "%s" "$system_type"
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
@@ -2734,6 +2736,8 @@ case "$1" in
 		exit 0
 		;;
 	("get_values")
+		system_type="$(get_system_type)"
+		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
 		# shellcheck disable=SC2046
 		eval $(load_device_configuration)
 		if is_dualboot_supported; then
