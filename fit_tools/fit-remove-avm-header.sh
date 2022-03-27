@@ -71,7 +71,7 @@ remove_avm_header()
 		action_message="$(printf_ss "$@")"
 		debug "$@"
 	}
-	indent() { i=1; while [ "$i" -lt "${1:-1}" ]; do printf -- ">>"; i=$(( i + 1 )); done; printf -- " "; }
+	indent() { i=1; while [ "$i" -lt "${1:-1}" ]; do printf -- ">> "; i=$(( i + 1 )); done; printf -- " "; }
 	sbo() (
 		sbo_ro()
 		{
@@ -176,9 +176,9 @@ remove_avm_header()
 		bsz=$(( ${4:-$def_bsz} ))
 		[ $(( bsz & ( bsz - 1 ) )) -gt 0 ] && bsz=$def_bsz
 		cnt=$(( $3 ))
-		[ $cnt -le 0 ] && return 0
+		[ $cnt -le 0 ] && exit 0
 		off=$(( $2 ))
-		[ $off -lt 0 ] && return 1
+		[ $off -lt 0 ] && exit 1
 		if [ $cnt -lt $bsz ]; then
 			if [ $(( off % bsz )) -ne 0 ]; then
 				if [ $bsz -gt 1024 ]; then
@@ -186,7 +186,7 @@ remove_avm_header()
 					cnt=$(( cnt - ( 1024 - off ) ))
 					off=1024
 					copy_optimized "$1" 1024 $cnt 1024 $lvl
-					return 0
+					exit 0
 				fi
 				of=$(( off ))
 				s=1
@@ -209,8 +209,10 @@ remove_avm_header()
 				if [ $r -ne 0 ]; then
 					copy_optimized "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl
 				fi
+				exit 0
 			else
 				result "1" " failed"
+				exit 1
 			fi
 		else
 			if [ $(( off % bsz )) -ne 0 ]; then
