@@ -1,8 +1,8 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
-yf_bootmanager_version="0.8.4"
-yf_bootmanager_timestamp=202203271812
+yf_bootmanager_version="0.8.5"
+yf_bootmanager_timestamp=202203272100
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -10,7 +10,7 @@ yf_bootmanager_timestamp=202203271812
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.4                                                                          #
+# bootmanager, version 0.8.5                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
