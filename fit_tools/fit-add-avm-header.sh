@@ -62,8 +62,8 @@ add_avm_header()
 		[ "$dbg" = "1" ] || return 0
 		printf_ss "$@" 1>&2
 	}
-	tbo() (
-		tbo_ro()
+	sbo() (
+		sbo_ro()
 		{
 			v1=0; v2=0; v3=0; v4=0
 			while read -r p _ rt; do
@@ -79,11 +79,7 @@ add_avm_header()
 			done
 			exit 1
 		}
-		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ]; then
-			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | tbo_ro
-		else
-			cat - 2>"$null"
-		fi
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | sbo_ro
 	)
 	b2d() (
 		b2d_ro()
@@ -199,17 +195,17 @@ add_avm_header()
 
 	[ -t 1 ] && printf -- "STDOUT is a terminal device, output suppressed.\a\n" 1>&2 && exit 1
 
-	magic="$(printf -- "\376\355\000\015" | tbo | b2d)"
+	magic="$(printf -- "\376\355\000\015" | sbo | b2d)"
 	debug "Writing magic value: 0x%08x ..." "$magic"
-	if printf -- "\376\355\000\015" | tbo; then
+	if printf -- "\376\355\000\015" | sbo; then
 		result 0 " OK"
 	else
 		result 1 " failed"
 		exit 1
 	fi
 
-	debug "Writing standard FIT image size: 0x%08x ..." "$(get_data "$img" "$offset" "$fdt32_size" | tbo | b2d)"
-	if dd if="$img" bs=4 skip=1 count=1 2>"$null" | tbo; then
+	debug "Writing standard FIT image size: 0x%08x ..." "$(get_data "$img" "$offset" "$fdt32_size" | sbo | b2d)"
+	if dd if="$img" bs=4 skip=1 count=1 2>"$null" | sbo; then
 		result 0 " OK"
 	else
 		result 1 " failed"
