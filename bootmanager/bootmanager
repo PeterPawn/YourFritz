@@ -476,9 +476,11 @@ copy_optimized() (
 	if [ $cnt -lt $bsz ]; then
 		if [ $(( off % bsz )) -ne 0 ]; then
 			if [ $bsz -gt 1024 ]; then
+				printf -- "copy_optimized %s %u %u %u %u\n" "$1" $off $(( cnt & 1023 )) 1024 $lvl 1>&2
 				copy_optimized "$1" $off $(( cnt & 1023 )) 1024 $lvl
 				cnt=$(( cnt - ( 1024 - off ) ))
 				off=1024
+				printf -- "copy_optimized %s %u %u %u %u\n" "$1" 1024 $cnt 1024 $lvl 1>&2
 				copy_optimized "$1" 1024 $cnt 1024 $lvl
 				exit 0
 			fi
@@ -497,21 +499,31 @@ copy_optimized() (
 			cnt=$(( cnt / s ))
 			rb=1024
 		fi
+		printf -- "dd if=%s bs=%s skip=%s count=%s\n" "$1" "$s" "$skp" "$cnt" 1>&2
 		if dd if="$1" bs="$s" skip="$skp" count="$cnt" 2>"$null"; then
-			[ $r -ne 0 ] && copy_optimized "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl
+			if [ $r -ne 0 ]; then
+				printf -- "copy_optimized %s %u %u %u %u\n" "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl 1>&2
+				copy_optimized "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl
+			fi
 			exit 0
 		else
 			exit 1
 		fi
 	else
 		if [ $(( off % bsz )) -ne 0 ]; then
+			printf -- "copy_optimized %s %u %u %u %u\n" "$1" $off $(( bsz - ( off % bsz ) )) $bsz $lvl 1>&2
 			copy_optimized "$1" $off $(( bsz - ( off % bsz ) )) $bsz $lvl
+			printf -- "copy_optimized %s %u %u %u %u\n" "$1" $bsz $(( ( cnt - ( bsz - ( off % bsz ) ) ) )) $bsz $lvl 1>&2
 			copy_optimized "$1" $bsz $(( ( cnt - ( bsz - ( off % bsz ) ) ) )) $bsz $lvl
 		else
 			s=$(( off / bsz ))
 			c=$(( cnt / bsz ))
+			printf -- "dd if=%s bs=%s skip=%s count=%s\n" "$1" "$off" "$s" "$c" 1>&2
 			if dd if="$1" bs="$off" skip="$s" count="$c" 2>"$null"; then
-				[ $cnt -gt $(( c * bsz )) ] && copy_optimized "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl
+				if [ $cnt -gt $(( c * bsz )) ]; then
+					printf -- "copy_optimized %s %u %u %u %u\n" "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl 1>&2
+					copy_optimized "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl
+				fi
 				exit 0
 			else
 				exit 1
@@ -1391,7 +1403,7 @@ mount_fit_alternative_system()
 (
 	mp="$tempdir/$alt_root_mount_name"
 	mkdir -p "$mp" 2>"$null" || exit 1
-	mount -t squashfs -o offset="$2" "$1" "$mp" && printf -- "%s\n" "$mp" && exit 0
+	mount -t squashfs -o offset="$2" "$1" "$mp" 2>"$null" && printf -- "%s\n" "$mp" && exit 0
 	# mount doesn't support offset option (BusyBox versions from the past)
 	if ! command -v losetup 2>"$null" 1>&2 && busybox --list | grep -q "losetup"; then
 		# losetup exists as applet, but there's no symlink for it
@@ -1411,7 +1423,10 @@ mount_fit_alternative_system()
 		"$losetup" -d "$dev" 2>"$null"
 	else
 		# no losetup, create a copy of whole squashfs image and try to mount this
-		if copy_optimized "$1" "$2" "$3" >"$tempdir/$alt_root_image_name" 2>"$null"; then
+		if copy_optimized "$1" "$2" "$3" >"$tempdir/$alt_root_image_name"; then
+			cp "$tempdir/$alt_root_image_name" /var/sqfs.img
+			/var/media/ftp/busybox hexdump -C "$tempdir/$alt_root_image_name" | /var/media/ftp/busybox head -n 200 1>&2
+			ls -l "$tempdir/$alt_root_image_name" 1>&2
 			mount -t squashfs "$tempdir/$alt_root_image_name" "$mp" && printf -- "%s\n" "$mp" && exit 0
 		fi
 	fi
@@ -1677,6 +1692,7 @@ is_switched()
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
 			if is_fit_image_device; then
+				[ -n "$BM_DEBUG_FIT" ] && exit 1
 				! [ "$(get_system_switch)" = "$("$bootslot_tool" get_active)" ]
 			else
 				k1="$(get_partition "$kernel_name" "$active_name")"
@@ -1791,16 +1807,14 @@ get_brandings()
 )
 #######################################################################################################
 #                                                                                                     #
-# extract firmware variables from AVM's firmware new info source                                      #
-#                                                                                                     #
-# $1 - system root directory - missing value select 'active' system, any other value selects 'other'  #
+# retrieve version values from AVM's bootslotctl tool                                                 #
 #                                                                                                     #
 #######################################################################################################
-get_fit_version_values()
-(
-	[ -z "$1" ] && sys="active" || sys="other"
-	"$bootslot_tool" "get_fw_version" "$("$bootslot_tool" "get_$sys")"
-)
+#get_fit_version_values()
+#(
+#	[ -z "$1" ] && sys="active" || sys="other"
+#	"$bootslot_tool" "get_fw_version" "$("$bootslot_tool" "get_$sys")"
+#)
 #######################################################################################################
 #                                                                                                     #
 # extract firmware variables from AVM's firmware info source                                          #
@@ -2305,8 +2319,13 @@ collect_data()
 			spinlock release
 		fi
 	else
-		fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
-		fpd="$(get_partition "$fp")"
+		if [ -z "$BM_DEBUG_FIT" ]; then
+			fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
+			fpd="$(get_partition "$fp")"
+		else
+			fpd="$BM_DEBUG_FIT_IMAGE"
+			[ -z "$fpd" ] && exit 1
+		fi
 		v="$(find_fit_inactive_rootfs_parameters "$fpd")"
 		if [ -n "$v" ]; then
 			alternative_is_missing=0
@@ -2610,6 +2629,9 @@ case "$1" in
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
+		rootfs_type=""
+		rootfs_offset=0
+		rootfs_size=0
 		debug "system type = " "yellow" "%s" "$system_type"
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
 		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
@@ -2623,34 +2645,39 @@ case "$1" in
 			debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
 			debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		else
-			fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
-			fpd="$(get_partition "$fp")"
+			if [ -z "$BM_DEBUG_FIT" ]; then
+				fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
+				fpd="$(get_partition "$fp")"
+			else
+				fpd="$BM_DEBUG_FIT_IMAGE"
+				[ -z "$fpd" ] && printf -- "Missing FIT image source for FIT debugging.\a\n" 1>&2 && exit 1
+			fi
 			eval "$(find_fit_inactive_rootfs_parameters "$fpd")"
 			debug "inactive slot contains a FIT image = " "yellow" "%s" "$([ -n "$rootfs_type" ] && printf -- '%s' "true" || printf -- '%s' "false")"
-			[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
-			debug "active slot = " "yellow" "%s" "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_active)")")"
-			debug "active system version = " "yellow" "%s" "$(get_system_version)"
+			if [ -z "$BM_DEBUG_FIT" ]; then
+				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+				debug "active slot = " "yellow" "%s" "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_active)")")"
+				debug "active system version = " "yellow" "%s" "$(get_system_version)"
+			fi
 		fi
-		value="$(get_system_date)"
-		debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-		modby="$(get_modified_by)"
-		if [ "$modby" = "-" ]; then
-			debug "active system modification source = " "yellow" "%s" "(unmodified or unknown)"
-		else
-			value="$(get_modified_date)"
-			debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-			debug "active system modification source = " "yellow" "%s" "$modby"
-		fi
-		cbs="$(change_branding_support)"
-		debug "brandings supported on active system = " "yellow" "%s" "$(get_brandings "" "$cbs")"
-		if ! [ "$cbs" = "changeable" ]; then
-			debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
+		if [ -z "$BM_DEBUG_FIT" ]; then
+			value="$(get_system_date)"
+			debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+			modby="$(get_modified_by)"
+			if [ "$modby" = "-" ]; then
+				debug "active system modification source = " "yellow" "%s" "(unmodified or unknown)"
+			else
+				value="$(get_modified_date)"
+				debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				debug "active system modification source = " "yellow" "%s" "$modby"
+			fi
+			cbs="$(change_branding_support)"
+			debug "brandings supported on active system = " "yellow" "%s" "$(get_brandings "" "$cbs")"
+			if ! [ "$cbs" = "changeable" ]; then
+				debug "branding used by active system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "" "$cbs")" "$cbs"
+			fi
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
-		rootfs_type=""
-		rootfs_offset=0
-		# shellcheck disable=SC2034
-		rootfs_size=0
 		if ! is_fit_image_device; then
 			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
@@ -2725,6 +2752,7 @@ case "$1" in
 			else
 				debug "" "red" "%s" "FIT image not found for inactive slot"
 			fi
+			set +x
 		fi
 		rc=0
 		;;
