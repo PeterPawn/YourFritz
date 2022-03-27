@@ -40,8 +40,8 @@
 #######################################################################################################
 find_rootfs_in_fit_image()
 (
-	tbo() (
-		tbo_ro()
+	sbo() (
+		sbo_ro()
 		{
 			v1=0; v2=0; v3=0; v4=0
 			while read -r p _ rt; do
@@ -57,11 +57,7 @@ find_rootfs_in_fit_image()
 			done
 			exit 1
 		}
-		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ]; then
-			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | tbo_ro
-		else
-			cat - 2>"$null"
-		fi
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | sbo_ro
 	)
 	b2d() (
 		b2d_ro()
@@ -109,7 +105,7 @@ find_rootfs_in_fit_image()
 	)
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
 	get_fdt32_be() ( get_data "$1" 4 "$2" | b2d; )
-	get_fdt32_cpu() ( get_data "$1" 4 "$2" | tbo | b2d; )
+	get_fdt32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
 		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
@@ -298,7 +294,7 @@ find_rootfs_in_fit_image()
 	fi
 
 	next_offset=$(( next_offset + fdt32_size ))
-	payload_size="$(get_fdt32_cpu "$img" "$next_offset")"
+	payload_size="$(get_fdt32_le "$img" "$next_offset")"
 
 	if ! [ -f "$img" ] || [ "$force_tmpcopy" -eq 1 ]; then
 		tmpdir="${TMP:-$TMPDIR}"
