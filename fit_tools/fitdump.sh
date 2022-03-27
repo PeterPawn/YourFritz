@@ -61,8 +61,8 @@ dissect_fit_image()
 			printf -- "\n" >>"$its_file"
 		fi
 	)
-	tbo() (
-		tbo_ro()
+	sbo() ( # swap byte order
+		sbo_ro()
 		{
 			v1=0; v2=0; v3=0; v4=0
 			while read -r p _ rt; do
@@ -78,13 +78,9 @@ dissect_fit_image()
 			done
 			exit 1
 		}
-		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ]; then
-			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | tbo_ro
-		else
-			cat - 2>"$null"
-		fi
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | sbo_ro
 	)
-	b2d() (
+	b2d() ( # binary to decimal - input has to be in BE order
 		b2d_ro()
 		{
 			i=1; v=0; ff=0
@@ -132,7 +128,7 @@ dissect_fit_image()
 	)
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
 	get_fdt32_be() ( get_data "$1" 4 "$2" | b2d; )
-	get_fdt32_cpu() ( get_data "$1" 4 "$2" | tbo | b2d; )
+	get_fdt32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
 		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
@@ -554,8 +550,6 @@ dissect_fit_image()
 
 	duration "measure log initialized"
 
-	[ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ] && end="(LE)" || end="(BE)"
-
 	msg "File: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 
 	offset=0
@@ -565,11 +559,11 @@ dissect_fit_image()
 			printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 			exit 1
 		fi
-		msg "Magic value at offset 0x%02x: 0x%08x %s\n" "$offset" "$(dd if="$img" bs=4 count=1 2>"$null" | tbo | b2d)" "$end"
+		msg "Magic value at offset 0x%02x: 0x%08x %s\n" "$offset" "$(dd if="$img" bs=4 count=1 2>"$null" | sbo | b2d)" "LE"
 
 		offset=$(( offset + fdt32_size ))
-		payload_size="$(get_fdt32_cpu "$img" "$offset")"
-		msg "Overall length of data at offset 0x%02x: 0x%08x - dec.: %u %s\n" "$offset" "$payload_size" "$payload_size" "$end"
+		payload_size="$(get_fdt32_le "$img" "$offset")"
+		msg "Overall length of data at offset 0x%02x: 0x%08x - dec.: %u %s\n" "$offset" "$payload_size" "$payload_size" "LE"
 
 		duration "signature and data size read"
 
