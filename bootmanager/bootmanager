@@ -144,7 +144,10 @@ readonly disk_by_label="$devtmpfs/disk/by-partlabel"
 readonly tmpdir="${TMPDIR:-$tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
 readonly semafile="$tmpfs/run/bootmanager.sem"
-readonly fdt_chosen="$procfs/device-tree/chosen"
+readonly fdt_base="$procfs/device-tree"
+readonly fdt_chosen="$fdt_base/chosen"
+readonly fdt_model="model"
+readonly fdt_compatible="compatible"
 readonly yf_change_oem_marker="# YF_CHANGE_OEM"
 readonly yf_change_oem_script="etc/init.d/yf_change_oem.sh"
 readonly yf_custom_environment_script="yf_custom_environment\\.sh"
@@ -195,6 +198,7 @@ readonly mips_cpuinfo_check='s|^system type[ \t]*: \([^ \t]*\).*$|\1|p'
 readonly ipq_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev [45] (v7l)\$|IPQ|p;tq;b;:q q"
 readonly ipq8074_eva_config_name="0:CONFIG"
 readonly emmc_mask="emmc_size"
+readonly bcm963_mask="BCM963"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
@@ -1276,11 +1280,29 @@ get_device_branding()
 )
 #######################################################################################################
 #                                                                                                     #
+# read a single value/line from specified FDT node/property                                           #
+#                                                                                                     #
+#######################################################################################################
+get_fdt_value()
+(
+	sed -n -e "1p" "$fdt_base/$1"
+)
+#######################################################################################################
+#                                                                                                     #
+# get 'compatible' info from current FDT                                                              #
+#                                                                                                     #
+#######################################################################################################
+get_fdt_compatible_value()
+(
+	get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\2|p" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
+)
+#######################################################################################################
+#                                                                                                     #
 # find system type or model name                                                                      #
 #                                                                                                     #
 # Supported models/chipsets:                                                                          #
 #                                                                                                     #
-# (x) all VR9-based devices with two slots for a system (kernel + filesystem)                         #
+# (x) all VR9- and AR10-based devices with two slots for a system (kernel + filesystem)               #
 # (x) all GRX5-based devices (no single slot devices known so far)                                    #
 # (x) all Puma6 and Puma7 devices (no single slot devices found yet)                                  #
 # (x) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
@@ -1292,41 +1314,44 @@ get_device_branding()
 #                                                                                                     #
 #######################################################################################################
 get_system_type()
-{
+(
 	# Puma6 and Puma7 devices with '/proc/avm_partitions' pseudo file, platform selection based on AVM's script 'puma6_helper.sh'
-	is_puma_based_device && printf -- "%s\n" "Puma6/7" && return 0
+	is_puma_based_device && printf -- "%s\n" "Puma6/7" && exit 0
+
+	compatible="$(get_fdt_compatible_value)"
 	# VR9, GRX5 and PRX300 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
 	# TODO: PRX300 is based on kernel source reviews, not confirmed so far
 	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
-	[ -n "$type" ] && printf -- '%s\n' "$type" && return 0
+	if [ -n "$type" ]; then
+		printf -- '%s\n' "$type" && exit 0
+	fi
+
 	# ARM-based devices with Qualcomm chipsets in 32-bit mode, selected by content of '/proc/cpuinfo' and further properties
 	type="$(sed -n -e "$ipq_cpuinfo_check" "$proc_cpuinfo")"
 	if [ -n "$type" ] && [ "$type" = "IPQ" ]; then
 		fsize="$(get_environment "$flash_size")"
+
 		# IPQ8074 (Hawkeye family) with eMMC storage using FIT image format, partitions accessible via '/dev/disk/by-partlabel/fit[01]'
 		if [ -n "$(expr "$fsize" : ".*${emmc_mask}=\([^ ]*\).*")" ]; then
-			printf -- "%s\n" "IPQ8074" && return 0
-		# BCM963 using kernel and filesystem partitions in NAND flash
-		# TODO: find characteristics for 7581/7582 models
-		elif false; then
-			printf -- "%s\n" "BCM963" && return 0
-		# BCM963 using FIT format in NAND flash
-		# TODO: find characteristics for 7530ax model
-		elif false; then
-			printf -- "%s\n" "BCM963" && return 0
+			printf -- "%s\n" "IPQ8074" && exit 0
+
+		# BCM963 using kernel and filesystem partitions OR FIT images in NAND flash
+		elif [ "$(expr "$compatible" : "\($bcm963_mask\).*")" = "$bcm963_mask" ]; then
+			printf -- "%s\n" "BCM963" && exit 0
+
 		# IPQ501x using FIT format in NAND flash
-		# TODO: find characteristics for 7510 and FR1200ax models
-		elif false; then
-			printf -- "%s\n" "IPQ501X" && return 0
+		elif [ "$compatible" = "IPQ5018" ]; then
+			printf -- "%s\n" "IPQ5018" && exit 0
+
 		# IPQ4019 with NAND flash and partitions in '/proc/mtd'
 		else
-			printf -- '%s\n' "IPQ4019" && return 0
+			printf -- '%s\n' "IPQ4019" && exit 0
 		fi
 	fi
 	# unknown device type
 	printf -- '%s\n' "undetected"
 	return 1
-}
+)
 #######################################################################################################
 #                                                                                                     #
 # find partition number with given name                                                               #
@@ -1386,7 +1411,7 @@ is_fit_image_device()
 (
 	[ -n "$BM_DEBUG_FIT" ] && exit 0
 	case "$system_type" in
-		("IPQ8074")
+		("IPQ8074"|"BCM963"|"IPQ5018")
 			if [ -d "$disk_by_label" ]; then
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "0")")" ] && exit 1
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "1")")" ] && exit 1
@@ -2665,6 +2690,12 @@ case "$1" in
 		rootfs_offset=0
 		rootfs_size=0
 		debug "system type = " "yellow" "%s" "$system_type"
+		if [ -d "$fdt_base" ]; then
+			debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model")"
+			chipset="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\1|p")"
+			debug "chipset manufacturer = " "yellow" "%s" "$chipset"
+			debug "compatible = " "yellow" "%s" "$(get_fdt_compatible_value)"
+		fi
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
 		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
 		debug "device branding = " "yellow" "%s" "$device_branding"
