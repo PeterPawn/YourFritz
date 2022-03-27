@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.4"
-yf_bootmanager_timestamp=202203271518
+yf_bootmanager_timestamp=202203271812
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1399,9 +1399,25 @@ is_fit_image_device()
 #######################################################################################################
 extract_rootfs_ramdisk_etc()
 (
+	if ! command -v cpio 2>"$null" 1>&2 && busybox --list | grep -q "cpio"; then
+		# cpio exists as applet, but there's no symlink for it
+		ln -s "$(command -v busybox 2>"$null")" "$tempdir/cpio"
+		cpio="$tempdir/cpio"
+	elif cpio="$(command -v cpio 2>"$null")"; then
+		:
+	else
+		printf -- "Missing 'cpio' command.\a\n" 1>&2
+		exit 1
+	fi
+	mp="$tempdir/$alt_root_mount_name"
+	mkdir -p "$mp" 2>"$null" || exit 1
+	cwd="$(pwd)"
+	cd "$mp"
 	[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
-	copy_optimized "$1" "$2" "$3" 2>"$null" | gzip -d | cpio -i -d -m "etc/*"
-	[ -d "$mp/etc" ] && exit 0 || exit 1
+	copy_optimized "$1" "$2" "$3" | gzip -d | "$cpio" -i -d -m 'etc/*' 2>"$null"
+	cd "$cwd" || exit 1
+	[ -d "$mp/etc" ] && printf -- "%s\n" "$mp" && exit 0
+	exit 1
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2727,8 +2743,8 @@ case "$1" in
 					spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fpd" "$rootfs_offset" "$rootfs_size")")"
 					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "rootfs from inactive slot mounted on %s" "$mp")"
 				else
-					mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")"
-					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "directory 'etc' extracted from rootfs ramdisk in inactive slot below of %s" "$mp")"
+					mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")" && \
+						[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "directory 'etc' extracted from rootfs ramdisk in inactive slot below of %s" "$mp")"
 				fi
 				if [ -n "$mp" ]; then
 					debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
