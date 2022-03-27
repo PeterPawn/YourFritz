@@ -181,7 +181,8 @@ add_avm_header()
 	fi
 	debug "Input file: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 	debug "Looking for FDT magic value at offset 0x00 ..."
-	if ! [ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "3490578157" ]; then
+	fdt_magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
+	if { [ "$fdt_magic" -gt 0 ] && [ "$fdt_magic" -ne 3490578157 ]; } || { [ "$fdt_magic" -lt 0 ] && [ "$fdt_magic" -ne -804389139 ]; }; then
 		debug "$(result 1 " failed")"
 		printf -- "Invalid FDT magic at start of input file '%s'.\a\n" "$img" 1>&2
 		exit 1

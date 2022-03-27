@@ -287,7 +287,6 @@ find_rootfs_in_fit_image()
 
 	img="$1"
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
-	[ "$magic" -lt 0 ] && magic=$(( magic & 0xffffffff ))
 	if ! [ "$magic" = "218164734" ]; then
 		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 		exit 1

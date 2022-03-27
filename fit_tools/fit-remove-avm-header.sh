@@ -276,7 +276,7 @@ remove_avm_header()
 	size=64
 	if [ "$dbg" = "1" ] && command -v hexdump 2>"$null" 1>&2; then
 		debug "\nData at offset 0x%02x, size %u:\n\n%s" "$offset" "$size" "$__yf_ansi_yellow__"
-		get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
+		get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2 2>"$null"
 		debug "%s\n" "$__yf_ansi_reset__"
 	fi
 	offset=$(( offset + size ))
