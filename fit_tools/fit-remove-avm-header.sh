@@ -72,8 +72,8 @@ remove_avm_header()
 		debug "$@"
 	}
 	indent() { i=1; while [ "$i" -lt "${1:-1}" ]; do printf -- ">>"; i=$(( i + 1 )); done; printf -- " "; }
-	tbo() (
-		tbo_ro()
+	sbo() (
+		sbo_ro()
 		{
 			v1=0; v2=0; v3=0; v4=0
 			while read -r p _ rt; do
@@ -89,11 +89,7 @@ remove_avm_header()
 			done
 			exit 1
 		}
-		if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | b2d)" -eq 1 ]; then
-			( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | tbo_ro
-		else
-			cat - 2>"$null"
-		fi
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | sbo_ro
 	)
 	b2d() (
 		b2d_ro()
@@ -126,7 +122,7 @@ remove_avm_header()
 		return 0
 	)
 	get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
-	get_fdt32_cpu() ( get_data "$1" 4 "$2" | tbo | b2d; )
+	get_fdt32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
 	__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
 	__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
 	__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
@@ -273,7 +269,7 @@ remove_avm_header()
 	fi
 
 	offset=$(( fdt32_size ))
-	payload_size="$(get_fdt32_cpu "$img" "$offset")"
+	payload_size="$(get_fdt32_le "$img" "$offset")"
 	debug "FDT payload size at offset 0x04: %s%u%s (%#x)\n" "$__yf_ansi_bright_green__" "$payload_size" "$__yf_ansi_reset__" "$payload_size"
 
 	offset=$(( offset + fdt32_size ))
