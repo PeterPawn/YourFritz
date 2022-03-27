@@ -1285,7 +1285,7 @@ get_device_branding()
 #######################################################################################################
 get_fdt_value()
 (
-	sed -n -e "1p" "$fdt_base/$1"
+	[ -f "$fdt_base/$1" ] && sed -n -e "1p" "$fdt_base/$1" || exit 1
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1294,7 +1294,9 @@ get_fdt_value()
 #######################################################################################################
 get_fdt_compatible_value()
 (
-	get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\2|p" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/"
+	v="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\2|p" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/")"
+	[ -z "$v" ] && v="unknown"
+	printf -- "%s\n" "$v"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2691,8 +2693,9 @@ case "$1" in
 		rootfs_size=0
 		debug "system type = " "yellow" "%s" "$system_type"
 		if [ -d "$fdt_base" ]; then
-			debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model")"
+			debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model" || printf -- "unknown")"
 			chipset="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\1|p")"
+			[ -z "$chipset" ] && chipset="unknown"
 			debug "chipset manufacturer = " "yellow" "%s" "$chipset"
 			debug "compatible = " "yellow" "%s" "$(get_fdt_compatible_value)"
 		fi
