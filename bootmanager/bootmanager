@@ -420,8 +420,8 @@ bin2dec_be() (
 	( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | bin2dec_be_ro
 	return 0
 )
-native_byte_order() (
-	native_byte_order_ro()
+swap_byte_order() (
+	swap_byte_order_ro()
 	{
 		v1=0; v2=0; v3=0; v4=0
 		while read -r p _ rt; do
@@ -437,14 +437,23 @@ native_byte_order() (
 		done
 		exit 1
 	}
+	( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order_ro
+)
+native_byte_order() (
 	if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | bin2dec_be)" -eq 1 ]; then
-		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | native_byte_order_ro
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order_ro
 	else
 		cat - 2>"$null"
 	fi
 )
-# shellcheck disable=SC2015
-native_byte_order_evacfg() { { [ "$is_puma_device" = "0" ] || [ -n "$BM_DEBUG_EVA_LE" ]; } && native_byte_order || cat - 2>"$null"; }
+native_byte_order_evacfg() {
+	# EVA configuration on Puma devices uses BE byte order, don't swap for those models
+	if [ "$is_puma_device" = "0" ] || [ -n "$BM_DEBUG_EVA_LE" ]; then
+		native_byte_order
+	else
+		cat - 2>"$null"
+	fi
+}
 get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
 string_from_file() (
 	strlen()
@@ -548,7 +557,7 @@ find_rootfs_in_fit_image()
 (
 	fdt32_align() { [ $(( $1 % 4 )) -gt 0 ] && printf -- "%u\n" $(( ( $1 + fdt32_size ) & ~3 )) || printf -- "%u\n" "$1"; }
 	get_fdt32_be() ( get_data "$1" 4 "$2" | bin2dec_be; )
-	get_fdt32_cpu() ( get_data "$1" 4 "$2" | native_byte_order | bin2dec_be; )
+	get_fdt32_le() ( get_data "$1" 4 "$2" | swap_byte_order | bin2dec_be; )
 	get_string() {
 		n="$(printf -- "__fdt_string_%u" "$2")"
 		f="$(set | sed -n -e "s|^\($n=\).*|\1|p")"
@@ -1412,7 +1421,7 @@ extract_rootfs_ramdisk_etc()
 	mp="$tempdir/$alt_root_mount_name"
 	mkdir -p "$mp" 2>"$null" || exit 1
 	cwd="$(pwd)"
-	cd "$mp"
+	cd "$mp" || exit 1
 	[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
 	copy_optimized "$1" "$2" "$3" | gzip -d | "$cpio" -i -d -m 'etc/*' 2>"$null"
 	cd "$cwd" || exit 1
