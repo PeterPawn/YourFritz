@@ -163,7 +163,13 @@ dissect_fit_image()
 		while [ "$i" -lt "$3" ]; do
 			v=$(get_fdt32_be "$img" $(( $2 + i )) )
 			[ "$i" -gt 0 ] && printf -- " "
-			printf -- "0x%08x" "$v"
+			if [ "$v" -lt 0 ]; then
+				printf -- "0x"
+				printf -- "%02x" $(( ( v >> 24 ) & 0xFF ))
+				printf -- "%06x" $(( v & 0xFFFFFF ))
+			else
+				printf -- "0x%08x" "$v"
+			fi
 			i=$(( i + fdt32_size ))
 		done
 	)
@@ -582,18 +588,18 @@ dissect_fit_image()
 		msg "Data at offset 0x%02x, size %u:\n" "$offset" "$size"
 		[ "$debug" -eq 1 ] && measure get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2
 		offset=$(( offset + size ))
-		fdt_magic="$(get_fdt32_be "$img" "$offset")"
+		fdt_magic="$(get_hex32 "$img" "$offset" 4)"
 	else
 		# get_data at offset 0 isn't supported due to computations and divide by zero errors
-		fdt_magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
+		fdt_magic="$(get_hex32 "$img" 0 4)"
 		payload_size=0
 	fi
 
-	msg "FDT magic at offset 0x%02x: 0x%08x %s\n" "$offset" "$fdt_magic" "(BE)"
-	[ "$fdt_magic" -ne 3490578157 ] && msg "Invalid FDT magic found.\a\n" && exit 1
+	msg "FDT magic at offset 0x%02x: %s %s\n" "$offset" "$fdt_magic" "(BE)"
+	! [ "$fdt_magic" = "0xd00dfeed" ] && msg "Invalid FDT magic found.\a\n" && exit 1
 	fdt_start=$offset
 	out "/dts-v1/;\n"
-	out "// magic:\t\t0x%08x\n" "$fdt_magic"
+	out "// magic:\t\t%s\n" "$fdt_magic"
 
 	offset=$(( offset + fdt32_size ))
 	fdt_totalsize="$(get_fdt32_be "$img" "$offset")"
