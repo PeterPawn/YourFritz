@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.4"
-yf_bootmanager_timestamp=202203271255
+yf_bootmanager_timestamp=202203271518
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -465,6 +465,7 @@ string_from_file() (
 #                                                                                                     #
 #######################################################################################################
 copy_optimized() (
+	ind() { i="$1"; while [ "$i" -gt 0 ]; do printf ">> "; i=$(( i - 1 )); done; }
 	lvl=$(( ${5:-0} + 1 ))
 	def_bsz=$(( 1024 * 1024 ))
 	bsz=$(( ${4:-$def_bsz} ))
@@ -476,12 +477,13 @@ copy_optimized() (
 	if [ $cnt -lt $bsz ]; then
 		if [ $(( off % bsz )) -ne 0 ]; then
 			if [ $bsz -gt 1024 ]; then
-				printf -- "copy_optimized %s %u %u %u %u\n" "$1" $off $(( cnt & 1023 )) 1024 $lvl 1>&2
+				[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(1) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $off $(( cnt & 1023 )) 1024 1>&2
 				copy_optimized "$1" $off $(( cnt & 1023 )) 1024 $lvl
-				cnt=$(( cnt - ( 1024 - off ) ))
-				off=1024
-				printf -- "copy_optimized %s %u %u %u %u\n" "$1" 1024 $cnt 1024 $lvl 1>&2
-				copy_optimized "$1" 1024 $cnt 1024 $lvl
+				shft=$(( 1024 - ( off % 1024 ) ))
+				cnt=$(( cnt - shft ))
+				off=$(( off + shft ))
+				[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(2) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $off $cnt 1024 1>&2
+				copy_optimized "$1" $off $cnt 1024 $lvl
 				exit 0
 			fi
 			of=$(( off ))
@@ -499,10 +501,10 @@ copy_optimized() (
 			cnt=$(( cnt / s ))
 			rb=1024
 		fi
-		printf -- "dd if=%s bs=%s skip=%s count=%s\n" "$1" "$s" "$skp" "$cnt" 1>&2
+		[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(1) dd if=%s bs=%s skip=%s count=%s\n" "$(ind "$lvl")" "$1" "$s" "$skp" "$cnt" 1>&2
 		if dd if="$1" bs="$s" skip="$skp" count="$cnt" 2>"$null"; then
 			if [ $r -ne 0 ]; then
-				printf -- "copy_optimized %s %u %u %u %u\n" "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl 1>&2
+				[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(3) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $(( ( skp + cnt ) * s )) $r $rb 1>&2
 				copy_optimized "$1" $(( ( skp + cnt ) * s )) $r $rb $lvl
 			fi
 			exit 0
@@ -511,18 +513,24 @@ copy_optimized() (
 		fi
 	else
 		if [ $(( off % bsz )) -ne 0 ]; then
-			printf -- "copy_optimized %s %u %u %u %u\n" "$1" $off $(( bsz - ( off % bsz ) )) $bsz $lvl 1>&2
+			[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(4) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $off $(( bsz - ( off % bsz ) )) $bsz 1>&2
 			copy_optimized "$1" $off $(( bsz - ( off % bsz ) )) $bsz $lvl
-			printf -- "copy_optimized %s %u %u %u %u\n" "$1" $bsz $(( ( cnt - ( bsz - ( off % bsz ) ) ) )) $bsz $lvl 1>&2
-			copy_optimized "$1" $bsz $(( ( cnt - ( bsz - ( off % bsz ) ) ) )) $bsz $lvl
+			shft=$(( bsz - ( off % bsz ) ))
+			off=$(( off + shft ))
+			cnt=$(( cnt - shft ))
+			[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(5) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $off $cnt $bsz 1>&2
+			copy_optimized "$1" $off $cnt $bsz $lvl
 		else
 			s=$(( off / bsz ))
 			c=$(( cnt / bsz ))
-			printf -- "dd if=%s bs=%s skip=%s count=%s\n" "$1" "$off" "$s" "$c" 1>&2
-			if dd if="$1" bs="$off" skip="$s" count="$c" 2>"$null"; then
+			[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(2) dd if=%s bs=%s skip=%s count=%s\n" "$(ind "$lvl")" "$1" "$bsz" "$s" "$c" 1>&2
+			if dd if="$1" bs="$bsz" skip="$s" count="$c" 2>"$null"; then
 				if [ $cnt -gt $(( c * bsz )) ]; then
-					printf -- "copy_optimized %s %u %u %u %u\n" "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl 1>&2
-					copy_optimized "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl
+					shft=$(( c * bsz ))
+					off=$(( off + shft ))
+					cnt=$(( cnt - shft ))
+					[ -n "$BM_DEBUG_FIT" ] && printf -- "%s(6) copy_optimized %s %u %u %u\n" "$(ind "$lvl")" "$1" $off $cnt $bsz 1>&2
+					copy_optimized "$1" $off $cnt $bsz $lvl
 				fi
 				exit 0
 			else
@@ -1391,6 +1399,7 @@ is_fit_image_device()
 #######################################################################################################
 extract_rootfs_ramdisk_etc()
 (
+	[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
 	copy_optimized "$1" "$2" "$3" 2>"$null" | gzip -d | cpio -i -d -m "etc/*"
 	[ -d "$mp/etc" ] && exit 0 || exit 1
 )
@@ -1423,10 +1432,8 @@ mount_fit_alternative_system()
 		"$losetup" -d "$dev" 2>"$null"
 	else
 		# no losetup, create a copy of whole squashfs image and try to mount this
+		[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
 		if copy_optimized "$1" "$2" "$3" >"$tempdir/$alt_root_image_name"; then
-			cp "$tempdir/$alt_root_image_name" /var/sqfs.img
-			/var/media/ftp/busybox hexdump -C "$tempdir/$alt_root_image_name" | /var/media/ftp/busybox head -n 200 1>&2
-			ls -l "$tempdir/$alt_root_image_name" 1>&2
 			mount -t squashfs "$tempdir/$alt_root_image_name" "$mp" && printf -- "%s\n" "$mp" && exit 0
 		fi
 	fi
@@ -2752,7 +2759,6 @@ case "$1" in
 			else
 				debug "" "red" "%s" "FIT image not found for inactive slot"
 			fi
-			set +x
 		fi
 		rc=0
 		;;
