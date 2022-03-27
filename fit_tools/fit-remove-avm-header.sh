@@ -183,9 +183,10 @@ remove_avm_header()
 			if [ $(( off % bsz )) -ne 0 ]; then
 				if [ $bsz -gt 1024 ]; then
 					copy_optimized "$1" $off $(( cnt & 1023 )) 1024 $lvl
-					cnt=$(( cnt - ( 1024 - off ) ))
-					off=1024
-					copy_optimized "$1" 1024 $cnt 1024 $lvl
+					shft=$(( 1024 - ( off % 1024 ) ))
+					cnt=$(( cnt - shft ))
+					off=$(( off + shft ))
+					copy_optimized "$1" $off $cnt 1024 $lvl
 					exit 0
 				fi
 				of=$(( off ))
@@ -217,18 +218,26 @@ remove_avm_header()
 		else
 			if [ $(( off % bsz )) -ne 0 ]; then
 				copy_optimized "$1" $off $(( bsz - ( off % bsz ) )) $bsz $lvl
-				copy_optimized "$1" $bsz $(( ( cnt - ( bsz - ( off % bsz ) ) ) )) $bsz $lvl
+				shft=$(( bsz - ( off % bsz ) ))
+				off=$(( off + shft ))
+				cnt=$(( cnt - shft ))
+				copy_optimized "$1" $off $cnt $bsz $lvl
 			else
 				s=$(( off / bsz ))
 				c=$(( cnt / bsz ))
 				action "%sCopying %u (%#x) data blocks of size %u (%#X) starting at offset %u (%#x) ..." "$(indent "$lvl")" "$c" "$c" "$bsz" "$bsz" "$off" "$off"
-				if dd if="$1" bs="$off" skip="$s" count="$c" 2>"$null"; then
+				if dd if="$1" bs="$bsz" skip="$s" count="$c" 2>"$null"; then
 					result "0" " OK"
 					if [ $cnt -gt $(( c * bsz )) ]; then
-						copy_optimized "$1" $(( ( c + 1 ) * bsz )) $(( cnt - c * bsz )) $bsz $lvl
+						shft=$(( c * bsz ))
+						off=$(( off + shft ))
+						cnt=$(( cnt - shft ))
+						copy_optimized "$1" $off $cnt $bsz $lvl
 					fi
+					exit 0
 				else
 					result "1" " failed"
+					exit 1
 				fi
 			fi
 		fi
