@@ -231,6 +231,17 @@ add_avm_header()
 		debug "\n"
 		exit 1
 	fi
+
+	debug "Appending 8 zero bytes after FDT payload ..."
+	if dd if="$zeros" bs=8 count=1 2>"$null"; then
+		result 0 " OK"
+		debug "\n"
+	else
+		result 1 " failed"
+		debug "\n"
+		exit 1
+	fi
+
 	exit 0
 )
 #######################################################################################################
