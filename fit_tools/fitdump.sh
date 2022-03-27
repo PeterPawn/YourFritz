@@ -667,6 +667,8 @@ dissect_fit_image()
 	rd_size=0
 	fs_node_name=""
 	rd_node_name=""
+
+	: >"$image_file_list"
 	image_file_list="$(get_real_name "$image_file_list")"
 	cfg=0
 
