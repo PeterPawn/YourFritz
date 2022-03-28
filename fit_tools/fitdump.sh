@@ -577,7 +577,7 @@ dissect_fit_image()
 			tmpdir="${TMP:-$TMPDIR}"
 			[ -z "$tmpdir" ] && tmpdir="/tmp"
 			tmpimg="$tmpdir/fit-image-$$"
-			dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 )) count=1 2>"$null"
+			dd if="$img" of="$tmpimg" bs=$(( payload_size + 64 + 8 + 8 )) count=1 2>"$null"
 			trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 			img="$tmpimg"
 			duration "image copied to tmpfs"
