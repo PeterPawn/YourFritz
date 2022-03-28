@@ -542,6 +542,7 @@ dissect_fit_image()
 	fi
 	! mkdir "$dump_dir" && printf -- "Error creating subdirectory '%s', do you have write access?\a\n" "$dump_dir" 1>&2 && exit 1
 
+	[ -z "$1" ] && printf -- "Missing input source parameter.\a\n" 1>&2 && exit 1
 	img="$(get_real_name "$1")"
 	dump_dir="$(get_real_name "$dump_dir")"
 	cd "$dump_dir" || exit 1

@@ -286,6 +286,7 @@ find_rootfs_in_fit_image()
 	fdt32_size=4
 
 	img="$1"
+	[ -z "$img" ] && printf -- "Missing input source parameter.\a\n" 1>&2 && exit 1
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
 	if ! [ "$magic" = "218164734" ]; then
 		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2

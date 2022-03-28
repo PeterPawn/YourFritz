@@ -179,6 +179,7 @@ add_avm_header()
 		__yf_show_copyright 1>&2
 		debug "\n"
 	fi
+	[ -z "$img" ] && printf -- "Missing input source parameter.\a\n" 1>&2 && exit 1
 	debug "Input file: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 	debug "Looking for FDT magic value at offset 0x00 ..."
 	fdt_magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
