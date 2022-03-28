@@ -445,7 +445,7 @@ swap_byte_order() (
 )
 native_byte_order() (
 	if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | bin2dec_be)" -eq 1 ]; then
-		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order_ro
+		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order
 	else
 		cat - 2>"$null"
 	fi
@@ -698,7 +698,7 @@ find_rootfs_in_fit_image()
 	fi
 
 	next_offset=$(( next_offset + fdt32_size ))
-	payload_size="$(get_fdt32_cpu "$img" "$next_offset")"
+	payload_size="$(get_fdt32_le "$img" "$next_offset")"
 
 	td="$tempdir"
 	[ -z "$td" ] && td="/tmp"
