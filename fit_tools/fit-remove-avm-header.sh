@@ -122,6 +122,7 @@ remove_avm_header()
 		return 0
 	)
 	get_data() ( dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>"$null" | dd bs=1 count="$2" 2>"$null"; )
+	get_fdt32_be() ( get_data "$1" 4 "$2" | b2d; )
 	get_fdt32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
 	__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
 	__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
@@ -290,7 +291,19 @@ remove_avm_header()
 		get_data "$img" "$size" "$offset" | hexdump -C | sed -n -e "1,$(( size / 16 ))p" 1>&2 2>"$null"
 		debug "%s\n" "$__yf_ansi_reset__"
 	fi
+
 	offset=$(( offset + size ))
+	fdt_magic="$(get_fdt32_be "$img" "$offset")"
+	if { [ "$fdt_magic" -gt 0 ] && [ "$fdt_magic" -ne 3490578157 ]; } || { [ "$fdt_magic" -lt 0 ] && [ "$fdt_magic" -ne -804389139 ]; }; then
+		printf "Invalid FDT magic found at offset 0x%02x: 0x%02x%06x\a\n" "$offset" $(( ( fdt_magic >> 24 ) & 0xff )) $(( fdt_magic & 0xffffff )) 1>&2
+		exit 1
+	fi
+
+	fdt_totalsize="$(get_fdt32_be "$img" $(( offset + fdt32_size )))"
+	if [ "$fdt_totalsize" -ne "$payload_size" ]; then
+		printf "Payload size (%u = %#x) at offset 0x%02x doesn't match FDT data size at offset 0x%02x (%u = %#x), processing aborted.\a\n" "$payload_size" "$payload_size" "4" "$offset" "$fdt_totalsize" "$fdt_totalsize" 1>&2
+		exit 1
+	fi
 
 	[ -t 1 ] && printf -- "STDOUT is a terminal device, output suppressed.\a\n" 1>&2 && exit 1
 
