@@ -199,6 +199,7 @@ readonly ipq_cpuinfo_check="s|^model name[ \t]*: ARMv7 Processor rev [45] (v7l)\
 readonly ipq8074_eva_config_name="0:CONFIG"
 readonly emmc_mask="emmc_size"
 readonly bcm963_mask="BCM963"
+readonly nvram_name="nvram"
 #######################################################################################################
 #                                                                                                     #
 # VR9 specific settings                                                                               #
@@ -811,6 +812,10 @@ check_urlader_configuration()
 		case "$system_type" in
 			("IPQ8074")
 				cat "$disk_by_label/$ipq8074_eva_config_name" 2>"$null"
+				;;
+			("BCM963")
+				evacfg="$(sed -n -e "s|^\(mtd[0-9]\?\):\([ \t]\+[0-9a-fA-F]*\)\{2\}[ \t]\?\"$nvram_name\"\$|\1|p" "$proc_mtd")"
+				cat "$devtmpfs/$evacfg" 2>"$null"
 				;;
 			(*)
 				if ! [ -f "$proc_mtd" ]; then
