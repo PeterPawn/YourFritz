@@ -366,8 +366,8 @@ dissect_fit_image()
 						out " = " 1>&4
 						out "/incbin/(\"%s\"); // size: %u, offset=0x%08x\n" "$file" "$value_size" "$data_offset" 1>&4
 						eol=1
-						#measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
-						#msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
+						measure get_file "$img" "$data_offset" "$value_size" >"$dump_dir/$file"
+						msg "Created BLOB file '%s' with %u bytes of data from offset 0x%08x\n" "$file" "$value_size" "$data_offset"
 						[ "$dirs" = "1" ] && cp "$dump_dir/$file" "$name" 2>"$null"
 						[ "$name" = "$data_name" ] && data_found="$file" && data_size="$value_size"
 					elif measure is_printable_string "$img" "$data_offset" "$value_size"; then
