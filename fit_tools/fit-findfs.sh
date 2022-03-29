@@ -258,21 +258,17 @@ find_rootfs_in_fit_image()
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
 	nand_pagesize() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && [ "$(mtd_type "$1")" = "nand" ] && cat "/sys$(dev_info "$1" DEVPATH)/subpagesize" && exit 0 || exit 1; )
 	copy_image() (
-		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
-		[ -f "$1" ] && type="file" || type="$(dev_info "$1" DEVTYPE)"
-		[ "$type" = "mtd" ] && type="$(mtd_type "$1")"
-		msg "Input data source type: %s%s%s\n" "$__yf_ansi_bright_green__" "$type" "$__yf_ansi_reset__"
-		case "$type" in
+		case "$1" in
 			("file"|"partition"|"nor")
-				dd if="$1" of="$2" bs="$3" count=1 2>"$null"
+				dd if="$2" bs="$3" count=1 2>"$null"
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
-				pagesize="$(nand_pagesize "$1")"
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null"
+				pagesize="$(nand_pagesize "$2")"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null"
 				;;
 			(*)
-				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
+				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$2" "$1" 1>&2
 				exit 1
 				;;
 		esac
@@ -311,6 +307,10 @@ find_rootfs_in_fit_image()
 
 	img="$1"
 	[ -z "$img" ] && printf -- "Missing input source parameter.\a\n" 1>&2 && exit 1
+	! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
+	[ -f "$1" ] && devtype="file" || devtype="$(dev_info "$1" DEVTYPE)"
+	[ "$devtype" = "mtd" ] && devtype="$(mtd_type "$1")"
+
 	magic="$(dd if="$img" bs=4 count=1 2>"$null" | b2d)"
 	if ! [ "$magic" = "218164734" ]; then
 		printf "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
@@ -324,7 +324,7 @@ find_rootfs_in_fit_image()
 		tmpdir="${TMP:-$TMPDIR}"
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
 		tmpimg="$tmpdir/fit-image-$$"
-		copy_image "$img" "$tmpimg" "$(( payload_size + 64 + 8 + 8 ))" || exit 1
+		copy_image "$devtype" "$img" "$(( payload_size + 64 + 8 + 8 ))" >"$tmpimg" || exit 1
 		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 		img="$tmpimg"
 	fi
