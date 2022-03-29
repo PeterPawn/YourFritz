@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202203292317
+yf_bootmanager_timestamp=202203300114
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -119,6 +119,7 @@ readonly proc_devices="$procfs/devices"
 readonly tffs_device_name="tffs"
 # shellcheck disable=SC2034
 readonly mtd_prefix="mtd"
+readonly mtd_mask="${mtd_prefix}%u"
 readonly mtdblock_prefix="$devtmpfs/mtdblock"
 readonly mtdblock_mask="${mtdblock_prefix}%u"
 readonly emmcblock_prefix="$devtmpfs/mmcblk0"
@@ -445,8 +446,8 @@ swap_byte_order() (
 	( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order_ro
 )
 native_byte_order() (
-	if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null" | bin2dec_be)" -eq 1 ]; then
-		( cat; printf -- "%b" "\377" ) | cmp -l -- "$zeros" - 2>"$null" | swap_byte_order
+	if [ "$(dd if=/proc/self/exe bs=1 count=1 skip=5 2>"$null")" = "$(printf -- "\001")" ]; then
+		swap_byte_order
 	else
 		cat - 2>"$null"
 	fi
@@ -674,6 +675,26 @@ find_rootfs_in_fit_image()
 	dev_info() ( [ -z "$2" ] && udevadm info -q all -n "$1" || { udevadm info -q all -n "$1" | sed -n -e "s|^E: $2=\(.*\)|\1|p"; } )
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
 	nand_pagesize() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && [ "$(mtd_type "$1")" = "nand" ] && cat "/sys$(dev_info "$1" DEVPATH)/subpagesize" && exit 0 || exit 1; )
+	get_real_name() (
+		if command -v realpath 2>"$null" 1>&2; then
+			realpath "$1" 2>"$null"
+		elif command -v readlink 2>"$null" 1>&2; then
+			readlink -f "$1" 2>"$null"
+		else
+			p="$1"
+			l="$(ls -dl "$p")"
+			t="${l#*" $p -> "}"
+			d="$(pwd)"
+			# shellcheck disable=SC2164
+			cd "${p%/*}" 2>"$null"
+			# shellcheck disable=SC2164
+			cd -P "${t%/*}" 2>"$null"
+			r="$(pwd)/${t##*/}"
+			# shellcheck disable=SC2164
+			cd "$d" 2>"$null"
+			printf -- "%s\n" "$r"
+		fi
+	)
 	copy_image() (
 		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
 		[ -f "$1" ] && type="file" || type="$(dev_info "$1" DEVTYPE)"
@@ -686,6 +707,11 @@ find_rootfs_in_fit_image()
 				! command -v nanddump 2>"$null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
 				pagesize="$(nand_pagesize "$1")"
 				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null" && dd if="$null" of="$2" bs="$3" seek=1 2>"$null"
+				;;
+			("disk")
+				mtd="$(get_real_name "/sys$(dev_info "$1" DEVPATH)/device")"
+				mtdname="${mtd##*/}"
+				copy_image "$mtdname" "$2" "$3"
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
