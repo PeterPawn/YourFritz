@@ -606,7 +606,6 @@ dissect_fit_image()
 			trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 			img="$tmpimg"
 			duration "image copied to tmpfs"
-			ls -l "$tmpimg" 1>&2
 		fi
 
 		offset=$(( offset + fdt32_size ))
