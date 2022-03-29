@@ -332,31 +332,18 @@ get_avm_image_from_blockdevice()
 	payload_size=$(( payload_size + 64 + 8 + 8 ))
 	offset=0
 	action "Copying %u (%#x) bytes of data starting from offset %u (%#x) ..." "$payload_size" "$payload_size" "$offset" "$offset"
-	if [ "$devtype" = "file" ]; then
-		[ "$dbg" = "1" ] && result 2 " running"
-		if copy_optimized "$img" "$offset" "$payload_size"; then
-			[ "$dbg" = "1" ] && debug "$action_message"
-			result 0 " OK"
-			debug "\n"
-			exit 0
-		else
-			[ "$dbg" = "1" ] && debug "$action_message"
-			result 1 " failed"
-			debug "\n"
-			exit 1
-		fi
+	[ "$dbg" = "1" ] && result 2 " running"
+	[ "$devtype" = "file" ] && cmd="copy_optimized \"$img\" \"$offset\" \"$payload_size\"" || cmd="copy_image \"$devtype\" \"$img\" \"$payload_size\""
+	if eval "$cmd"; then
+		[ "$dbg" = "1" ] && debug "$action_message"
+		result 0 " OK"
+		debug "\n"
+		exit 0
 	else
-		if copy_image "$devtype" "$img" "$payload_size"; then
-			[ "$dbg" = "1" ] && debug "$action_message"
-			result 0 " OK"
-			debug "\n"
-			exit 0
-		else
-			[ "$dbg" = "1" ] && debug "$action_message"
-			result 1 " failed"
-			debug "\n"
-			exit 1
-		fi
+		[ "$dbg" = "1" ] && debug "$action_message"
+		result 1 " failed"
+		debug "\n"
+		exit 1
 	fi
 )
 #######################################################################################################
