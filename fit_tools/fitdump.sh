@@ -465,7 +465,6 @@ dissect_fit_image()
 	dev_info() ( [ -z "$2" ] && udevadm info -q all -n "$1" || { udevadm info -q all -n "$1" | sed -n -e "s|^E: $2=\(.*\)|\1|p"; } )
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
 	copy_image() (
-		set -x
 		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
 		[ -f "$1" ] && type="file" || type="$(dev_info "$1" DEVTYPE)"
 		[ "$type" = "mtd" ] && type="$(mtd_type "$1")"
@@ -476,14 +475,13 @@ dissect_fit_image()
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$3" count=1 #2>"$null"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" | dd of="$2" bs="$3" count=1
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
 				exit 1
 				;;
 		esac
-		set +x
 	)
 
 	null="/dev/null"
@@ -583,8 +581,6 @@ dissect_fit_image()
 
 	msg "File: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
 
-	df -h 1>&2
-
 	offset=0
 	if ! [ "$native" = "1" ]; then
 		magic="$(measure dd if="$img" bs=4 count=1 2>"$null" | b2d)"
@@ -608,7 +604,7 @@ dissect_fit_image()
 			trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 			img="$tmpimg"
 			duration "image copied to tmpfs"
-			ls -l "$tmpdir" 1>&2
+			ls -l "$tmpimg" 1>&2
 		fi
 
 		offset=$(( offset + fdt32_size ))
@@ -622,8 +618,6 @@ dissect_fit_image()
 		fdt_magic="$(get_hex32 "$img" 0 4)"
 		payload_size=0
 	fi
-
-	df -h 1>&2
 
 	msg "FDT magic at offset 0x%02x: %s %s\n" "$offset" "$fdt_magic" "(BE)"
 	! [ "$fdt_magic" = "0xd00dfeed" ] && msg "Invalid FDT magic found.\a\n" && exit 1
