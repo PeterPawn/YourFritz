@@ -253,6 +253,29 @@ find_rootfs_in_fit_image()
 			printf -- "next_offset=%u\n" "$offset"
 		} 1>&5
 	)
+	# shellcheck disable=SC2015
+	dev_info() ( [ -z "$2" ] && udevadm info -q all -n "$1" || { udevadm info -q all -n "$1" | sed -n -e "s|^E: $2=\(.*\)|\1|p"; } )
+	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
+	copy_image() (
+		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
+		[ -f "$1" ] && type="file" || type="$(dev_info "$1" DEVTYPE)"
+		[ "$type" = "mtd" ] && type="$(mtd_type "$1")"
+		msg "Input data source type: %s%s%s\n" "$__yf_ansi_bright_green__" "$type" "$__yf_ansi_reset__"
+		case "$type" in
+			("file"|"partition"|"nor")
+				dd if="$1" of="$2" bs="$3" count=1 2>"$null"
+				;;
+			("nand")
+				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$3" count=1 2>"$null"
+				;;
+			(*)
+				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
+				exit 1
+				;;
+		esac
+	)
+
 
 	null="/dev/null"
 	zeros="/dev/zero"
@@ -300,7 +323,7 @@ find_rootfs_in_fit_image()
 		tmpdir="${TMP:-$TMPDIR}"
 		[ -z "$tmpdir" ] && tmpdir="/tmp"
 		tmpimg="$tmpdir/fit-image-$$"
-		dd if="$img" of="$tmpimg" bs=$(( 1024 * 1024 )) count=$(( ( payload_size + 64 + 8 ) / ( 1024 * 1024 ) + 1 )) 2>$null || exit 1
+		copy_image "$img" "$tmpimg" "$(( payload_size + 64 + 8 + 8 ))" || exit 1
 		trap '[ -f "$tmpimg" ] && rm -f "$tmpimg" 2>/dev/null' EXIT
 		img="$tmpimg"
 	fi
