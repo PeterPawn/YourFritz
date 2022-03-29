@@ -264,8 +264,14 @@ find_rootfs_in_fit_image()
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
+				tmpdir="${TMP:-$TMPDIR}"
+				[ -z "$tmpdir" ] && tmpdir="/tmp"
+				out="$tmpdir/nanddump-$$"
+				trap '[ -f "$out" ] && rm -f "$out" 2>/dev/null' EXIT
 				pagesize="$(nand_pagesize "$2")"
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null" | dd bs="$3" count=1 2>"$null"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" of="$out" 2>"$null" || exit 1
+				dd if="$null" of="$out" bs="$3" seek=1 2>"$null" && cat "$out" 2>"$null" && exit 0
+				exit 1
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$2" "$1" 1>&2
