@@ -244,20 +244,16 @@ get_avm_image_from_blockdevice()
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
 	copy_image() (
 		set -x
-		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
-		type="$(dev_info "$1" DEVTYPE)"
-		[ "$type" = "mtd" ] && type="$(mtd_type "$1")"
-		debug "Input data source type: %s%s%s\n" "$__yf_ansi_bright_green__" "$type" "$__yf_ansi_reset__"
-		case "$type" in
+		case "$1" in
 			("partition"|"nor")
-				dd if="$1" bs="$2" count=1 2>"$null"
+				dd if="$2" bs="$3" count=1 2>"$null"
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd bs="$2" count=1 #2>"$null"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$3" count=1 #2>"$null"
 				;;
 			(*)
-				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
+				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$2" "$1" 1>&2
 				exit 1
 				;;
 		esac
@@ -290,8 +286,14 @@ get_avm_image_from_blockdevice()
 		__yf_show_copyright 1>&2
 		debug "\n"
 	fi
+	! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
 	[ -z "$img" ] && printf -- "Missing input source parameter.\a\n" 1>&2 && exit 1
 	debug "Input device/file: %s%s%s\n" "$__yf_ansi_bright_green__" "$img" "$__yf_ansi_reset__"
+
+	[ -f "$img" ] && devtype="file" || devtype="$(dev_info "$1" DEVTYPE)"
+	[ "$devtype" = "mtd" ] && devtype="$(mtd_type "$1")"
+	debug "Input data source type: %s%s%s\n" "$__yf_ansi_bright_green__" "$devtype" "$__yf_ansi_reset__"
+
 	debug "Looking for magic value at offset 0x00 ..."
 	if ! [ "$(dd if="$img" bs=4 count=1 2>"$null" | b2d)" = "218164734" ]; then
 		debug "$(result 1 " failed")"
@@ -332,7 +334,7 @@ get_avm_image_from_blockdevice()
 	offset=0
 	action "Copying %u (%#x) bytes of data starting from offset %u (%#x) ..." "$payload_size" "$payload_size" "$offset" "$offset"
 	[ "$dbg" = "1" ] && result 2 " running"
-	if [ -f "$img" ]; then
+	if [ "$devtype" = "file" ]; then
 		if copy_optimized "$img" "$offset" "$payload_size"; then
 			[ "$dbg" = "1" ] && debug "$action_message"
 			result 0 " OK"
@@ -345,7 +347,7 @@ get_avm_image_from_blockdevice()
 			exit 1
 		fi
 	else
-		copy_image "$img" "$payload_size"
+		copy_image "$type" "$img" "$payload_size"
 	fi
 )
 #######################################################################################################
