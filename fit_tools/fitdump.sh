@@ -477,7 +477,7 @@ dissect_fit_image()
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
 				pagesize="$(nand_pagesize "$1")"
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null" | dd bs="$3" count=1 2>"$null"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null" && dd if="$null" of="$2" bs="$3" seek=1 2>"$null"
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
