@@ -242,27 +242,26 @@ get_avm_image_from_blockdevice()
 	# shellcheck disable=SC2015
 	dev_info() ( [ -z "$2" ] && udevadm info -q all -n "$1" || { udevadm info -q all -n "$1" | sed -n -e "s|^E: $2=\(.*\)|\1|p"; } )
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
+	nand_pagesize() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && [ "$(mtd_type "$1")" = "nand" ] && cat "/sys$(dev_info "$1" DEVPATH)/subpagesize" && exit 0 || exit 1; )
 	copy_image() (
-		set -x
 		case "$1" in
 			("partition"|"nor")
 				dd if="$2" bs="$3" count=1 2>"$null"
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$3" count=1 #2>"$null"
+				pagesize="$(nand_pagesize "$2")"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null"
 				;;
 			(*)
-				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$2" "$1" 1>&2
+				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
 				exit 1
 				;;
 		esac
-		set +x
 	)
 
 	null="/dev/null"
 	zeros="/dev/zero"
-
 	fdt32_size=4
 
 	dbg=0
@@ -333,8 +332,8 @@ get_avm_image_from_blockdevice()
 	payload_size=$(( payload_size + 64 + 8 + 8 ))
 	offset=0
 	action "Copying %u (%#x) bytes of data starting from offset %u (%#x) ..." "$payload_size" "$payload_size" "$offset" "$offset"
-	[ "$dbg" = "1" ] && result 2 " running"
 	if [ "$devtype" = "file" ]; then
+		[ "$dbg" = "1" ] && result 2 " running"
 		if copy_optimized "$img" "$offset" "$payload_size"; then
 			[ "$dbg" = "1" ] && debug "$action_message"
 			result 0 " OK"
@@ -347,7 +346,17 @@ get_avm_image_from_blockdevice()
 			exit 1
 		fi
 	else
-		copy_image "$type" "$img" "$payload_size"
+		if copy_image "$devtype" "$img" "$payload_size"; then
+			[ "$dbg" = "1" ] && debug "$action_message"
+			result 0 " OK"
+			debug "\n"
+			exit 0
+		else
+			[ "$dbg" = "1" ] && debug "$action_message"
+			result 1 " failed"
+			debug "\n"
+			exit 1
+		fi
 	fi
 )
 #######################################################################################################
