@@ -328,7 +328,8 @@ get_avm_image_from_blockdevice()
 
 	[ -t 1 ] && printf -- "STDOUT is a terminal device, output suppressed.\a\n" 1>&2 && exit 1
 
-	payload_size=$(( payload_size + 8 ))
+	payload_size=$(( payload_size + 64 + 8 + 8 ))
+	offset=0
 	action "Copying %u (%#x) bytes of data starting from offset %u (%#x) ..." "$payload_size" "$payload_size" "$offset" "$offset"
 	[ "$dbg" = "1" ] && result 2 " running"
 	if [ -f "$img" ]; then
