@@ -256,6 +256,7 @@ find_rootfs_in_fit_image()
 	# shellcheck disable=SC2015
 	dev_info() ( [ -z "$2" ] && udevadm info -q all -n "$1" || { udevadm info -q all -n "$1" | sed -n -e "s|^E: $2=\(.*\)|\1|p"; } )
 	mtd_type() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && cat "/sys$(dev_info "$1" DEVPATH)/type" && exit 0 || exit 1; )
+	nand_pagesize() ( [ "$(dev_info "$1" DEVTYPE)" = "mtd" ] && [ "$(mtd_type "$1")" = "nand" ] && cat "/sys$(dev_info "$1" DEVPATH)/subpagesize" && exit 0 || exit 1; )
 	copy_image() (
 		! command -v udevadm 2>"$null" 1>&2 && printf -- "Missing 'udevadm' utility.\a\n" 1>&2 && exit 1
 		[ -f "$1" ] && type="file" || type="$(dev_info "$1" DEVTYPE)"
@@ -267,7 +268,8 @@ find_rootfs_in_fit_image()
 				;;
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$3" count=1 2>"$null"
+				pagesize="$(nand_pagesize "$1")"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$1" 2>"$null" | dd of="$2" bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null"
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
@@ -275,7 +277,6 @@ find_rootfs_in_fit_image()
 				;;
 		esac
 	)
-
 
 	null="/dev/null"
 	zeros="/dev/zero"
