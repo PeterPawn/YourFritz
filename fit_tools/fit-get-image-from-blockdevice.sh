@@ -251,7 +251,7 @@ get_avm_image_from_blockdevice()
 			("nand")
 				! command -v nanddump 2>"null" 1>&2 && printf -- "Missing 'nanddump' utility.\a\n" 1>&2 && exit 1
 				pagesize="$(nand_pagesize "$2")"
-				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" 2>"$null" | dd bs="$3" count=1 2>"$null"
+				"$(command -v nanddump 2>"$null")" --bb skipbad "$2" 2>"$null" | dd bs="$pagesize" count="$(( $3 / pagesize + 1 ))" of="$tmpdir/nanddump-$$" 2>"$null" && dd if="$tmpdir/nanddump-$$" bs="$3" count=1 2>"$null" && rm "$tmpdir/nanddump-$$" 2>"$null"
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
