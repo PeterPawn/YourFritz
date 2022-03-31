@@ -391,7 +391,7 @@ find_rootfs_in_fit_image()
 	if [ "$fs_size" -gt 0 ]; then
 		printf "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
 	elif [ "$rd_size" -gt 0 ]; then
-		printf "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
+		printf "rootfs_type=ramdisk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
 	else
 		printf "No rootfs candicates found.\a\n" 1>&2 && exit 1
 	fi
