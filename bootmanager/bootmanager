@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204010016
+yf_bootmanager_timestamp=202204010028
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -712,7 +712,7 @@ find_rootfs_in_fit_image()
 			("disk")
 				mtd="$(get_real_name "/sys$(dev_info "$1" DEVPATH)/device")"
 				mtdname="${mtd##*/}"
-				copy_image "$mtdname" "$2" "$3"
+				copy_image "$devtmpfs/$mtdname" "$2" "$3"
 				;;
 			(*)
 				printf -- "Unable to detect device type of FIT image source (%s) or this type (%s) is unsupported.\a\n" "$1" "$([ -z "$type" ] && printf -- "(unknown)" || printf "%s\n" "$type")" 1>&2
