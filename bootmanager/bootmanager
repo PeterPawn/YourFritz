@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202203312328
+yf_bootmanager_timestamp=202204010016
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -2837,7 +2837,7 @@ case "$1" in
 				if [ "$altmodby" = "-" ]; then
 					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
 				else
-					value="$alternative_fs_epoch"
+					value="$alternative_fsdate_epoch"
 					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
 				fi
