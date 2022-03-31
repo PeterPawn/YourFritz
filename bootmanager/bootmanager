@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202203300114
+yf_bootmanager_timestamp=202203312328
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -119,6 +119,7 @@ readonly proc_devices="$procfs/devices"
 readonly tffs_device_name="tffs"
 # shellcheck disable=SC2034
 readonly mtd_prefix="mtd"
+# shellcheck disable=SC2034
 readonly mtd_mask="${mtd_prefix}%u"
 readonly mtdblock_prefix="$devtmpfs/mtdblock"
 readonly mtdblock_mask="${mtdblock_prefix}%u"
@@ -734,6 +735,7 @@ find_rootfs_in_fit_image()
 	fdt_end=9
 	fdt32_size=4
 
+	fs_copy="$2"
 	next_offset=0
 	if [ -n "$BM_DEBUG_FIT_IMAGE" ]; then
 		img="$BM_DEBUG_FIT_IMAGE"
@@ -782,8 +784,10 @@ find_rootfs_in_fit_image()
 
 	if [ "$fs_size" -gt 0 ]; then
 		printf -- "rootfs_type=squashfs rootfs_offset=%u rootfs_size=%u\n" "$fs_offset" "$fs_size"
+		[ -n "$fs_copy" ] && copy_optimized "$img" "$fs_offset" "$fs_size" >"$tempdir/$fs_copy"
 	elif [ "$rd_size" -gt 0 ]; then
 		printf -- "rootfs_type=ramdísk rootfs_offset=%u rootfs_size=%u\n" "$rd_offset" "$rd_size"
+		[ -n "$fs_copy" ] && copy_optimized "$img" "$rd_offset" "$rd_size" >"$tempdir/$fs_copy"
 	else
 		printf -- "No rootfs candicates found.\a\n" 1>&2 && exit 1
 	fi
@@ -1503,8 +1507,7 @@ extract_rootfs_ramdisk_etc()
 	mkdir -p "$mp" 2>"$null" || exit 1
 	cwd="$(pwd)"
 	cd "$mp" || exit 1
-	[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
-	copy_optimized "$1" "$2" "$3" | gzip -d | "$cpio" -i -d -m 'etc/*' 2>"$null"
+	gzip -d <"$1" | "$cpio" -i -d -m 'etc/*' 2>"$null"
 	cd "$cwd" || exit 1
 	[ -d "$mp/etc" ] && printf -- "%s\n" "$mp" && exit 0
 	exit 1
@@ -1518,31 +1521,7 @@ mount_fit_alternative_system()
 (
 	mp="$tempdir/$alt_root_mount_name"
 	mkdir -p "$mp" 2>"$null" || exit 1
-	mount -t squashfs -o offset="$2" "$1" "$mp" 2>"$null" && printf -- "%s\n" "$mp" && exit 0
-	# mount doesn't support offset option (BusyBox versions from the past)
-	if ! command -v losetup 2>"$null" 1>&2 && busybox --list | grep -q "losetup"; then
-		# losetup exists as applet, but there's no symlink for it
-		ln -s "$(command -v busybox 2>"$null")" "$tempdir/losetup"
-		losetup="$tempdir/losetup"
-	elif command -v losetup 2>"$null"; then
-		# losetup exists
-		losetup="$(command -v losetup 2>"$null")"
-	else
-		# no losetup available
-		unset losetup
-	fi
-	if [ -n "$losetup" ]; then
-		"$losetup" -r -f -o "$2" "$1" 2>"$null"
-		dev="$("$losetup" -a | sed -n -e "s|^\(/dev/loop.*\):.*$1.*|\1|p")"
-		mount -t squashfs "$dev" "$mp" && printf -- "%s\n" "$mp" && exit 0
-		"$losetup" -d "$dev" 2>"$null"
-	else
-		# no losetup, create a copy of whole squashfs image and try to mount this
-		[ -n "$BM_DEBUG_FIT" ] && printf -- "(0) copy_optimized %s %u %u\n" "$1" "$2" "$3" 1>&2
-		if copy_optimized "$1" "$2" "$3" >"$tempdir/$alt_root_image_name"; then
-			mount -t squashfs "$tempdir/$alt_root_image_name" "$mp" && printf -- "%s\n" "$mp" && exit 0
-		fi
-	fi
+	mount -t squashfs "$1" "$mp" 2>"$null" && printf -- "%s\n" "$mp" && exit 0
 	exit 1
 )
 #######################################################################################################
@@ -2411,6 +2390,7 @@ collect_data()
 	if ! is_fit_image_device; then
 		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 			alternative_is_missing=0
+			spinlock_pid=$$
 			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
 			if [ -n "$mp" ]; then
 				alternative_version="$(get_system_version "$mp")"
@@ -2439,38 +2419,10 @@ collect_data()
 			fpd="$BM_DEBUG_FIT_IMAGE"
 			[ -z "$fpd" ] && exit 1
 		fi
-		v="$(find_fit_inactive_rootfs_parameters "$fpd")"
-		if [ -n "$v" ]; then
-			alternative_is_missing=0
-			eval "$v"
-			if [ "$rootfs_type" = "squashfs" ]; then
-				spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fp" "$rootfs_offset" "$rootfs_size")")"
-			else
-				mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")"
-			fi
-			if [ -n "$mp" ]; then
-				alternative_version="$(get_system_version "$mp")"
-				readonly alternative_version
-				if [ -n "$alternative_version" ]; then
-					alternative_date_epoch="$(get_system_date "$mp")"
-					alternative_date="$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
-					alternative_fsdate_epoch="$(get_modified_date "$mp")"
-					alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
-					alternative_modified="$(get_modified_by "$mp")"
-					readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
-					alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
-					alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
-					alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
-					readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
-				fi
-				if [ "$rootfs_type" = "squashfs" ]; then
-					dismount_alternative_system
-				else
-					rm -r "$mp" 2>"$null"
-				fi
-			fi
-			[ "$rootfs_type" = "squashfs" ] && spinlock release
-		fi
+		eval "$(find_fit_inactive_rootfs_parameters "$fpd")"
+		readonly alternative_is_missing alternative_version
+		readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+		readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
 	fi
 }
 #######################################################################################################
@@ -2636,6 +2588,45 @@ colorize()
 )
 #######################################################################################################
 #                                                                                                     #
+# get data from inactive slot, if a FIT image is used                                                 #
+#                                                                                                     #
+#######################################################################################################
+get_inactive_slot_system_info()
+{
+	if [ "$rootfs_type" = "squashfs" ]; then
+		spinlock_pid=$$
+		spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$1")")"
+	else
+		mp="$(extract_rootfs_ramdisk_etc "$1")"
+	fi
+	if [ -n "$mp" ]; then
+		printf -- "%s=%s\n" "alternative_is_missing" "0"
+		alternative_version="$(get_system_version "$mp")"
+		printf -- "%s=\"%s\"\n" "alternative_version" "$alternative_version"
+		if [ -n "$alternative_version" ]; then
+			alternative_date_epoch="$(get_system_date "$mp")"
+			printf -- "%s=%s\n"	"alternative_date_epoch" "$alternative_date_epoch"
+			printf -- "%s=\"%s\"\n"	"alternative_date" "$(get_localized_date "$datetime_mask" "$alternative_date_epoch")"
+			alternative_fsdate_epoch="$(get_modified_date "$mp")"
+			printf -- "%s=%s\n"	"alternative_fsdate_epoch" "$alternative_fsdate_epoch"
+			printf -- "%s=\"%s\"\n"	"alternative_fsdate" "$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
+			printf -- "%s=\"%s\"\n"	"alternative_modified" "$(get_modified_by "$mp")"
+			printf -- "%s=%s\n"	"alternative_cbs" "$(change_branding_support "$mp" "$running_cbs")"
+			printf -- "%s=%s\n"	"alternative_branding" "$(get_system_branding "$mp" "$alternative_cbs")"
+			printf -- "%s=\"%s\"\n"	"alternative_brandings" "$(get_brandings "$mp" "$alternative_cbs")"
+		fi
+		if [ "$rootfs_type" = "squashfs" ]; then
+			dismount_alternative_system
+		else
+			rm -r "$mp" 2>"$null"
+		fi
+	else
+		printf -- "%s=%s" "alternative_is_missing" "1"
+	fi
+	[ "$rootfs_type" = "squashfs" ] && spinlock release
+}
+#######################################################################################################
+#                                                                                                     #
 # detect root filesystem from FIT image in inactive slot                                              #
 #                                                                                                     #
 #######################################################################################################
@@ -2643,12 +2634,15 @@ find_fit_inactive_rootfs_parameters()
 {
 	if ! [ -f "$inactive_fit_cache_file" ]; then
 		time1=$(timestamp)
-		find_rootfs_in_fit_image "$1" >"$inactive_fit_cache_file"
+		find_rootfs_in_fit_image "$1" "fscopy-$$" >"$inactive_fit_cache_file"
 		retc=$?
 		time2=$(timestamp)
 		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		. "$inactive_fit_cache_file"
+		get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
+		rm -f "$tempdir/fscopy-$$" 2>"$null"
 	else
-		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image info loaded from cache file.\n" 1>&2
+		[ -n "$BM_DEBUG_FIT" ] && printf -- "inactive slot system info loaded from cache file for FIT image\n" 1>&2
 	fi
 	cat "$inactive_fit_cache_file"
 }
@@ -2772,7 +2766,8 @@ case "$1" in
 				fpd="$BM_DEBUG_FIT_IMAGE"
 				[ -z "$fpd" ] && printf -- "Missing FIT image source for FIT debugging.\a\n" 1>&2 && exit 1
 			fi
-			eval "$(find_fit_inactive_rootfs_parameters "$fpd")"
+			fscopyname="fscopy-$$"
+			eval "$(find_fit_inactive_rootfs_parameters "$fpd" "$fscopyname")"
 			debug "inactive slot contains a FIT image = " "yellow" "%s" "$([ -n "$rootfs_type" ] && printf -- '%s' "true" || printf -- '%s' "false")"
 			if [ -z "$BM_DEBUG_FIT" ]; then
 				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
@@ -2832,43 +2827,25 @@ case "$1" in
 		else
 			debug "inactive slot = " "yellow" "%s" "$fpd"
 			if [ -n "$rootfs_type" ]; then
-				spinlock_pid=$$
 				debug "rootfs_type = " "yellow" "%s" "$rootfs_type"
 				debug "rootfs_offset = " "yellow" "%u (%#x)" "$rootfs_offset" "$rootfs_offset"
 				debug "rootfs_size = " "yellow" "%u (%#x)" "$rootfs_size" "$rootfs_size"
-				if [ "$rootfs_type" = "squashfs" ]; then
-					spinlock get 10 && mp="$(printf -- '%s' "$(mount_fit_alternative_system "$fpd" "$rootfs_offset" "$rootfs_size")")"
-					[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "rootfs from inactive slot mounted on %s" "$mp")"
+				debug "inactive system version = " "yellow" "%s" "$alternative_version"
+				value="$alternative_date_epoch"
+				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+				altmodby="$alternative_modified"
+				if [ "$altmodby" = "-" ]; then
+					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
 				else
-					mp="$(extract_rootfs_ramdisk_etc "$fpd" "$rootfs_offset" "$rootfs_size")" && \
-						[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "directory 'etc' extracted from rootfs ramdisk in inactive slot below of %s" "$mp")"
+					value="$alternative_fs_epoch"
+					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
 				fi
-				if [ -n "$mp" ]; then
-					debug "inactive system version = " "yellow" "%s" "$(get_system_version "$mp")"
-					value="$(get_system_date "$mp")"
-					debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-					altmodby="$(get_modified_by "$mp")"
-					if [ "$altmodby" = "-" ]; then
-						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
-					else
-						value="$(get_modified_date "$mp")"
-						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
-					fi
-					altcbs="$(change_branding_support "$mp")"
-					debug "brandings supported on inactive system = " "yellow" "%s" "$(get_brandings "$mp" "$altcbs")"
-					if ! [ "$altcbs" = "changeable" ]; then
-						debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$(get_system_branding "$mp" "$altcbs")" "$altcbs"
-					fi
-					if [ "$rootfs_type" = "squashfs" ]; then
-						dismount_alternative_system
-						[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "rootfs from inactive slot dismounted"
-					else
-						rm -r "$mp" 2>"$null"
-						[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "extracted files from rootfs ramdisk in inactive slot removed"
-					fi
+				altcbs="$alternative_cbs"
+				debug "brandings supported on inactive system = " "yellow" "%s" "$alternative_brandings"
+				if ! [ "$altcbs" = "changeable" ]; then
+					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$alternative_branding" "$altcbs"
 				fi
-				[ "$rootfs_type" = "squashfs" ] && spinlock release
 			else
 				debug "" "red" "%s" "FIT image not found for inactive slot"
 			fi
