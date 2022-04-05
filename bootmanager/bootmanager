@@ -880,7 +880,7 @@ check_urlader_configuration()
 		else
 			lwr=0
 		fi
-		if [ "$h" -eq 16 ]; then
+		if [ "$h" -le 16 ]; then
 			[ "$lwr" -eq 0 ] && printf -- "%u\n" "$(( s * h ))" || printf -- "%u\n" "$(( ( s + 1 ) * h ))"
 			exit 0
 		fi
@@ -936,12 +936,13 @@ check_urlader_configuration()
 		geteva >"$ut/dump" || exit 1
 	fi
 	usize="$(fsize "$ut/dump")"
-	pow2=1
-	while [ "$pow2" -lt "$usize" ]; do pow2=$(( pow2 * 2 )); done
-	if [ "$pow2" -ne "$usize" ]; then
-		msg "Urlader dump size isn't a power of two.\n"
-		exit 1
-	fi
+	while [ "$usize" -ge 16 ]; do
+		if [ $(( usize & 1 )) -eq 1 ]; then
+			msg "Urlader dump size isn't a power of two.\n"
+			exit 1
+		fi
+		usize=$(( usize >> 1 ))
+	done
 	memsize=""
 	# shellcheck disable=SC2034
 	mtd0=""
@@ -1036,7 +1037,7 @@ check_urlader_configuration()
 		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
-			exit 1
+			exit 2
 		fi
 	done
 	coff="$defoff"
@@ -1167,10 +1168,10 @@ change_branding_support()
 				printf -- "immutable"
 				exit 1
 			fi
-		elif ! [ "$system_type" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
-			device_branding_is_changeable="true"
-			printf -- "changeable"
-			exit 0
+#		elif ! [ "$system_type" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
+#			device_branding_is_changeable="true"
+#			printf -- "changeable"
+#			exit 0
 		else
 			device_branding_is_changeable="false"
 			printf -- "immutable"
@@ -2653,29 +2654,35 @@ find_fit_inactive_rootfs_parameters()
 #######################################################################################################
 load_device_configuration()
 {
+	out_dev_config() {
+		printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$1" "$2" "$3"
+	}
 	if ! [ -f "$device_cache_file" ]; then
+		printf -- "undetectable=%s\n" "$(get_environment "$branding_name")" >"$device_cache_file"
 		time1=$(timestamp)
 		device_branding="$(check_urlader_configuration "$branding_name")"
 		retc=$?
 		time2=$(timestamp)
 		# shellcheck disable=SC2181
+		[ -z "$device_branding" ] && device_branding="$(get_environment "$branding_name")"
 		if [ "$retc" -eq 0 ]; then
-			[ -z "$device_branding" ] && exit 1
 			device_branding_is_changeable="true"
 			printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
-		else
-			[ -z "$device_branding" ] && exit 1
+		elif [ "$retc" -eq 2 ]; then
 			device_branding_is_changeable="false"
 			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
+		else
+			device_branding_is_changeable="false"
 		fi
-		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2 && \
+			cat "$device_cache_file" 1>&2
 	else
-		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
-		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
-		[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
-		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2
+		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=.*\$|\1|p" "$device_cache_file")"
+		device_branding="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=\(.*\)\$|\2|p" "$device_cache_file")"
+		[ "$device_cbs" = "changeable" ] && device_branding_is_changeable="true" || device_branding_is_changeable="false"
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2 && cat "$device_cache_file" 1>&2
 	fi
-	printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
+	out_dev_config "$device_cbs" "$device_branding" "$device_branding_is_changeable"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2723,11 +2730,10 @@ case "$1" in
 		debug "yf_bootmanager version = " "yellow" "%s-%s" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
 		system_type="$(get_system_type)"
 		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
-		# shellcheck disable=SC2046
-		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
 		delim_2="running system"
 		delim_3="alternative system"
+		delim_4="device configuration from EVA loader"
 		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
 		set | grep "^delim_[0-9]*=" 2>"$null" | \
 		while read -r ln; do
@@ -2735,6 +2741,9 @@ case "$1" in
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
+		# shellcheck disable=SC2046
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_4"
+		eval "$(load_device_configuration)"
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
 		rootfs_type=""
 		rootfs_offset=0
