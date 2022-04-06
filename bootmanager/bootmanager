@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204061554
+yf_bootmanager_timestamp=202204062059
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -2622,7 +2622,7 @@ get_inactive_slot_system_info()
 			rm -r "$mp" 2>"$null"
 		fi
 	else
-		printf -- "%s=%s" "alternative_is_missing" "1"
+		printf -- "%s=%s\n" "alternative_is_missing" "1"
 	fi
 	[ "$rootfs_type" = "squashfs" ] && spinlock release
 }
@@ -2639,9 +2639,16 @@ find_fit_inactive_rootfs_parameters()
 		retc=$?
 		time2=$(timestamp)
 		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		# shellcheck disable=SC1090
 		. "$inactive_fit_cache_file"
-		get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
-		rm -f "$tempdir/fscopy-$$" 2>"$null"
+		if ! [ -f "$tempdir/fscopy-$$" ]; then
+			printf -- "File with copy of filesystem image is missing.\n" 1>&2
+			printf -- "%s=%u\n" "alternative_is_missing" "1" >>"$inactive_fit_cache_file"
+			printf -- "%s=\"\"\n" "alternative_version" >>"$inactive_fit_cache_file"
+		else
+			get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
+			rm -f "$tempdir/fscopy-$$" 2>"$null"
+		fi
 	else
 		[ -n "$BM_DEBUG_FIT" ] && printf -- "inactive slot system info loaded from cache file for FIT image\n" 1>&2
 	fi
@@ -2778,13 +2785,13 @@ case "$1" in
 			fscopyname="fscopy-$$"
 			eval "$(find_fit_inactive_rootfs_parameters "$fpd" "$fscopyname")"
 			debug "inactive slot contains a FIT image = " "yellow" "%s" "$([ -n "$rootfs_type" ] && printf -- '%s' "true" || printf -- '%s' "false")"
-			if [ -z "$BM_DEBUG_FIT" ]; then
+			if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
 				debug "active slot = " "yellow" "%s" "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_active)")")"
 				debug "active system version = " "yellow" "%s" "$(get_system_version)"
 			fi
 		fi
-		if [ -z "$BM_DEBUG_FIT" ]; then
+		if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 			value="$(get_system_date)"
 			debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 			modby="$(get_modified_by)"
