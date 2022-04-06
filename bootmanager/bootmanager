@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204010028
+yf_bootmanager_timestamp=202204061554
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1472,7 +1472,7 @@ is_fit_image_device()
 (
 	[ -n "$BM_DEBUG_FIT" ] && exit 0
 	case "$system_type" in
-		("IPQ8074"|"BCM963"|"IPQ5018")
+		("IPQ8074"|"BCM963"|"IPQ5018"|"PRX300")
 			if [ -d "$disk_by_label" ]; then
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "0")")" ] && exit 1
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "1")")" ] && exit 1
@@ -1785,7 +1785,7 @@ is_switched()
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
 			if is_fit_image_device; then
-				[ -n "$BM_DEBUG_FIT" ] && exit 1
+				[ -n "$BM_DEBUG_FIT" ] && exit 0
 				! [ "$(get_system_switch)" = "$("$bootslot_tool" get_active)" ]
 			else
 				k1="$(get_partition "$kernel_name" "$active_name")"
@@ -2413,7 +2413,7 @@ collect_data()
 			spinlock release
 		fi
 	else
-		if [ -z "$BM_DEBUG_FIT" ]; then
+		if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 			fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
 			fpd="$(get_partition "$fp")"
 		else
@@ -2768,7 +2768,7 @@ case "$1" in
 			debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
 			debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		else
-			if [ -z "$BM_DEBUG_FIT" ]; then
+			if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 				fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
 				fpd="$(get_partition "$fp")"
 			else
