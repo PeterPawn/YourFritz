@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204102259
+yf_bootmanager_timestamp=202204102322
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1611,7 +1611,7 @@ get_partition()
 				get_vr9_image "$1" "$2"
 			fi
 			rc=$?
-		elif [ "$system_type" = "GRX500" ] || [ "$system_type" = "GRX350" ] || [ "$system_type" = "IPQ4019" ]; then
+		elif [ "$system_type" = "GRX500" ] || [ "$system_type" = "GRX350" ] || [ "$system_type" = "IPQ4019" ] || [ "$system_type" = "IPQ5018" ]; then
 			get_mtd_partition "$1" "$2"
 			rc=$?
 		else
