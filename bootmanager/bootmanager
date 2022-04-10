@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204101622
+yf_bootmanager_timestamp=202204101638
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -924,7 +924,7 @@ check_urlader_configuration()
 		b=1
 		while [ "$s" -ge 16 ]; do
 			if [ $(( s & 1 )) -eq 1 ]; then
-				dd if="$zeros" of="$1" bs="$b" skip=$(( o / b )) count=1 2>"$null"
+				dd if="$zeros" of="$1" bs="$b" seek=$(( o / b )) count=1 2>"$null"
 				adjust_eva_config_size "$1"
 			fi
 			s=$(( s >> 1 ))
