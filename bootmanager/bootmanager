@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204062059
+yf_bootmanager_timestamp=202204101622
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -917,6 +917,21 @@ check_urlader_configuration()
 		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>"$null"
 		fndo "$f" "$l" "$ch"
 	)
+	adjust_eva_config_size() (
+		f="$1"
+		s="$(fsize "$1")"
+		o="$s"
+		b=1
+		while [ "$s" -ge 16 ]; do
+			if [ $(( s & 1 )) -eq 1 ]; then
+				dd if="$zeros" of="$1" bs="$b" skip=$(( o / b )) count=1 2>"$null"
+				adjust_eva_config_size "$1"
+			fi
+			s=$(( s >> 1 ))
+			b=$(( b << 1 ))
+		done
+	)
+
 	env_name="$1"
 	trap 'rm -rf "$ut" 2>$null' EXIT
 	if ! command -v grep 2>"$null" 1>&2; then
@@ -935,14 +950,7 @@ check_urlader_configuration()
 	else
 		geteva >"$ut/dump" || exit 1
 	fi
-	usize="$(fsize "$ut/dump")"
-	while [ "$usize" -ge 16 ]; do
-		if [ $(( usize & 1 )) -eq 1 ]; then
-			msg "Urlader dump size isn't a power of two.\n"
-			exit 1
-		fi
-		usize=$(( usize >> 1 ))
-	done
+	adjust_eva_config_size "$ut/dump"
 	memsize=""
 	# shellcheck disable=SC2034
 	mtd0=""
@@ -1369,9 +1377,9 @@ get_fdt_compatible_value()
 # (x) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
 # ( ) IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                 #
 # ( ) BRCMA9 devices with nand flash (7581, 7582 - BCM963 family)                                     #
-# ( ) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
+# (X) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
 # ( ) IPQ5010/IPQ5018-based devices with nand flash and using FIT image format (7510, FR1200ax)       #
-# ( ) PRX300-based devices with NAND flash and using FIT image format (5530)                          #
+# (X) PRX300-based devices with NAND flash and using FIT image format (5530)                          #
 #                                                                                                     #
 #######################################################################################################
 get_system_type()
