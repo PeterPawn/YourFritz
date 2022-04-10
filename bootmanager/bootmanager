@@ -968,7 +968,7 @@ check_urlader_configuration()
 	[ -z "$memsize" ] && exit 1
 	touch "$ut/config_header" 2>"$null"
 	printf -- "\000\000\000\003" | native_byte_order_evacfg | append
-	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA_CONFIG" ] && memsize=$(( memsize / 2 ))
+	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA_CONFIG" ] && [ -z "$BM_DEBUG_EVA_ENV" ] && memsize=$(( memsize / 2 ))
 	hex2bin "$(printf -- "%08x" "$memsize")" | native_byte_order_evacfg | append
 	printf -- "\000\000\000\000" | append
 	i=0
@@ -1528,6 +1528,7 @@ extract_rootfs_ramdisk_etc()
 #######################################################################################################
 mount_fit_alternative_system()
 (
+	is_loop_device_supported || exit 1
 	mp="$tempdir/$alt_root_mount_name"
 	mkdir -p "$mp" 2>"$null" || exit 1
 	mount -t squashfs "$1" "$mp" 2>"$null" && printf -- "%s\n" "$mp" && exit 0
@@ -2488,6 +2489,8 @@ get_values()
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
 	printf -- "bootmanager_version=\"%s-%s\"\n" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
+	[ -n "$error_description" ] && printf -- "error_description=\"%s\"\n" "$error_description"
+	[ "$error_code" -ne 0 ] && printf -- "error_code=%u\n" "$error_code"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2653,6 +2656,8 @@ find_fit_inactive_rootfs_parameters()
 			printf -- "File with copy of filesystem image is missing.\n" 1>&2
 			printf -- "%s=%u\n" "alternative_is_missing" "1" >>"$inactive_fit_cache_file"
 			printf -- "%s=\"\"\n" "alternative_version" >>"$inactive_fit_cache_file"
+			error_description="Unable to mount inactive filesystem from FIT image."
+			error_code=$(( error_code & 2 ))
 		else
 			get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
 			rm -f "$tempdir/fscopy-$$" 2>"$null"
@@ -2719,6 +2724,8 @@ verbose=0
 system_type=""
 is_puma_device=0
 [ "$(( 0x80000000 ))" = "-2147483648" ] && shell_32bit_arithmetics=1 || shell_32bit_arithmetics=0
+error_description=""
+error_code=0
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -2874,6 +2881,8 @@ case "$1" in
 				debug "" "red" "%s" "FIT image not found for inactive slot"
 			fi
 		fi
+		[ -n "$error_description" ] && debug "saved error description = " "red" "%s" "$error_description"
+		[ "$error_code" -ne 0 ] && debug "stored error code = " "red" "%s" "$error_code"
 		rc=0
 		;;
 	("show_eva_cfg")
@@ -2906,7 +2915,11 @@ case "$1" in
 		;;
 	("clear_cache")
 		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>"$null"
-		[ "$2" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>"$null"
+		shift
+		while [ -n "$1" ]; do
+			[ "$1" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>"$null"
+			shift
+		done
 		rc=0
 		;;
 	("switch_to")
