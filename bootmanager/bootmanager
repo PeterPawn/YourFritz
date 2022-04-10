@@ -748,6 +748,7 @@ find_rootfs_in_fit_image()
 		printf -- "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 		exit 1
 	fi
+	[ "$2" = "check" ] && exit 0
 
 	next_offset=$(( next_offset + fdt32_size ))
 	payload_size="$(get_fdt32_le "$img" "$next_offset")"
@@ -1388,7 +1389,6 @@ get_system_type()
 
 	compatible="$(get_fdt_compatible_value)"
 	# VR9, GRX5 and PRX300 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
-	# TODO: PRX300 is based on kernel source reviews, not confirmed so far
 	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
 	if [ -n "$type" ]; then
 		printf -- '%s\n' "$type" && exit 0
@@ -1758,6 +1758,17 @@ get_system_switch()
 (
 	[ -n "$2" ] && sed -n -e "s/^$system_select_name\t[01]\(.*\)\$/\1/p" "$1" && return
 	sed -n -e "s/^$system_select_name\t\([01]\).*\$/\1/p" "${1:-$urlader_environment}"
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether the specified partition/device contains a magic value of AVM's FIT image format      #
+#                                                                                                     #
+# $1 - (block) device to check                                                                        #
+#                                                                                                     #
+#######################################################################################################
+is_fit_image_present()
+(
+	find_rootfs_in_fit_image "$1" "check"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2401,8 +2412,12 @@ collect_data()
 	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
 	if ! is_fit_image_device; then
-		# TODO: don't rely on existing kernel partition, if a IPQ5018 device
-		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+		if [ "$system_type" = "IPQ5018" ]; then
+			is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" && present=1 || present=0
+		else
+			is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && present=1 || present=0
+		fi
+		if [ "$present" -eq 1 ]; then
 			alternative_is_missing=0
 			spinlock_pid=$$
 			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
@@ -2789,10 +2804,15 @@ case "$1" in
 		debug "device branding is changeable = " "yellow" "%s" "$device_branding_is_changeable"
 		debug "current branding = " "yellow" "%s" "$OEM"
 		if ! is_fit_image_device; then
-			# TODO: IPQ5018 needs another check for installed system in the 'other' slot
-			debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
-			[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
-			debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+			if [ "$system_type" = "IPQ5018" ]; then
+				debug "system in inactive slot is installed = " "yellow" "%s" "$(is_fit_image_installed "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" \
+					&& printf -- '%s' "true" || printf -- '%s' "false")"
+				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+			else
+				debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
+				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+				debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+			fi
 			debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
 			debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		else
@@ -2831,8 +2851,9 @@ case "$1" in
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
 		if ! is_fit_image_device; then
-			# TODO: IPQ5018 kernel check
-			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+			if ! [ "$system_type" = "IPQ5018" ]; then
+				debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+			fi
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
 			if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 				spinlock_pid=$$
