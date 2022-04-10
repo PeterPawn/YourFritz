@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204102322
+yf_bootmanager_timestamp=202204102330
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -2855,7 +2855,12 @@ case "$1" in
 				debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
 			fi
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
-			if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+			if [ "$system_type" = "IPQ5018" ]; then
+				is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" && present=1 || present=0
+			else
+				is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && present=1 || present=0
+			fi
+			if [ "$present" -eq 1 ]; then
 				spinlock_pid=$$
 				spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
 				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "inactive filesystem mounted on %s" "$mp")"
