@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204101638
+yf_bootmanager_timestamp=202204102259
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -2805,7 +2805,7 @@ case "$1" in
 		debug "current branding = " "yellow" "%s" "$OEM"
 		if ! is_fit_image_device; then
 			if [ "$system_type" = "IPQ5018" ]; then
-				debug "system in inactive slot is installed = " "yellow" "%s" "$(is_fit_image_installed "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" \
+				debug "system in inactive slot is installed = " "yellow" "%s" "$(is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" \
 					&& printf -- '%s' "true" || printf -- '%s' "false")"
 				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
 			else
