@@ -1362,8 +1362,7 @@ get_fdt_value()
 get_fdt_compatible_value()
 (
 	v="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\2|p" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/")"
-	[ -z "$v" ] && v="unknown"
-	printf -- "%s\n" "$v"
+	[ -n "$v" ] && printf -- "%s\n" "$v"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -2772,11 +2771,12 @@ case "$1" in
 		rootfs_size=0
 		debug "system type = " "yellow" "%s" "$system_type"
 		if [ -d "$fdt_base" ]; then
-			debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model" || printf -- "unknown")"
+			model="$(get_fdt_value "$fdt_model")"
+			[ -n "$model" ] && debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model")"
 			chipset="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\1|p")"
-			[ -z "$chipset" ] && chipset="unknown"
-			debug "chipset manufacturer = " "yellow" "%s" "$chipset"
-			debug "compatible = " "yellow" "%s" "$(get_fdt_compatible_value)"
+			[ -n "$chipset" ] && debug "chipset manufacturer = " "yellow" "%s" "$chipset"
+			comp="$(get_fdt_compatible_value)"
+			[ -n "$comp" ] && debug "compatible = " "yellow" "%s" "$comp"
 		fi
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
 		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
