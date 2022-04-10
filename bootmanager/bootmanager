@@ -1487,6 +1487,10 @@ is_fit_image_device()
 				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
 				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "1")")" ] && exit 1
 			fi
+			if [ "$system_type" = "IPQ5018" ] && [ -n "$(get_mtd_partition "$filesystem_name" "$inactive_name")" ]; then
+				# FIT image, but a 'reserved_filesystem' partition, too
+				exit 1
+			fi
 			[ -x "$bootslot_tool" ] && exit 0
 			;;
 		(*)
@@ -2397,6 +2401,7 @@ collect_data()
 	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
 	if ! is_fit_image_device; then
+		# TODO: don't rely on existing kernel partition, if a IPQ5018 device
 		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
 			alternative_is_missing=0
 			spinlock_pid=$$
@@ -2784,6 +2789,7 @@ case "$1" in
 		debug "device branding is changeable = " "yellow" "%s" "$device_branding_is_changeable"
 		debug "current branding = " "yellow" "%s" "$OEM"
 		if ! is_fit_image_device; then
+			# TODO: IPQ5018 needs another check for installed system in the 'other' slot
 			debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
 			[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
 			debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
@@ -2825,6 +2831,7 @@ case "$1" in
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
 		if ! is_fit_image_device; then
+			# TODO: IPQ5018 kernel check
 			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
 			if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
