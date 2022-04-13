@@ -326,10 +326,16 @@ timestamp() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && sed -n 
 duration() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
 #######################################################################################################
 #                                                                                                     #
+# get major device ID for specified driver name                                                       #
+#                                                                                                     #
+#######################################################################################################
+get_major_device_id() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $1|\1|p" "$proc_devices"; )
+#######################################################################################################
+#                                                                                                     #
 # get TFFS major device ID from /proc/devices                                                         #
 #                                                                                                     #
 #######################################################################################################
-get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1|p" "$proc_devices"; )
+get_tffs_major() ( get_major_device_id "$tffs_device_name"; )
 #######################################################################################################
 #                                                                                                     #
 # get a value from urlader environment                                                                #
@@ -1526,6 +1532,19 @@ extract_rootfs_ramdisk_etc()
 )
 #######################################################################################################
 #                                                                                                     #
+# check, whether loop device support is present - and try as hard as possible to find a way to load   #
+# an appropriate kernel module, if it's not usable 'out of the box'                                   #
+#                                                                                                     #
+# If this function returns an exit code of 0, processing that needs the loopback driver for block     #
+# devices may continue; otherwise it should be stopped without further attempts.                      #
+#                                                                                                     #
+#######################################################################################################
+is_loop_device_supported()
+(
+	[ -n "$(get_major_device_id "$loop_driver_name")" ] && exit 0
+)
+#######################################################################################################
+#                                                                                                     #
 # find rootfs offset in a FIT image partition and mount the found filesystem                          #
 #                                                                                                     #
 #######################################################################################################
@@ -2147,7 +2166,7 @@ get_ids_of_mountpoint()
 #######################################################################################################
 is_loopdevice_mountpoint()
 (
-	loop_major="$(sed -n -e "s|^ *\([0-9]*\) *${loop_driver_name}[ \t]\?.*\$|\1|p" "$proc_devices")"
+	loop_major="$(get_major_device_id "$loop_driver_name")"
 	[ ${#loop_major} -eq 0 ] && exit 1
 	dev="$(get_ids_of_mountpoint "$1")"
 	[ ${#dev} -eq 0 ] && exit 1
@@ -2231,7 +2250,7 @@ dismount_alternative_system()
 	fi
 	if [ -n "$losetup" ]; then
 		"$losetup" -a | grep -q "$tempdir/" 2>"$null" && \
-			"$losetup" -d "$("$losetup" -a | sed -n -e "s|^\(/dev/loop.*\):.*$tempdir/.*|\1|p")"
+			"$losetup" -d "$("$losetup" -a | sed -n -e "s|^\($devtmpfs/$loop_driver_name.*\):.*$tempdir/.*|\1|p")"
 	fi
 	[ -f "$tempdir/$alt_root_image_name" ] && rm -f "$tempdir/$alt_root_image_name" 2>"$null"
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
