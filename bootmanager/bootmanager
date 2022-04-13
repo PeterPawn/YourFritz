@@ -158,6 +158,7 @@ readonly yf_custom_environment_locations="\$path/etc/boot.d \$path/etc/init.d \$
 readonly yf_signature_key_modulus="00b4074ef52e5c44f3a1eca1bd8eb3b5f217b82eaa23641adf50ca5bb98f3538ac706a5bb5f15def942bc352f3cd1cdf4ba1f47bc66863d95ecc7576d4f6d6729d396056e8fdf5d2ff5998ff33559104e07934e0c944d764bb881708ed73c0df0b948a9659de65c9940a9f537fcd1450bcdffe5a76f6b8d298ef89c3ce895f9361"
 readonly yf_signature_key_exponent="010001"
 readonly yf_loop_repository_url="https://raw.githubusercontent.com/PeterPawn/yf_bin/master/loop-drivers/YourFritz-loop-driver-archive.image"
+readonly uname="uname"
 readonly avm_downloader="/usr/bin/tr069fwupdate"
 readonly avm_pubkey_sources="/etc/avm_firmware_public_key[1-9] /etc/plugin_global_key.pem"
 #######################################################################################################
@@ -1538,6 +1539,41 @@ extract_rootfs_ramdisk_etc()
 )
 #######################################################################################################
 #                                                                                                     #
+# check, whether the YourFritz public key is already available and if it's missing, overload one of   #
+# AVM's key files with the key                                                                        #
+#                                                                                                     #
+#######################################################################################################
+install_yourfritz_key()
+(
+	found=""
+	for file in $avm_pubkey_sources; do
+		key="$(sed -n -e 1p "$file")"
+		if [ "$key" = "$yf_signature_key_modulus" ]; then
+			exp="$(sed -n -e 1p "$file")"
+			[ "$exp" = "$yf_signature_key_exponent" ] && exit 0
+		fi
+		found="$file $found"
+	done
+	[ -n "$1" ] && exit 1
+	printf -- "%s\n%s" "$yf_signature_key_modulus" "$yf_signature_key_exponent" >"$tempdir/pubkey"
+	for file in $found; do
+		mount -o bind "$tempdir/pubkey" "$file" 2>"$null" && break
+	done
+	install_yourfritz_key check && exit 0
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# remove a bind-mounted YourFritz key, if any                                                         #
+#                                                                                                     #
+#######################################################################################################
+uninstall_yourfritz_key()
+(
+	tgt="$(sed -n -e "s|^\([0-9:]* \)\{3\}$tempdir/pubkey \([^ ]*\) r.*|\2|p" "$proc_mountinfo")"
+	[ -n "$tgt" ] && umount "$tgt"
+)
+#######################################################################################################
+#                                                                                                     #
 # check, whether loop device support is present - and try as hard as possible to find a way to load   #
 # an appropriate kernel module, if it's not usable 'out of the box'                                   #
 #                                                                                                     #
@@ -1552,12 +1588,15 @@ is_loop_device_supported()
 	check_whether_module_loaded && exit 0 # already loaded
 	modprobe "$loop_driver_name" 2>"$null"
 	check_whether_module_loaded && exit 0 # had to be loaded only
-	for lkm in $(find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) ); do
+	find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) | \
+	while read -r lkm; do
 		insmod "$lkm" 2>"$null"
 		check_whether_module_loaded && exit 0 # present, but not in any dependencies file -> insmod needed instead of modprobe
 	done
 	[ -n "$BM_NO_DYNAMIC_LOADING" ] && exit 1 # no dynamic loading of loop device drivers from yourfritz.de
 	[ -x "$avm_downloader" ] || exit 1 # no tr069fwupdate found
+	install_yourfritz_key || exit 1
+	trap 'uninstall_yourfritz_key' EXIT
 	"$avm_downloader" packet "$yf_loop_repository_url" || exit 1
 	insmod "/var/$loop_driver_name.ko" 2>"$null"
 	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
