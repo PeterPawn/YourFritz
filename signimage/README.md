@@ -1,38 +1,34 @@
 # sign / verify TAR archives like AVM's components do it
 
-This folder contains some scripts to demonstrate the process of signing firmware images in the reading of AVM.
+This folder contains some scripts to demonstrate the process of signing firmware images in the reading of AVM ... and the second attempt should be able to support all tasks in the context of own signing of images, which may be read/verified by AVM's components in FRITZ!OS.
 
-Such signed images are TAR archives (the old format with "ustar" headers and without GNU extension or PaxHeaders)
-and they contain an extra member `./var/signature` with the output of a call to `RSA_sign()` for the original archive
-with two empty placeholder blocks (a 512 byte) instead of this signature file.
+Such signed images are TAR archives (the old format with "ustar" headers and without GNU extension or PaxHeaders) and they contain an extra member `./var/signature` with the output of a call to `RSA_sign()` for the original archive with two empty placeholder blocks (a 512 byte) instead of this signature file.
+
+This is the second attempt of implementation - all new scripts carry a version number above of 1.0. There are (intended) changes, which break compatibility with the previous versions, but finally it should be easy enough, to accomodate an own usage to the new pre-settings, the new script names and some changed parameters. Each script of the new version provides its own usage help screen, reachable by a call with option `--help` (or `-h` for short).
+
+If you provide every mandatory/needed value or option with your call (either by environment variables or as parameters), it's possible to use the scripts solely in a 'batch mode' - any missing setting (e.g. the password of the private key used for signing an image) will be requested interactively from the user (via terminal).
 
 The sample scripts and their purposes:
 
-`yf_genkey`
+`yf_genkey` (previous name: `generate_signing_key`)
 
-create an own key pair to sign images - AVM uses 1024 bit RSA keys, this script may be used to create larger keys, which can't
-be verified with the AVM components
+create an own key pair to sign images - AVM uses 1024 bit RSA keys, this script may be used to create larger keys, which can't be verified with the AVM components - this file has incomplete changes and shouldn't be used.
 
-`yf_sign`
+`yf_sign` (previous name: `sign_image`)
 
 add a signature file to a specified TAR archive and stream the result to STDOUT
 
-`avm_pubkey_to_pkcs8`
+`yf_mod2der` (previous name: `avm_pubkey_to_pkcs8`)
 
-convert a public key file in AVM reading (one line with modulus as hexadecimal character string and another one with the public
-exponent) into a well-formed PKCS8 structure in a PEM file, ready to be used by OpenSSL functions
+convert a public key file in AVM reading (one line with modulus as hexadecimal character string and another one with the public exponent) into a well-formed PKCS8 structure in a PEM file, ready to be used by OpenSSL functions
 
-`yf_check_signature`
+`yf_check_signature` (previous name: `check_signed_image`)
 
-verify the signature of a signed image, the script accepts a list of possible public keys (in various formats) and tries to
-decode the signature file, until the right key was found or the end of list is reached
+verify the signature of a signed image, the script accepts a list of possible public keys (in various formats) and tries to decode the signature file, until the right key was found or the end of list is reached
 
 `yf_signimage.conf`
 
-contains some definitions for the location and file name conventions of personal key files involved in this process; this file
-will be included by the others to setup key file locations - read comments carefully, in most cases no permanent changes should
-be needed, even if it's called the 'configuration file' now ... in any case it should be possible to limit own changes to the
-settings within this file, so please do not change the other scripts until it's really inevitable
+contains some definitions for the location and file name conventions of personal key files involved in this process; this file will be included by the others to setup key file locations - read comments carefully, in most cases no permanent changes should be needed, even if it's called the 'configuration file' now ... in any case it should be possible to limit own changes to the settings within this file, so please do not change the other scripts until it's really inevitable
 
 ---
 
@@ -108,7 +104,6 @@ The new file may be used to start a FRITZ!Box device from RAM. Please have a loo
 
 ---
 
-If you need further information and you're able to read text in German, you can find a longer explanation regarding the signing
-process and the use cases of these scripts in the IPPF forum:
+If you need further information and you're able to read text in German, you can find a longer explanation regarding the signing process and the use cases of these scripts in the IPPF forum:
 
 <http://www.ip-phone-forum.de/showthread.php?t=286213>
