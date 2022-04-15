@@ -1,8 +1,8 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
-yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204152053
+yf_bootmanager_version="0.8.6"
+yf_bootmanager_timestamp=202204152119
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -10,7 +10,7 @@ yf_bootmanager_timestamp=202204152053
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.5                                                                          #
+# bootmanager, version 0.8.6                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -83,6 +83,14 @@ yf_bootmanager_timestamp=202204152053
 # The script tries to detect the framework (if any), which was used to modify the original firmware.  #
 # To find this, it checks for the YourFritz version file, the Freetz version file and the "modfs"     #
 # version file in this order and the first file found is assumed to be a mark of the used framework.  #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
+# To test implementation for various aspects (EVA configuration, FIT image handling, loop device      #
+# driver download), some environment values (BM_DEBUG_{FIT|EVA|LOOP}=1) are supported. With other     #
+# values (see script code below) it's possible to use specified image files instead of data read from #
+# current device. Those settings are for TEST PURPOSES only - don't use them, if you don't understand #
+# their meanings and their impact on flow of execution.                                               #
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
@@ -1598,11 +1606,11 @@ is_loop_device_supported()
 			printf -- "AVM: /var/packet\n"
 			find /var/packet -exec ls -l '{}' \;
 		fi
-		if [ -f /var/tmp/install_out.log ]; then
+		if [ -f /var/tmp/install_out.log ] && [ -s /var/tmp/install_out.log ]; then
 			printf -- "AVM: install_out.log\n"
 			cat /var/tmp/install_out.log
 		fi
-		if [ -f /var/tmp/install_error.log ]; then
+		if [ -f /var/tmp/install_error.log ] && [ -s /var/tmp/install_error.log ]; then
 			printf -- "AVM: install_error.log\n"
 			cat /var/tmp/install_error.log
 		fi
@@ -1617,8 +1625,9 @@ is_loop_device_supported()
 	while read -r lkm; do
 		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load %s\n" "$lkm" 1>&2
 		[ -n "$BM_DEBUG_LOOP" ] && insmod "$lkm" || insmod "$lkm" 2>"$null"
-		check_whether_module_loaded && exit 0 # present, but not in any dependencies file -> insmod needed instead of modprobe
+		check_whether_module_loaded && break # present, but not in any dependencies file -> insmod needed instead of modprobe
 	done
+	check_whether_module_loaded && exit 0
 	[ -n "$BM_NO_DYNAMIC_LOADING" ] && exit 1 # no dynamic loading of loop device drivers from yourfritz.de
 	[ -x "$avm_downloader" ] || exit 1 # no tr069fwupdate found
 	install_yourfritz_key || exit 1
