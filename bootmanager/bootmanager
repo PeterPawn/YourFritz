@@ -1557,6 +1557,7 @@ install_yourfritz_key()
 	[ -n "$1" ] && exit 1
 	printf -- "%s\n%s" "$yf_signature_key_modulus" "$yf_signature_key_exponent" >"$tempdir/pubkey"
 	for file in $found; do
+		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Installing YourFritz key as %s\n" "$file" 1>&2
 		mount -o bind "$tempdir/pubkey" "$file" 2>"$null" && break
 	done
 	install_yourfritz_key check && exit 0
@@ -1570,6 +1571,7 @@ install_yourfritz_key()
 uninstall_yourfritz_key()
 (
 	tgt="$(sed -n -e "s|^\([0-9:]* \)\{3\}$tempdir/pubkey \([^ ]*\) r.*|\2|p" "$proc_mountinfo")"
+	[ -n "$tgt" ] && [ -n "$BM_DEBUG_LOOP" ] && printf -- "Uninstalling YourFritz key from %s\n" "$tgt" 1>&2
 	[ -n "$tgt" ] && umount "$tgt"
 )
 #######################################################################################################
@@ -1597,6 +1599,7 @@ is_loop_device_supported()
 	[ -x "$avm_downloader" ] || exit 1 # no tr069fwupdate found
 	install_yourfritz_key || exit 1
 	trap 'uninstall_yourfritz_key' EXIT
+	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Loading loop device drivers from %s\n" "$yf_loop_repository_url" 1>&2
 	"$avm_downloader" packet "$yf_loop_repository_url" || exit 1
 	insmod "/var/$loop_driver_name.ko" 2>"$null"
 	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
