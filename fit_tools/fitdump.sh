@@ -153,6 +153,7 @@ dissect_fit_image()
 			done
 			[ "$i" -eq 0 ] && [ "$1" -eq 1 ] && return 1;
 			[ "$i" -lt $(( $1 - 1 )) ] && return 1
+			[ "$i" -eq 3 ] && [ "$1" -eq 4 ] && return 1 # maybe a hex-value with three printable bytes and a final NUL
 			return 0
 		}
 		get_data "$1" "$3" "$2" | cmp -l -- - "$zeros" 2>"$null" | ro "$3"
