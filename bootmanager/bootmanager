@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204152014
+yf_bootmanager_timestamp=202204152019
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1586,16 +1586,26 @@ is_loop_device_supported()
 	show_avm_log_files()
 	(
 		exec 1>&2
-		printf -- "AVM: firmware_stream_result\n"
-		cat /var/tmp/firmware_stream_result
-		printf -- "AVM: fwsign.log\n"
-		cat /var/tmp/fwsign.log
-		printf -- "AVM: /var/packet\n"
-		find /var/packet -exec ls -l '{}' \;
-		printf -- "AVM: install_out.log\n"
-		cat /var/tmp/install_out.log
-		printf -- "AVM: install_error.log\n"
-		cat /var/tmp/install_error.log
+		if [ -f /var/tmp/firmware_stream_result ]; then
+			printf -- "AVM: firmware_stream_result\n"
+			cat /var/tmp/firmware_stream_result
+		fi
+		if [ -f /var/tmp/fwsign.log ]; then
+			printf -- "AVM: fwsign.log\n"
+			cat /var/tmp/fwsign.log
+		fi
+		if [ -d /var/packet ]; then
+			printf -- "AVM: /var/packet\n"
+			find /var/packet -exec ls -l '{}' \;
+		fi
+		if [ -f /var/tmp/install_out.log ]; then
+			printf -- "AVM: install_out.log\n"
+			cat /var/tmp/install_out.log
+		fi
+		if [ -f /var/tmp/install_error.log ]; then
+			printf -- "AVM: install_error.log\n"
+			cat /var/tmp/install_error.log
+		fi
 	)
 	check_whether_module_loaded() { [ -n "$(get_major_device_id "$loop_driver_name")" ] && return 0 || return 1; }
 
@@ -1613,7 +1623,7 @@ is_loop_device_supported()
 	trap 'uninstall_yourfritz_key' EXIT
 	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Loading loop device drivers from %s\n" "$yf_loop_repository_url" 1>&2
 	if ! "$avm_downloader" packet "$yf_loop_repository_url"; then
-		show_avm_log_files
+		[ -n "$BM_DEBUG_LOOP" ] && show_avm_log_files
 		exit 1
 	fi
 	insmod "/var/$loop_driver_name.ko" 2>"$null"
