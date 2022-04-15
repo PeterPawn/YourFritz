@@ -2990,21 +2990,25 @@ case "$1" in
 				debug "rootfs_type = " "yellow" "%s" "$rootfs_type"
 				debug "rootfs_offset = " "yellow" "%u (%#x)" "$rootfs_offset" "$rootfs_offset"
 				debug "rootfs_size = " "yellow" "%u (%#x)" "$rootfs_size" "$rootfs_size"
-				debug "inactive system version = " "yellow" "%s" "$alternative_version"
-				value="$alternative_date_epoch"
-				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				altmodby="$alternative_modified"
-				if [ "$altmodby" = "-" ]; then
-					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+				if ! [ "$alternative_is_missing" = "1" ]; then
+					debug "inactive system version = " "yellow" "%s" "$alternative_version"
+					value="$alternative_date_epoch"
+					debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+					altmodby="$alternative_modified"
+					if [ "$altmodby" = "-" ]; then
+						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+					else
+						value="$alternative_fsdate_epoch"
+						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+					fi
+					altcbs="$alternative_cbs"
+					debug "brandings supported on inactive system = " "yellow" "%s" "$alternative_brandings"
+					if ! [ "$altcbs" = "changeable" ]; then
+						debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$alternative_branding" "$altcbs"
+					fi
 				else
-					value="$alternative_fsdate_epoch"
-					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
-				fi
-				altcbs="$alternative_cbs"
-				debug "brandings supported on inactive system = " "yellow" "%s" "$alternative_brandings"
-				if ! [ "$altcbs" = "changeable" ]; then
-					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$alternative_branding" "$altcbs"
+					debug "" "red" "%s" "Unable to mount inactive filesystem and to extract data"
 				fi
 			else
 				debug "" "red" "%s" "FIT image not found for inactive slot"
