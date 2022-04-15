@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204152042
+yf_bootmanager_timestamp=202204152053
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1610,11 +1610,13 @@ is_loop_device_supported()
 	check_whether_module_loaded() { [ -n "$(get_major_device_id "$loop_driver_name")" ] && return 0 || return 1; }
 
 	check_whether_module_loaded && exit 0 # already loaded
+	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load loop driver for block devices\n" 1>&2
 	modprobe "$loop_driver_name" 2>"$null"
 	check_whether_module_loaded && exit 0 # had to be loaded only
 	find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) | \
 	while read -r lkm; do
-		insmod "$lkm" 2>"$null"
+		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load %s\n" "$lkm" 1>&2
+		[ -n "$BM_DEBUG_LOOP" ] && insmod "$lkm" || insmod "$lkm" 2>"$null"
 		check_whether_module_loaded && exit 0 # present, but not in any dependencies file -> insmod needed instead of modprobe
 	done
 	[ -n "$BM_NO_DYNAMIC_LOADING" ] && exit 1 # no dynamic loading of loop device drivers from yourfritz.de
@@ -1622,11 +1624,10 @@ is_loop_device_supported()
 	install_yourfritz_key || exit 1
 	trap 'uninstall_yourfritz_key' EXIT
 	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Loading loop device drivers from %s\n" "$yf_loop_repository_url" 1>&2
-	if ! "$avm_downloader" packet "$yf_loop_repository_url"; then
-		[ -n "$BM_DEBUG_LOOP" ] && show_avm_log_files
-		exit 1
-	fi
-	insmod "/var/$loop_driver_name.ko" 2>"$null"
+	"$avm_downloader" packet "$yf_loop_repository_url" && rc=0 || rc=1
+	[ -n "$BM_DEBUG_LOOP" ] && show_avm_log_files
+	[ "$rc" -ne 0 ] && exit $rc
+	[ -n "$BM_DEBUG_LOOP" ] && insmod "/var/$loop_driver_name.ko" || insmod "/var/$loop_driver_name.ko" 2>"$null"
 	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
 	exit 1
 )
