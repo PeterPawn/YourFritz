@@ -1547,15 +1547,13 @@ install_yourfritz_key()
 (
 	found=""
 	for file in $avm_pubkey_sources; do
+		[ -f "$file" ] || continue
 		key="$(sed -n -e 1p "$file")"
-		if [ "$key" = "$yf_signature_key_modulus" ]; then
-			exp="$(sed -n -e 1p "$file")"
-			[ "$exp" = "$yf_signature_key_exponent" ] && exit 0
-		fi
+		[ "$key" = "$yf_signature_key_modulus" ] && exit 0
 		found="$file $found"
 	done
 	[ -n "$1" ] && exit 1
-	printf -- "%s\n%s" "$yf_signature_key_modulus" "$yf_signature_key_exponent" >"$tempdir/pubkey"
+	printf -- "%s\n" "$yf_signature_key_modulus" >"$tempdir/pubkey"
 	for file in $found; do
 		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Installing YourFritz key as %s\n" "$file" 1>&2
 		mount -o bind "$tempdir/pubkey" "$file" 2>"$null" && break
@@ -1570,7 +1568,7 @@ install_yourfritz_key()
 #######################################################################################################
 uninstall_yourfritz_key()
 (
-	tgt="$(sed -n -e "s|^\([0-9:]* \)\{3\}$tempdir/pubkey \([^ ]*\) r.*|\2|p" "$proc_mountinfo")"
+	tgt="$(sed -n -e "s|^\([0-9:]* \)\{3\}[^ ]*${tempdir#/var}/pubkey.*\([^ ]*\) r.*|\2|p" "$proc_mountinfo")"
 	[ -n "$tgt" ] && [ -n "$BM_DEBUG_LOOP" ] && printf -- "Uninstalling YourFritz key from %s\n" "$tgt" 1>&2
 	[ -n "$tgt" ] && umount "$tgt"
 )
@@ -1585,7 +1583,21 @@ uninstall_yourfritz_key()
 #######################################################################################################
 is_loop_device_supported()
 (
-	check_whether_module_loaded() { [ -n "$(get_major_device_id "$loop_driver_name")" ] && exit 0 || exit 1; }
+	show_avm_log_files()
+	(
+		exec 1>&2
+		printf -- "AVM: firmware_stream_result\n"
+		cat /var/tmp/firmware_stream_result
+		printf -- "AVM: fwsign.log\n"
+		cat /var/tmp/fwsign.log
+		printf -- "AVM: /var/packet\n"
+		find /var/packet -exec ls -l '{}' \;
+		printf -- "AVM: install_out.log\n"
+		cat /var/tmp/install_out.log
+		printf -- "AVM: install_error.log\n"
+		cat /var/tmp/install_error.log
+	)
+	check_whether_module_loaded() { [ -n "$(get_major_device_id "$loop_driver_name")" ] && return 0 || return 1; }
 
 	check_whether_module_loaded && exit 0 # already loaded
 	modprobe "$loop_driver_name" 2>"$null"
@@ -1600,7 +1612,10 @@ is_loop_device_supported()
 	install_yourfritz_key || exit 1
 	trap 'uninstall_yourfritz_key' EXIT
 	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Loading loop device drivers from %s\n" "$yf_loop_repository_url" 1>&2
-	"$avm_downloader" packet "$yf_loop_repository_url" || exit 1
+	if ! "$avm_downloader" packet "$yf_loop_repository_url"; then
+		show_avm_log_files
+		exit 1
+	fi
 	insmod "/var/$loop_driver_name.ko" 2>"$null"
 	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
 	exit 1
