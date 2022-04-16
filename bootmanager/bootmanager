@@ -1,8 +1,8 @@
 #! /bin/sh
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
-yf_bootmanager_version="0.8.5"
-yf_bootmanager_timestamp=202204010028
+yf_bootmanager_version="0.8.6"
+yf_bootmanager_timestamp=202204152119
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -10,7 +10,7 @@ yf_bootmanager_timestamp=202204010028
 #                                                                                                     #
 ###################################################################################################VER#
 #                                                                                                     #
-# bootmanager, version 0.8.5                                                                          #
+# bootmanager, version 0.8.6                                                                          #
 #                                                                                                     #
 # This script is a part of the YourFritz project from https://github.com/PeterPawn/YourFritz.         #
 #                                                                                                     #
@@ -86,6 +86,14 @@ yf_bootmanager_timestamp=202204010028
 #                                                                                                     #
 #######################################################################################################
 #                                                                                                     #
+# To test implementation for various aspects (EVA configuration, FIT image handling, loop device      #
+# driver download), some environment values (BM_DEBUG_{FIT|EVA|LOOP}=1) are supported. With other     #
+# values (see script code below) it's possible to use specified image files instead of data read from #
+# current device. Those settings are for TEST PURPOSES only - don't use them, if you don't understand #
+# their meanings and their impact on flow of execution.                                               #
+#                                                                                                     #
+#######################################################################################################
+#                                                                                                     #
 # constants                                                                                           #
 #                                                                                                     #
 #######################################################################################################
@@ -145,6 +153,7 @@ readonly backing_file_name="backing_file"
 readonly disk_by_label="$devtmpfs/disk/by-partlabel"
 readonly tmpdir="${TMPDIR:-$tmp}"
 readonly avm_rcconf="etc/init.d/rc.conf"
+readonly nas_base="$tmpfs/media/ftp"
 readonly semafile="$tmpfs/run/bootmanager.sem"
 readonly fdt_base="$procfs/device-tree"
 readonly fdt_chosen="$fdt_base/chosen"
@@ -154,6 +163,12 @@ readonly yf_change_oem_marker="# YF_CHANGE_OEM"
 readonly yf_change_oem_script="etc/init.d/yf_change_oem.sh"
 readonly yf_custom_environment_script="yf_custom_environment\\.sh"
 readonly yf_custom_environment_locations="\$path/etc/boot.d \$path/etc/init.d \$path/etc/inittab \$wrapper/etc/inittab"
+readonly yf_signature_key_modulus="00b4074ef52e5c44f3a1eca1bd8eb3b5f217b82eaa23641adf50ca5bb98f3538ac706a5bb5f15def942bc352f3cd1cdf4ba1f47bc66863d95ecc7576d4f6d6729d396056e8fdf5d2ff5998ff33559104e07934e0c944d764bb881708ed73c0df0b948a9659de65c9940a9f537fcd1450bcdffe5a76f6b8d298ef89c3ce895f9361"
+readonly yf_signature_key_exponent="010001"
+readonly yf_loop_repository_url="https://raw.githubusercontent.com/PeterPawn/yf_bin/master/loop-drivers/YourFritz-loop-driver-archive.image"
+readonly uname="uname"
+readonly avm_downloader="/usr/bin/tr069fwupdate"
+readonly avm_pubkey_sources="/etc/avm_firmware_public_key[1-9] /etc/plugin_global_key.pem"
 #######################################################################################################
 #                                                                                                     #
 # various sources for version numbers                                                                 #
@@ -326,10 +341,16 @@ timestamp() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && sed -n 
 duration() { [ -f "$timer" ] && [ "$shell_32bit_arithmetics" = "0" ] && printf -- "%u.%09u" "$(( ( $2 - $1 ) / 1000000000 ))" "$(( ( $2 - $1 ) % 1000000000 ))" || printf -- "%u" "$(( $2 - $1 ))"; }
 #######################################################################################################
 #                                                                                                     #
+# get major device ID for specified driver name                                                       #
+#                                                                                                     #
+#######################################################################################################
+get_major_device_id() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $1|\1|p" "$proc_devices"; )
+#######################################################################################################
+#                                                                                                     #
 # get TFFS major device ID from /proc/devices                                                         #
 #                                                                                                     #
 #######################################################################################################
-get_tffs_major() ( sed -n -e "s|^[ ]\{0,2\}\([0-9]\{1,3\}\) $tffs_device_name|\1|p" "$proc_devices"; )
+get_tffs_major() ( get_major_device_id "$tffs_device_name"; )
 #######################################################################################################
 #                                                                                                     #
 # get a value from urlader environment                                                                #
@@ -748,6 +769,7 @@ find_rootfs_in_fit_image()
 		printf -- "Invalid magic value (0x%08x) found at offset 0x%02x.\a\n" "$magic" "0" 1>&2
 		exit 1
 	fi
+	[ "$2" = "check" ] && exit 0
 
 	next_offset=$(( next_offset + fdt32_size ))
 	payload_size="$(get_fdt32_le "$img" "$next_offset")"
@@ -880,7 +902,7 @@ check_urlader_configuration()
 		else
 			lwr=0
 		fi
-		if [ "$h" -eq 16 ]; then
+		if [ "$h" -le 16 ]; then
 			[ "$lwr" -eq 0 ] && printf -- "%u\n" "$(( s * h ))" || printf -- "%u\n" "$(( ( s + 1 ) * h ))"
 			exit 0
 		fi
@@ -917,6 +939,21 @@ check_urlader_configuration()
 		dd if="$zeros" of="$f" bs=16 count=1 seek=$(( fo / 16 )) conv=notrunc 2>"$null"
 		fndo "$f" "$l" "$ch"
 	)
+	adjust_eva_config_size() (
+		f="$1"
+		s="$(fsize "$1")"
+		o="$s"
+		b=1
+		while [ "$s" -ge 16 ]; do
+			if [ $(( s & 1 )) -eq 1 ]; then
+				dd if="$zeros" of="$1" bs="$b" seek=$(( o / b )) count=1 2>"$null"
+				adjust_eva_config_size "$1"
+			fi
+			s=$(( s >> 1 ))
+			b=$(( b << 1 ))
+		done
+	)
+
 	env_name="$1"
 	trap 'rm -rf "$ut" 2>$null' EXIT
 	if ! command -v grep 2>"$null" 1>&2; then
@@ -935,13 +972,7 @@ check_urlader_configuration()
 	else
 		geteva >"$ut/dump" || exit 1
 	fi
-	usize="$(fsize "$ut/dump")"
-	pow2=1
-	while [ "$pow2" -lt "$usize" ]; do pow2=$(( pow2 * 2 )); done
-	if [ "$pow2" -ne "$usize" ]; then
-		msg "Urlader dump size isn't a power of two.\n"
-		exit 1
-	fi
+	adjust_eva_config_size "$ut/dump"
 	memsize=""
 	# shellcheck disable=SC2034
 	mtd0=""
@@ -959,7 +990,7 @@ check_urlader_configuration()
 	[ -z "$memsize" ] && exit 1
 	touch "$ut/config_header" 2>"$null"
 	printf -- "\000\000\000\003" | native_byte_order_evacfg | append
-	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA_CONFIG" ] && memsize=$(( memsize / 2 ))
+	[ "$is_puma_device" = "1" ] && [ -z "$BM_DEBUG_EVA_CONFIG" ] && [ -z "$BM_DEBUG_EVA_ENV" ] && memsize=$(( memsize / 2 ))
 	hex2bin "$(printf -- "%08x" "$memsize")" | native_byte_order_evacfg | append
 	printf -- "\000\000\000\000" | append
 	i=0
@@ -1036,7 +1067,7 @@ check_urlader_configuration()
 		elif [ "$nm" = "$env_name" ]; then
 			msg "'%s' found in fixed values area.\n" "$env_name"
 			printf -- "%s\n" "$val"
-			exit 1
+			exit 2
 		fi
 	done
 	coff="$defoff"
@@ -1167,10 +1198,10 @@ change_branding_support()
 				printf -- "immutable"
 				exit 1
 			fi
-		elif ! [ "$system_type" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
-			device_branding_is_changeable="true"
-			printf -- "changeable"
-			exit 0
+#		elif ! [ "$system_type" = "IPQ4019" ] && check_urlader_configuration "$branding_name"; then
+#			device_branding_is_changeable="true"
+#			printf -- "changeable"
+#			exit 0
 		else
 			device_branding_is_changeable="false"
 			printf -- "immutable"
@@ -1353,8 +1384,7 @@ get_fdt_value()
 get_fdt_compatible_value()
 (
 	v="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\2|p" | sed -e "y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/")"
-	[ -z "$v" ] && v="unknown"
-	printf -- "%s\n" "$v"
+	[ -n "$v" ] && printf -- "%s\n" "$v"
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1366,11 +1396,11 @@ get_fdt_compatible_value()
 # (x) all GRX5-based devices (no single slot devices known so far)                                    #
 # (x) all Puma6 and Puma7 devices (no single slot devices found yet)                                  #
 # (x) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
-# ( ) IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                 #
+# (x) IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                 #
 # ( ) BRCMA9 devices with nand flash (7581, 7582 - BCM963 family)                                     #
-# ( ) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
-# ( ) IPQ5010/IPQ5018-based devices with nand flash and using FIT image format (7510, FR1200ax)       #
-# ( ) PRX300-based devices with NAND flash and using FIT image format (5530)                          #
+# (X) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
+# (x) IPQ5010/IPQ5018-based devices with nand flash and using FIT image format (7510, FR1200ax)       #
+# (X) PRX300-based devices with NAND flash and using FIT image format (5530)                          #
 #                                                                                                     #
 #######################################################################################################
 get_system_type()
@@ -1380,7 +1410,6 @@ get_system_type()
 
 	compatible="$(get_fdt_compatible_value)"
 	# VR9, GRX5 and PRX300 based devices with partitions in '/proc/mtd', identified by content of '/proc/cpuinfo'
-	# TODO: PRX300 is based on kernel source reviews, not confirmed so far
 	type="$(sed -n -e "$mips_cpuinfo_check" "$proc_cpuinfo")"
 	if [ -n "$type" ]; then
 		printf -- '%s\n' "$type" && exit 0
@@ -1471,13 +1500,17 @@ is_fit_image_device()
 (
 	[ -n "$BM_DEBUG_FIT" ] && exit 0
 	case "$system_type" in
-		("IPQ8074"|"BCM963"|"IPQ5018")
+		("IPQ8074"|"BCM963"|"IPQ5018"|"PRX300")
 			if [ -d "$disk_by_label" ]; then
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "0")")" ] && exit 1
 				[ -z "$(get_emmc_partition "$(printf_ss "$fit_partition_name_mask" "1")")" ] && exit 1
 			else
 				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "0")")" ] && exit 1
 				[ -z "$(get_mtd_number "$(printf_ss "$fit_mtd_name_mask" "1")")" ] && exit 1
+			fi
+			if [ "$system_type" = "IPQ5018" ] && [ -n "$(get_mtd_partition "$filesystem_name" "$inactive_name")" ]; then
+				# FIT image, but a 'reserved_filesystem' partition, too
+				exit 1
 			fi
 			[ -x "$bootslot_tool" ] && exit 0
 			;;
@@ -1514,11 +1547,107 @@ extract_rootfs_ramdisk_etc()
 )
 #######################################################################################################
 #                                                                                                     #
+# check, whether the YourFritz public key is already available and if it's missing, overload one of   #
+# AVM's key files with the key                                                                        #
+#                                                                                                     #
+#######################################################################################################
+install_yourfritz_key()
+(
+	found=""
+	for file in $avm_pubkey_sources; do
+		[ -f "$file" ] || continue
+		key="$(sed -n -e 1p "$file")"
+		[ "$key" = "$yf_signature_key_modulus" ] && exit 0
+		found="$file $found"
+	done
+	[ -n "$1" ] && exit 1
+	printf -- "%s\n%s" "$yf_signature_key_modulus" "$yf_signature_key_exponent" >"$tempdir/pubkey"
+	for file in $found; do
+		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Installing YourFritz key as %s\n" "$file" 1>&2
+		mount -o bind "$tempdir/pubkey" "$file" 2>"$null" && break
+	done
+	install_yourfritz_key check && exit 0
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
+# remove a bind-mounted YourFritz key, if any                                                         #
+#                                                                                                     #
+#######################################################################################################
+uninstall_yourfritz_key()
+(
+	tgt="$(sed -n -e "s|^\([0-9:]* \)\{3\}[^ ]*${tempdir#/var}/pubkey \([^ ]*\) r.*|\2|p" "$proc_mountinfo")"
+	[ -n "$tgt" ] && [ -n "$BM_DEBUG_LOOP" ] && printf -- "Uninstalling YourFritz key from %s\n" "$tgt" 1>&2
+	[ -n "$tgt" ] && umount "$tgt"
+)
+#######################################################################################################
+#                                                                                                     #
+# check, whether loop device support is present - and try as hard as possible to find a way to load   #
+# an appropriate kernel module, if it's not usable 'out of the box'                                   #
+#                                                                                                     #
+# If this function returns an exit code of 0, processing that needs the loopback driver for block     #
+# devices may continue; otherwise it should be stopped without further attempts.                      #
+#                                                                                                     #
+#######################################################################################################
+is_loop_device_supported()
+(
+	show_avm_log_files()
+	(
+		exec 1>&2
+		if [ -f /var/tmp/firmware_stream_result ]; then
+			printf -- "AVM: firmware_stream_result\n"
+			cat /var/tmp/firmware_stream_result
+		fi
+		if [ -f /var/tmp/fwsign.log ]; then
+			printf -- "AVM: fwsign.log\n"
+			cat /var/tmp/fwsign.log
+		fi
+		if [ -d /var/packet ]; then
+			printf -- "AVM: /var/packet\n"
+			find /var/packet -exec ls -l '{}' \;
+		fi
+		if [ -f /var/tmp/install_out.log ] && [ -s /var/tmp/install_out.log ]; then
+			printf -- "AVM: install_out.log\n"
+			cat /var/tmp/install_out.log
+		fi
+		if [ -f /var/tmp/install_error.log ] && [ -s /var/tmp/install_error.log ]; then
+			printf -- "AVM: install_error.log\n"
+			cat /var/tmp/install_error.log
+		fi
+	)
+	check_whether_module_loaded() { [ -n "$(get_major_device_id "$loop_driver_name")" ] && return 0 || return 1; }
+
+	check_whether_module_loaded && exit 0 # already loaded
+	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load loop driver for block devices\n" 1>&2
+	modprobe "$loop_driver_name" 2>"$null"
+	check_whether_module_loaded && exit 0 # had to be loaded only
+	find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) | \
+	while read -r lkm; do
+		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load %s\n" "$lkm" 1>&2
+		[ -n "$BM_DEBUG_LOOP" ] && insmod "$lkm" || insmod "$lkm" 2>"$null"
+		check_whether_module_loaded && break # present, but not in any dependencies file -> insmod needed instead of modprobe
+	done
+	check_whether_module_loaded && exit 0
+	[ -n "$BM_NO_DYNAMIC_LOADING" ] && exit 1 # no dynamic loading of loop device drivers from yourfritz.de
+	[ -x "$avm_downloader" ] || exit 1 # no tr069fwupdate found
+	install_yourfritz_key || exit 1
+	trap 'uninstall_yourfritz_key' EXIT
+	[ -n "$BM_DEBUG_LOOP" ] && printf -- "Loading loop device drivers from %s\n" "$yf_loop_repository_url" 1>&2
+	"$avm_downloader" packet "$yf_loop_repository_url" && rc=0 || rc=1
+	[ -n "$BM_DEBUG_LOOP" ] && show_avm_log_files
+	[ "$rc" -ne 0 ] && exit $rc
+	[ -n "$BM_DEBUG_LOOP" ] && insmod "/var/$loop_driver_name.ko" || insmod "/var/$loop_driver_name.ko" 2>"$null"
+	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
+	exit 1
+)
+#######################################################################################################
+#                                                                                                     #
 # find rootfs offset in a FIT image partition and mount the found filesystem                          #
 #                                                                                                     #
 #######################################################################################################
 mount_fit_alternative_system()
 (
+	is_loop_device_supported || exit 1
 	mp="$tempdir/$alt_root_mount_name"
 	mkdir -p "$mp" 2>"$null" || exit 1
 	mount -t squashfs "$1" "$mp" 2>"$null" && printf -- "%s\n" "$mp" && exit 0
@@ -1598,7 +1727,7 @@ get_partition()
 				get_vr9_image "$1" "$2"
 			fi
 			rc=$?
-		elif [ "$system_type" = "GRX500" ] || [ "$system_type" = "GRX350" ] || [ "$system_type" = "IPQ4019" ]; then
+		elif [ "$system_type" = "GRX500" ] || [ "$system_type" = "GRX350" ] || [ "$system_type" = "IPQ4019" ] || [ "$system_type" = "IPQ5018" ]; then
 			get_mtd_partition "$1" "$2"
 			rc=$?
 		else
@@ -1748,6 +1877,17 @@ get_system_switch()
 )
 #######################################################################################################
 #                                                                                                     #
+# check, whether the specified partition/device contains a magic value of AVM's FIT image format      #
+#                                                                                                     #
+# $1 - (block) device to check                                                                        #
+#                                                                                                     #
+#######################################################################################################
+is_fit_image_present()
+(
+	find_rootfs_in_fit_image "$1" "check"
+)
+#######################################################################################################
+#                                                                                                     #
 # check the first 16 byte of the specified partition - if they're all 0xFF or 0x00, there's usually   #
 # no kernel (and no alternative system) installed                                                     #
 #                                                                                                     #
@@ -1784,7 +1924,7 @@ is_switched()
 			! [ "$(get_system_switch)" = "$(get_system_switch "$boot_cache_file")" ]
 		else
 			if is_fit_image_device; then
-				[ -n "$BM_DEBUG_FIT" ] && exit 1
+				[ -n "$BM_DEBUG_FIT" ] && exit 0
 				! [ "$(get_system_switch)" = "$("$bootslot_tool" get_active)" ]
 			else
 				k1="$(get_partition "$kernel_name" "$active_name")"
@@ -2123,7 +2263,7 @@ get_ids_of_mountpoint()
 #######################################################################################################
 is_loopdevice_mountpoint()
 (
-	loop_major="$(sed -n -e "s|^ *\([0-9]*\) *${loop_driver_name}[ \t]\?.*\$|\1|p" "$proc_devices")"
+	loop_major="$(get_major_device_id "$loop_driver_name")"
 	[ ${#loop_major} -eq 0 ] && exit 1
 	dev="$(get_ids_of_mountpoint "$1")"
 	[ ${#dev} -eq 0 ] && exit 1
@@ -2207,7 +2347,7 @@ dismount_alternative_system()
 	fi
 	if [ -n "$losetup" ]; then
 		"$losetup" -a | grep -q "$tempdir/" 2>"$null" && \
-			"$losetup" -d "$("$losetup" -a | sed -n -e "s|^\(/dev/loop.*\):.*$tempdir/.*|\1|p")"
+			"$losetup" -d "$("$losetup" -a | sed -n -e "s|^\($devtmpfs/$loop_driver_name.*\):.*$tempdir/.*|\1|p")"
 	fi
 	[ -f "$tempdir/$alt_root_image_name" ] && rm -f "$tempdir/$alt_root_image_name" 2>"$null"
 	is_active_mountpoint "$tempdir/$wrapper_mount_name" || exit 0
@@ -2388,7 +2528,12 @@ collect_data()
 	readonly running_cbs running_branding running_brandings current_system_switch
 	alternative_is_missing=1
 	if ! is_fit_image_device; then
-		if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+		if [ "$system_type" = "IPQ5018" ]; then
+			is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" && present=1 || present=0
+		else
+			is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && present=1 || present=0
+		fi
+		if [ "$present" -eq 1 ]; then
 			alternative_is_missing=0
 			spinlock_pid=$$
 			spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
@@ -2412,7 +2557,7 @@ collect_data()
 			spinlock release
 		fi
 	else
-		if [ -z "$BM_DEBUG_FIT" ]; then
+		if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 			fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
 			fpd="$(get_partition "$fp")"
 		else
@@ -2479,6 +2624,8 @@ get_values()
 	printf -- "current_switch_value=%s\n" "$current_system_switch"
 	printf -- "system_is_switched=%s\n" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
 	printf -- "bootmanager_version=\"%s-%s\"\n" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
+	[ -n "$error_description" ] && printf -- "error_description=\"%s\"\n" "$error_description"
+	[ "$error_code" -ne 0 ] && printf -- "error_code=%u\n" "$error_code"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2621,7 +2768,7 @@ get_inactive_slot_system_info()
 			rm -r "$mp" 2>"$null"
 		fi
 	else
-		printf -- "%s=%s" "alternative_is_missing" "1"
+		printf -- "%s=%s\n" "alternative_is_missing" "1"
 	fi
 	[ "$rootfs_type" = "squashfs" ] && spinlock release
 }
@@ -2638,9 +2785,18 @@ find_fit_inactive_rootfs_parameters()
 		retc=$?
 		time2=$(timestamp)
 		[ -n "$BM_DEBUG_FIT" ] && printf -- "FIT image rootfs offset lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		# shellcheck disable=SC1090
 		. "$inactive_fit_cache_file"
-		get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
-		rm -f "$tempdir/fscopy-$$" 2>"$null"
+		if ! [ -f "$tempdir/fscopy-$$" ]; then
+			printf -- "File with copy of filesystem image is missing.\n" 1>&2
+			printf -- "%s=%u\n" "alternative_is_missing" "1" >>"$inactive_fit_cache_file"
+			printf -- "%s=\"\"\n" "alternative_version" >>"$inactive_fit_cache_file"
+			error_description="Unable to mount inactive filesystem from FIT image."
+			error_code=$(( error_code & 2 ))
+		else
+			get_inactive_slot_system_info "$tempdir/fscopy-$$" >>"$inactive_fit_cache_file"
+			rm -f "$tempdir/fscopy-$$" 2>"$null"
+		fi
 	else
 		[ -n "$BM_DEBUG_FIT" ] && printf -- "inactive slot system info loaded from cache file for FIT image\n" 1>&2
 	fi
@@ -2653,29 +2809,35 @@ find_fit_inactive_rootfs_parameters()
 #######################################################################################################
 load_device_configuration()
 {
+	out_dev_config() {
+		printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$1" "$2" "$3"
+	}
 	if ! [ -f "$device_cache_file" ]; then
+		printf -- "undetectable=%s\n" "$(get_environment "$branding_name")" >"$device_cache_file"
 		time1=$(timestamp)
 		device_branding="$(check_urlader_configuration "$branding_name")"
 		retc=$?
 		time2=$(timestamp)
 		# shellcheck disable=SC2181
+		[ -z "$device_branding" ] && device_branding="$(get_environment "$branding_name")"
 		if [ "$retc" -eq 0 ]; then
-			[ -z "$device_branding" ] && exit 1
 			device_branding_is_changeable="true"
 			printf -- "changeable=%s\n" "$device_branding" >"$device_cache_file"
-		else
-			[ -z "$device_branding" ] && exit 1
+		elif [ "$retc" -eq 2 ]; then
 			device_branding_is_changeable="false"
 			printf -- "immutable=%s\n" "$device_branding" >"$device_cache_file"
+		else
+			device_branding_is_changeable="false"
 		fi
-		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2 && \
+			cat "$device_cache_file" 1>&2
 	else
-		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\)=.*\$|\1|p" "$device_cache_file")"
-		device_branding="$(sed -n -e "s|^\(immutable\|changeable\)=\(.*\)\$|\2|p" "$device_cache_file")"
-		[ "$device_cbs" = "immutable" ] && device_branding_is_changeable="false" || device_branding_is_changeable="true"
-		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2
+		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=.*\$|\1|p" "$device_cache_file")"
+		device_branding="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=\(.*\)\$|\2|p" "$device_cache_file")"
+		[ "$device_cbs" = "changeable" ] && device_branding_is_changeable="true" || device_branding_is_changeable="false"
+		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2 && cat "$device_cache_file" 1>&2
 	fi
-	printf -- "device_cbs=%s device_branding=%s device_branding_is_changeable=%s\n" "$device_cbs" "$device_branding" "$device_branding_is_changeable"
+	out_dev_config "$device_cbs" "$device_branding" "$device_branding_is_changeable"
 }
 #######################################################################################################
 #                                                                                                     #
@@ -2697,6 +2859,8 @@ verbose=0
 system_type=""
 is_puma_device=0
 [ "$(( 0x80000000 ))" = "-2147483648" ] && shell_32bit_arithmetics=1 || shell_32bit_arithmetics=0
+error_description=""
+error_code=0
 case "$1" in
 	("is_supported")
 		is_dualboot_supported && rc=0 || rc=1
@@ -2723,11 +2887,10 @@ case "$1" in
 		debug "yf_bootmanager version = " "yellow" "%s-%s" "$yf_bootmanager_version" "$yf_bootmanager_timestamp"
 		system_type="$(get_system_type)"
 		[ "$system_type" = "Puma6/7" ] && is_puma_device=1 || is_puma_device=0
-		# shellcheck disable=SC2046
-		eval $(load_device_configuration)
 		delim_1="debug output of bootmanager script"
 		delim_2="running system"
 		delim_3="alternative system"
+		delim_4="device configuration from EVA loader"
 		max_delim=$(max ${#delim_1} ${#delim_2} ${#delim_3})
 		set | grep "^delim_[0-9]*=" 2>"$null" | \
 		while read -r ln; do
@@ -2735,17 +2898,21 @@ case "$1" in
 			[ "${#lv}" -gt "$max_delim" ] && max_delim=${#lv}
 		done
 		datetime_mask="$(get_localized_datetime_mask "${Language:-de}")"
+		# shellcheck disable=SC2046
+		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_4"
+		eval "$(load_device_configuration)"
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_1"
 		rootfs_type=""
 		rootfs_offset=0
 		rootfs_size=0
 		debug "system type = " "yellow" "%s" "$system_type"
 		if [ -d "$fdt_base" ]; then
-			debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model" || printf -- "unknown")"
+			model="$(get_fdt_value "$fdt_model")"
+			[ -n "$model" ] && debug "model = " "yellow" "%s" "$(get_fdt_value "$fdt_model")"
 			chipset="$(get_fdt_value "$fdt_compatible" | sed -n -e "s|\([^,]*\),\(.*\)|\1|p")"
-			[ -z "$chipset" ] && chipset="unknown"
-			debug "chipset manufacturer = " "yellow" "%s" "$chipset"
-			debug "compatible = " "yellow" "%s" "$(get_fdt_compatible_value)"
+			[ -n "$chipset" ] && debug "chipset manufacturer = " "yellow" "%s" "$chipset"
+			comp="$(get_fdt_compatible_value)"
+			[ -n "$comp" ] && debug "compatible = " "yellow" "%s" "$comp"
 		fi
 		debug "system selector = " "yellow" "%u" "$(get_system_switch)"
 		debug "system is switched = " "yellow" "%s" "$(is_switched && printf -- '%s' "true" || printf -- '%s' "false")"
@@ -2753,13 +2920,19 @@ case "$1" in
 		debug "device branding is changeable = " "yellow" "%s" "$device_branding_is_changeable"
 		debug "current branding = " "yellow" "%s" "$OEM"
 		if ! is_fit_image_device; then
-			debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
-			[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
-			debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+			if [ "$system_type" = "IPQ5018" ]; then
+				debug "system in inactive slot is installed = " "yellow" "%s" "$(is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" \
+					&& printf -- '%s' "true" || printf -- '%s' "false")"
+				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+			else
+				debug "inactive system is installed = " "yellow" "%s" "$(is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && printf -- '%s' "true" || printf -- '%s' "false")"
+				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
+				debug "active kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$active_name")"
+			fi
 			debug "active filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$active_name")"
 			debug "active system version = " "yellow" "%s" "$(get_system_version)"
 		else
-			if [ -z "$BM_DEBUG_FIT" ]; then
+			if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 				fp="$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_other)")"
 				fpd="$(get_partition "$fp")"
 			else
@@ -2769,13 +2942,13 @@ case "$1" in
 			fscopyname="fscopy-$$"
 			eval "$(find_fit_inactive_rootfs_parameters "$fpd" "$fscopyname")"
 			debug "inactive slot contains a FIT image = " "yellow" "%s" "$([ -n "$rootfs_type" ] && printf -- '%s' "true" || printf -- '%s' "false")"
-			if [ -z "$BM_DEBUG_FIT" ]; then
+			if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 				[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_2"
 				debug "active slot = " "yellow" "%s" "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" get_active)")")"
 				debug "active system version = " "yellow" "%s" "$(get_system_version)"
 			fi
 		fi
-		if [ -z "$BM_DEBUG_FIT" ]; then
+		if [ -z "$BM_DEBUG_FIT_IMAGE" ]; then
 			value="$(get_system_date)"
 			debug "active system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 			modby="$(get_modified_by)"
@@ -2794,9 +2967,16 @@ case "$1" in
 		fi
 		[ "$verbose" -eq 1 ] && debug_delim "red" "%s" "$delim_3"
 		if ! is_fit_image_device; then
-			debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+			if ! [ "$system_type" = "IPQ5018" ]; then
+				debug "inactive kernel = " "yellow" "%s" "$(get_partition "$kernel_name" "$inactive_name")"
+			fi
 			debug "inactive filesystem = " "yellow" "%s" "$(get_partition "$filesystem_name" "$inactive_name")"
-			if is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")"; then
+			if [ "$system_type" = "IPQ5018" ]; then
+				is_fit_image_present "$(get_partition "$(printf_ss "$fit_partition_name_mask" "$("$bootslot_tool" "get_other")")")" && present=1 || present=0
+			else
+				is_kernel_present "$(get_partition "$kernel_name" "$inactive_name")" && present=1 || present=0
+			fi
+			if [ "$present" -eq 1 ]; then
 				spinlock_pid=$$
 				spinlock get 10 && mp="$(printf -- '%s' "$(mount_alternative_system)")"
 				[ "$verbose" -eq 1 ] && debug "" "blue" "%s" "$(printf -- "inactive filesystem mounted on %s" "$mp")"
@@ -2830,26 +3010,32 @@ case "$1" in
 				debug "rootfs_type = " "yellow" "%s" "$rootfs_type"
 				debug "rootfs_offset = " "yellow" "%u (%#x)" "$rootfs_offset" "$rootfs_offset"
 				debug "rootfs_size = " "yellow" "%u (%#x)" "$rootfs_size" "$rootfs_size"
-				debug "inactive system version = " "yellow" "%s" "$alternative_version"
-				value="$alternative_date_epoch"
-				debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-				altmodby="$alternative_modified"
-				if [ "$altmodby" = "-" ]; then
-					debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+				if ! [ "$alternative_is_missing" = "1" ]; then
+					debug "inactive system version = " "yellow" "%s" "$alternative_version"
+					value="$alternative_date_epoch"
+					debug "inactive system date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+					altmodby="$alternative_modified"
+					if [ "$altmodby" = "-" ]; then
+						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
+					else
+						value="$alternative_fsdate_epoch"
+						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
+						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
+					fi
+					altcbs="$alternative_cbs"
+					debug "brandings supported on inactive system = " "yellow" "%s" "$alternative_brandings"
+					if ! [ "$altcbs" = "changeable" ]; then
+						debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$alternative_branding" "$altcbs"
+					fi
 				else
-					value="$alternative_fsdate_epoch"
-					debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
-					debug "inactive system modification source = " "yellow" "%s" "$altmodby"
-				fi
-				altcbs="$alternative_cbs"
-				debug "brandings supported on inactive system = " "yellow" "%s" "$alternative_brandings"
-				if ! [ "$altcbs" = "changeable" ]; then
-					debug "branding used by inactive system = " "yellow" "$(printf -- "%%s {green}({yellow}%%s{green})" | colorize)" "$alternative_branding" "$altcbs"
+					debug "" "red" "%s" "Unable to mount inactive filesystem and to extract data"
 				fi
 			else
 				debug "" "red" "%s" "FIT image not found for inactive slot"
 			fi
 		fi
+		[ -n "$error_description" ] && debug "saved error description = " "red" "%s" "$error_description"
+		[ "$error_code" -ne 0 ] && debug "stored error code = " "red" "%s" "$error_code"
 		rc=0
 		;;
 	("show_eva_cfg")
@@ -2882,7 +3068,11 @@ case "$1" in
 		;;
 	("clear_cache")
 		[ -f "$data_cache_file" ] && rm "$data_cache_file" 2>"$null"
-		[ "$2" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>"$null"
+		shift
+		while [ -n "$1" ]; do
+			[ "$1" = "with_eva_config" ] && [ -f "$device_cache_file" ] && rm "$device_cache_file" 2>"$null"
+			shift
+		done
 		rc=0
 		;;
 	("switch_to")
