@@ -4,7 +4,7 @@
 
 On FRITZ!OS based devices, most files from external sources are intended to be TAR archives with a signature from vendor. The manner of this signing algorithm was (re)implemented for the public here:
 
-<https://github.com/PeterPawn/YourFritz/tree/master/signimage>
+<https://github.com/PeterPawn/YourFritz/tree/main/signimage>
 
 and it was discussed en detail (in german language) in a thread on IPPF:
 

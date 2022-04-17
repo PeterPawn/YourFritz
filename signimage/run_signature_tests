@@ -2,7 +2,7 @@
 yf_repo_base="https://raw.githubusercontent.com/PeterPawn"
 yf_repo="$yf_repo_base/YourFritz"
 yf_bin_repo="$yf_repo_base/yf_bin"
-yf_bin_repo_branch="$yf_bin_repo/master"
+yf_bin_repo_branch="$yf_bin_repo/yf_signimage_test"
 yf_bin_repo_target="$yf_bin_repo_branch/target"
 yf_bin_platform="$(uname -m)"
 yf_bin_kernel="$(uname -r)"

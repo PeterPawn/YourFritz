@@ -1,6 +1,6 @@
 # Check AVM's JUIS for new versions of firmware
 
-Hier geht es zu einer deutschen Version dieser Datei: <https://github.com/PeterPawn/YourFritz/blob/master/juis/README_de.md>
+Hier geht es zu einer deutschen Version dieser Datei: <https://github.com/PeterPawn/YourFritz/blob/main/juis/README_de.md>
 
 **Purpose:**
 
