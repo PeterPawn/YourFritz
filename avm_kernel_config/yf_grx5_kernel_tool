@@ -1,0 +1,1458 @@
+#! /bin/sh
+# vim: set tabstop=4 syntax=sh :
+# SPDX-License-Identifier: GPL-2.0-or-later WITH exceptions
+#######################################################################################################
+#                                                                                                     #
+# unpack/pack a kernel image for AVM's EVA loader with GRX5 chipsets (where an additional bootcore    #
+# kernel is present, beside the kernel used for frontend FRITZ!OS instance)                           #
+#                                                                                                     #
+###################################################################################################VER#
+#                                                                                                     #
+# yf_grx5_kernel_tool, version 0.2                                                                    #
+#                                                                                                     #
+# Some functions in this script were taken from the YourFritz Shell Script library (YF_SCRIPTLIB)     #
+# and/or from YourFritz UI framework (YF_UI), which is a part of the YourFritz project from           #
+# https://github.com/PeterPawn/YourFritz.                                                             #
+#                                                                                                     #
+###################################################################################################CPY#
+#                                                                                                     #
+# Copyright (C) 2020-2022 P. Haemmerlein (peterpawn@yourfritz.de)                                     #
+#                                                                                                     #
+###################################################################################################LIC#
+#                                                                                                     #
+# This script is licensed according to the following terms:                                           #
+#                                                                                                     #
+# This project is free software, you can redistribute it and/or modify it under the terms of the GNU  #
+# General Public License as published by the Free Software Foundation; either version 2 of the        #
+# License, or (at your option) any later version.                                                     #
+#                                                                                                     #
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without   #
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU      #
+# General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
+#                                                                                                     #
+# If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
+# this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
+# end of this section HAS TO BE marked clearly.                                                       #
+#                                                                                                     #
+# If you've changed anything to the content of UI functions, these changes HAVE TO BE marked with the #
+# name of author AND the date of change AND a short explanation, what was changed (if it's not        #
+# obvious).                                                                                           #
+#                                                                                                     #
+# In each case the copyright notice and licensing terms have to be kept as provided, but you may add  #
+# your own copyright notice(s) and your own license conditions, as long as they're conforming to the  #
+# rights granted by GPLv2 or later (with the exception above) and do not restrict or expand rights to #
+# these parts of code, which are licensed under YourFritz conditions above.                           #
+#                                                                                                     #
+#################################################################################################EMBED#
+#                                                                                                     #
+# some constants                                                                                      #
+#                                                                                                     #
+#######################################################################################################
+# 0xfeed1281 (LE)
+kernel_magic="2165501438"
+# 0xfeedb007 (LE)
+bootcore_kernel_magic="129035774"
+# valid/expected magic values
+kernel_magics="$kernel_magic $bootcore_kernel_magic"
+# names in order of above collection
+kernel_magics_sources="kernel bootcore"
+# shellcheck disable=SC2034
+image_name_kernel="FRITZ!OS kernel"
+# shellcheck disable=SC2034
+image_name_bootcore="GRX5 bootcore kernel"
+# shellcheck disable=SC2034
+image_file_kernel="kernel.unpacked"
+# shellcheck disable=SC2034
+image_file_bootcore="bootcore.eva"
+# 0xfeed9112 (LE)
+shell_magic="311553534"
+# 0x075a0201 (LE)
+lzma_signature="16931335"
+# 0x5d00008000000000
+lzma_header_size=8
+# only 0x5d00008000
+lzma_header_data_size=5
+# 0x00000000
+entry_record_signature="0"
+# simple C compiler needed for inline C code
+compiler="gcc"
+compiler_options=""
+# byte-wise sum object name
+bsum_object_name="bsum"
+# CRC32 object name
+crc32_object_name="crc"
+# supported languages for messages and help screen
+YF_UI_LANGUAGES="en de"
+# size (in bytes) of unsigned integer with 32 bits
+uint32_size=4
+#######################################################################################################
+#                                                                                                     #
+# exit code definitions                                                                               #
+#                                                                                                     #
+#######################################################################################################
+YF_GRX5_SUCCESS=0 # processing complete successfully
+YF_GRX5_INVALID_CALL=2 # invalid parameters or options
+YF_GRX5_INVALID_IMAGE=3 # invalid image specified
+#######################################################################################################
+#                                                                                                     #
+# determine our script path to locate the configuration file                                          #
+#                                                                                                     #
+#######################################################################################################
+__yf_script_path="$0"
+[ "${__yf_script_path%/*}" = "$__yf_script_path" ] && __yf_script_path="." || __yf_script_path="${__yf_script_path%/*}"
+__yf_script_name="${0##*/}"
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##   Y o u r F r i t z   s h e l l   s c r i p t    l i b r ar y   a n d   Y o u r F r i t z   U I   ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+__yf_check_required_command()
+(
+	IFS=:
+	set -- "$1"
+	for n in "$@"; do
+		command -v "$n" 2>/dev/null 1>&2 && exit 0
+	done
+	exit 1
+)
+
+__yf_ansi_sgr() { printf -- '\033[%sm' "$1"; }
+__yf_ansi_bold__="$(__yf_ansi_sgr 1)"
+__yf_ansi_underline__="$(__yf_ansi_sgr 4)"
+__yf_ansi_black__="$(__yf_ansi_sgr 30)"
+__yf_ansi_red__="$(__yf_ansi_sgr 31)"
+__yf_ansi_green__="$(__yf_ansi_sgr 32)"
+__yf_ansi_yellow__="$(__yf_ansi_sgr 33)"
+__yf_ansi_blue__="$(__yf_ansi_sgr 34)"
+__yf_ansi_magenta__="$(__yf_ansi_sgr 35)"
+__yf_ansi_cyan__="$(__yf_ansi_sgr 36)"
+__yf_ansi_white__="$(__yf_ansi_sgr 37)"
+__yf_ansi_gray__="$(__yf_ansi_sgr 90)"
+__yf_ansi_bright_red__="$(__yf_ansi_sgr 91)"
+__yf_ansi_bright_green__="$(__yf_ansi_sgr 92)"
+__yf_ansi_bright_yellow__="$(__yf_ansi_sgr 93)"
+__yf_ansi_bright_blue__="$(__yf_ansi_sgr 94)"
+__yf_ansi_bright_magenta__="$(__yf_ansi_sgr 95)"
+__yf_ansi_bright_cyan__="$(__yf_ansi_sgr 96)"
+__yf_ansi_bright_white__="$(__yf_ansi_sgr 97)"
+__yf_ansi_reset__="$(__yf_ansi_sgr 0)"
+__yf_bold() { printf -- "%s" "$__yf_ansi_bold__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_undl() { printf -- "%s" "$__yf_ansi_underline__"; printf -- "%s" "$@"; printf -- "%s" "$__yf_ansi_reset__"; }
+__yf_color_codes()
+{
+	printf "%s\n" "$1" | sed \
+		-e "s|#BOLD#|${__yf_ansi_bold__}|g" \
+		-e "s|#UNDL#|${__yf_ansi_underline__}|g" \
+		-e "s|#BLCK#|${__yf_ansi_black__}|g" \
+		-e "s|#RED#|${__yf_ansi_red__}|g" \
+		-e "s|#GRN#|${__yf_ansi_green__}|g" \
+		-e "s|#YLLW#|${__yf_ansi_yellow__}|g" \
+		-e "s|#BLU#|${__yf_ansi_blue__}|g" \
+		-e "s|#MGNT#|${__yf_ansi_magenta__}|g" \
+		-e "s|#CYN#|${__yf_ansi_cyan__}|g" \
+		-e "s|#WHT#|${__yf_ansi_white__}|g" \
+		-e "s|#GRY#|${__yf_ansi_gray__}|g" \
+		-e "s|#BRED#|${__yf_ansi_bright_red__}|g" \
+		-e "s|#BGRN#|${__yf_ansi_bright_green__}|g" \
+		-e "s|#BYLLW#|${__yf_ansi_bright_yellow__}|g" \
+		-e "s|#BBLU#|${__yf_ansi_bright_blue__}|g" \
+		-e "s|#BMGNT#|${__yf_ansi_bright_magenta__}|g" \
+		-e "s|#BCYN#|${__yf_ansi_bright_cyan__}|g" \
+		-e "s|#BWHT#|${__yf_ansi_bright_white__}|g" \
+		-e "s|#RSET#|${__yf_ansi_reset__}|g"
+}
+
+__yf_escape_specials() { printf -- '%s\n' "$1" | sed -e 's|[";()$`\\]|\\&|g'; }
+__yf_escape_strings() { printf -- '%s\n' "$1" | sed -e 's|" $\\]|\\&|g'; }
+
+__yf_languages__="${YF_UI_LANGUAGES:-en}"
+__yf_get_language()
+(
+	__yf_get_language_code()
+	{
+		printf -- '%s\n' "$1" | sed -n -e '1s|^\([A-Za-z]*\).*|\1|p' | sed -e 'y/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/'
+	}
+
+	___yf_lang="$1" && shift
+
+	if [ -n "$Language" ]; then
+		___yf_check="$(__yf_get_language_code "$Language")"
+	elif [ -n "$LC_ALL" ]; then
+		___yf_check="$(__yf_get_language_code "$LC_ALL")"
+	else
+		[ -z "$LANG" ] || ___yf_check="$(__yf_get_language_code "$LANG")"
+	fi
+	if [ -n "$___yf_check" ]; then
+		[ "$___yf_lang" = "$___yf_check" ] || \
+		for ___yf_lng in "$@"; do
+			[ "$___yf_lng" = "$___yf_check" ] && ___yf_lang="$___yf_lng" && break
+		done
+	fi
+	printf -- '%s' "${___yf_lang:-en}"
+	unset ___yf_lng
+	unset ___yf_lang
+	unset ___yf_check
+)
+__yf_language__="$(eval __yf_get_language "$__yf_languages__")"
+
+__yf_get_localized()
+(
+	eval ___yf_msg="\${__YF_L10N_$1_${__yf_language__}}"
+	[ -z "$___yf_msg" ] && ___yf_lang="en" || ___yf_lang="$__yf_language__"
+	eval ___yf_msg="\${__YF_L10N_$1_${___yf_lang}}"
+	[ -z "$___yf_msg" ] && printf -- "Message definition '%s' is missing for '%s'.\n" "$1" "$__yf_language__" 1>&2 && return
+	printf -- '%s' "$___yf_msg"
+	unset ___yf_msg
+	unset ___yf_lang
+)
+__yf_declare_message()
+{
+	___yf_msg_lang="$1"
+	if [ "${#___yf_msg_lang}" -ne 2 ]; then
+		___yf_msg_lang='en'
+		___yf_msg_code="$1"
+		shift
+	else
+		___yf_msg_code="$2"
+		shift 2
+	fi
+	printf -- '__YF_L10N_%s_%s="%s"\n' "$___yf_msg_code" "$___yf_msg_lang" "$(__yf_escape_strings "$@")"
+	unset ___yf_msg_lang
+	unset ___yf_msg_code
+}
+__yf_msg()
+{
+	__yf_declare_message "$@"
+}
+__yf_localization()
+{
+	language="en"
+	while read -r id message; do
+		if [ "$id" = "language" ]; then
+			language="$message"
+			continue
+		fi
+		if [ -n "$id" ]; then
+			[ "$(expr "$id" : "\(.\).*")" != "#" ] \
+				&& __yf_declare_message "$language" "$id" "$(__yf_color_codes "$message")"
+		fi
+	done
+}
+
+#######################################################################################################
+#                                                                                                     #
+# functions to display messages to user                                                               #
+#                                                                                                     #
+#######################################################################################################
+__yf_nl_out() { printf -- '\n'; }
+__yf_nl_err() { __yf_nl_out 1>&2; }
+__yf_errmsg()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}\a" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_emsg()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_errmsg "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_info_output()
+{
+	___yf_mask="$1"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@" 1>&2
+	unset ___yf_mask
+}
+__yf_info()
+{
+	___yf_mask="$(__yf_get_localized "$1")"
+	shift
+	__yf_info_output "$___yf_mask" "$@"
+	unset ___yf_mask
+}
+__yf_help()
+{
+	___yf_mask="$(__yf_color_codes "$1")"
+	shift
+	# shellcheck disable=SC2059
+	printf -- "${___yf_mask}" "$@"
+	unset ___yf_mask
+}
+#######################################################################################################
+#                                                                                                     #
+# temporary directory creation                                                                        #
+#                                                                                                     #
+#######################################################################################################
+__yf_random()
+(
+	[ -f /proc/sys/kernel/random/uuid ] && cat /proc/sys/kernel/random/uuid && exit 0
+	for h in md5sum sha1sum; do
+		if __yf_check_required_command $h; then
+			if [ -c /dev/urandom ] && __yf_check_required_command "dd"; then
+				dd if=/dev/urandom bs=32 count=1 status=none 2>/dev/null | $h | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+			fi
+			for f in /proc/self/stat /proc/self/status /proc/interrupts /proc/softirqs /proc/uptime; do
+				if [ -f $f ]; then
+					$h < $f | sed -n -e "s|^\([0-9A-Fa-f]*\).*\$|\1|p" && exit 0
+				fi
+			done
+		fi
+	done
+	__yf_check_required_command "date" && date +%s && exit 0
+	printf "%d" "$$"
+)
+__yf_mktmp()
+(
+	if __yf_check_required_command "mktemp"; then
+		n="$(mktemp "$@" 2>/dev/null)"
+	fi
+	if [ -z "$n" ]; then
+		t="${TMPDIR:-/tmp}"
+		[ "$1" = "-d" ] && d=1 || d=0
+		[ "$1" = "-p" ] && t="$2"
+		[ -z "$t" ] && t="/tmp"
+		n="$t/$(__yf_random)"
+		if [ $d -eq 1 ]; then
+			[ -d "$n" ] && n="$t/$(__yf_random)"
+			mkdir -p "$n" 2>/dev/null
+		else
+			while [ -e "$n" ]; do
+				n="$t/$(__yf_random)"
+			done
+			touch "$n" 2>/dev/null
+		fi
+	fi
+	printf "%s\n" "$n"
+)
+__yf_get_script_lines()
+{
+	sed -n -e "/^#*${1}#\$/,/^#\{20\}.*#\$/p" -- "$0" | \
+	sed -e '1d;$d' | \
+	sed -e 's|# \(.*\) *#$|\1|' | \
+	sed -e 's|^#*#$|--|p' | \
+	sed -e '$d' | \
+	sed -e 's| *$||'
+}
+__yf_show_script_name()
+{
+	[ -n "$1" ] && printf -- '%s' "$1"
+	printf -- '%s' "${0#*/}"
+	[ -n "$1" ] && printf -- "%s" "${__yf_ansi_reset__}"
+}
+__yf_show_license()
+{
+	__yf_get_script_lines 'LIC'
+}
+__yf_show_version()
+{
+	printf "\n${__yf_ansi_bold__}%s${__yf_ansi_reset__}, " "$(__yf_get_script_lines 'VER' | sed -n -e "2s|^\([^,]*\),.*|\1|p")"
+	v_display="$(__yf_get_script_lines 'VER' | sed -n -e "2s|^[^,]*, \(.*\)|\1|p")"
+	[ "$__yf_language__" = "de" ] && v_display="$(printf "%s\n" "$v_display" | sed -e "s|version|Version|g")"
+	printf "%s\n" "$v_display"
+}
+__yf_show_copyright()
+{
+	__yf_get_script_lines 'CPY'
+}
+
+#######################################################################################################
+#######################################################################################################
+##                                                                                                   ##
+##  D o n ' t   c h a n g e   a n y t h i n g   a b o v e   t h i s   p o i n t.                     ##
+##                                                                                                   ##
+##  ( u p   t o   t h e   f i r s t   m a r k )                                                      ##
+##                                                                                                   ##
+#######################################################################################################
+#######################################################################################################
+
+#######################################################################################################
+#                                                                                                     #
+# prepare localized messages                                                                          #
+#                                                                                                     #
+#######################################################################################################
+___yf_localization="$(__yf_mktmp)"
+__yf_localization >"$___yf_localization" <<'EOM'
+# YF_UI localization start
+
+language en
+
+INF_license					\nLicensed to you according to GPLv2 or a later version, with some additions.\nPlease refer to the usage screen for detailed license terms.\n\n
+ERR_show_error				#RED# FAILED#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# CANCELED#RSET#\n
+INF_missing					#YLLW# MISSING#RSET#\n
+INF_missing_cmd				#YLLW# skipped, missing '#RSET##BOLD#%s#RSET##YLLW#' command#RSET#\n
+INF_show_dec_hex32			#GRN# %u#RSET##YLLW# (0x%08x)#RSET##GRN# bytes\n
+INF_show_hex32				#GRN# 0x%08x\n
+
+INF_unpack_file_size		#BBLU#Determining size of packed file ...#RSET#
+INF_verify_crc32_magic		#BBLU#Looking for TI checksum magic ...#RSET#
+INF_read_shell_crc			#BBLU#Reading checksum value for shell image ...#RSET#
+INF_verify_shell_crc		#BBLU#Verifying checksum for shell image ...#RSET#
+INF_reading_shell_cksum		#BBLU#Reading byte-wise checksum over shell image ...#RSET#
+INF_reading_shell_entmark	#BBLU#Reading markup for entry address of shell image ...#RSET#
+INF_reading_shell_entry		#BBLU#Reading entry address of shell image ...#RSET#
+INF_reading_shell_magic		#BBLU#Reading shell image magic value ...#RSET#
+INF_reading_shell_size		#BBLU#Reading shell image size ...#RSET#
+INF_reading_shell_load		#BBLU#Reading shell image load address ...#RSET#
+INF_padding_shell_image		#BBLU#Counting pad bytes after shell image content ...#RSET#
+INF_new_inner_image			#YLLW#Processing new inner image ...#RSET#\n
+INF_reading_inner_magic		#BBLU#Reading inner image magic value ...#RSET#
+INF_kernel_type				#BBLU#Found magic value for inner kernel ...#RSET#
+INF_show_type				#GRN# %s#RSET#\n
+INF_reading_inner_size		#BBLU#Reading inner image size ...#RSET#
+INF_reading_inner_load		#BBLU#Reading inner image load address ...#RSET#
+INF_reading_inner_lzma_sig	#BBLU#Reading LZMA signature from inner image ...#RSET#
+INF_reading_inner_comp		#BBLU#Reading compressed data length of image ...#RSET#
+INF_reading_inner_uncomp	#BBLU#Reading uncompressed data length of image ...#RSET#
+INF_reading_inner_crc32		#BBLU#Reading image CRC32 value for compressed data ...#RSET#
+INF_reading_inner_cksum		#BBLU#Reading checksum over image ...#RSET#
+INF_reading_inner_entmark	#BBLU#Reading markup for entry address of image ...#RSET#
+INF_reading_inner_entry		#BBLU#Reading entry address of image ...#RSET#
+INF_computing_byte_sum		#BBLU#Computing byte-wise sum of image data ...#RSET#
+INF_computing_data_crc		#BBLU#Computing CRC32 of compressed image data ...#RSET#
+INF_unpacking_kernel		#BBLU#Unpacking kernel image to '#YLLW#%s#RSET##BBLU#' ...#RSET#
+INF_storing_bootcore		#BBLU#Storing bootcore kernel image as '#YLLW#%s#RSET##BBLU#' ...#RSET#
+INF_no_error_found			#GRN#No error(s) found in file '#YLLW#%s#RSET##GRN#'.#RSET#\n
+INF_invalid_file			#RED#Error(s) found in file '#YLLW#%s#RSET##RED#'.#RSET#\n
+
+ERR_ambiguous_options		#RED#You've specified a '%s' operation, after a '%s' was selected previously.#RSET#\n
+ERR_missing_action			#RED#Neither 'pack' nor 'unpack' or 'check' operation selected.#RSET#\n
+ERR_missing_image_name		#RED#Missing image file name argument.#RSET#\n
+ERR_invalid_image_data		#RED#The provided image file '%s' contains invalid data.#RSET#\n
+ERR_image_file_missing		#RED#The specified image file #BWHT#%s#RED# does not exist.#RSET#\n
+ERR_invalid_option			#RED#Unknown option #BWHT#%s#RED# specified.#RSET#\n
+ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%s#RSET#\n
+ERR_missing_bc_file			#RED#Missing bootcore kernel file to pack.#RSET#\n
+ERR_invalid_bc_eva_file		#RED#Input file #BWHT#%s#RED# has an unexpected format ('#YLLW#%s#RSET##RED#' expected).#RSET#\n
+
+language de
+
+INF_license					\nLizenziert nach den Bestimmungen der GPLv2 oder einer höheren Version, mit ein paar Zusätzen.\nEinzelheiten sind dem Hilfe-Bildschirm (in englischer Sprache) zu entnehmen.\n\n
+ERR_show_error				#RED# FEHLER#RSET#\n
+INF_show_ok					#GRN# OK#RSET#\n
+INF_canceled				#BRED# ABGEBROCHEN#RSET#\n
+INF_missing					#YLLW# FEHLT#RSET#\n
+INF_missing_cmd				#YLLW# übersprungen, kein '#RSET##BOLD#%s#RSET##YLLW#'-Kommando gefunden#RSET#\n
+INF_show_dec_hex32			#GRN#%u#RSET##YLLW# (0x%08x)#RSET##GRN# Bytes\n
+INF_show_hex32				#GRN# 0x%08x\n
+
+INF_unpack_file_size		#BBLU#Ermitteln der Größe der gepackten Datei ...#RSET#
+INF_verify_crc32_magic		#BBLU#Suchen der Signatur der TI-Prüfsumme ...#RSET#
+INF_read_shell_crc			#BBLU#Lesen der Prüfsumme für das äußere Image ...#RSET#
+INF_verify_shell_crc		#BBLU#Vergleich der Prüfsumme für das äußere Image ...#RSET#
+INF_reading_shell_magic		#BBLU#Prüfung des Signaturwertes für das äußere Image ...#RSET#
+INF_reading_shell_size		#BBLU#Lesen der Größe des äußeren Images ...#RSET#
+INF_reading_shell_load		#BBLU#Lesen der Ladeadresse des äußeren Images ...#RSET#
+INF_reading_shell_cksum		#BBLU#Lesen der byte-weisen Prüfsumme über das äußere Image ...#RSET#
+INF_reading_shell_entmark	#BBLU#Lesen der Kennzeichnung für die Startadresse des äußeren Images ...#RSET#
+INF_reading_shell_entry		#BBLU#Lesen der Startadresse des äußeren Images ...#RSET#
+INF_padding_shell_image		#BBLU#Prüfen des Auffüllens auf die nächste 256-Byte-Grenze ...#RSET#
+INF_new_inner_image			#YLLW#Verarbeiten eines neuen inneren Images ...#RSET#\n
+INF_reading_inner_magic		#BBLU#Prüfung des Signaturwertes für das innere Image ...#RSET#
+INF_kernel_type				#BBLU#Signatur für ein inneres Image gefunden ...#RSET#
+INF_show_type				#GRN# %s#RSET#\n
+INF_reading_inner_size		#BBLU#Lesen der Größe des inneren Images ...#RSET#
+INF_reading_inner_load		#BBLU#Lesen der Ladeadresse des inneren Images ...#RSET#
+INF_reading_inner_lzma_sig	#BBLU#Lesen der LZMA-Signatur des Images ...#RSET#
+INF_reading_inner_comp		#BBLU#Lesen der Länge der komprimierten Daten des Images ...#RSET#
+INF_reading_inner_uncomp	#BBLU#Lesen der Länge der unkomprimierten Daten des Images ...#RSET#
+INF_reading_inner_crc32		#BBLU#Lesen des CRC32-Wertes für die komprimierten Daten des Images ...#RSET#
+INF_reading_inner_cksum		#BBLU#Lesen der Prüfsumme über das Image ...#RSET#
+INF_reading_inner_entmark	#BBLU#Lesen der Kennzeichnung für die Startadresse des Images ...#RSET#
+INF_reading_inner_entry		#BBLU#Lesen der Startadresse des Images ...#RSET#
+INF_computing_byte_sum		#BBLU#Berechnen der byte-weisen Summe über die Image-Daten ...#RSET#
+INF_computing_data_crc		#BBLU#Berechnen der CRC32-Prüfsumme über die komprimierten Image-Daten ...#RSET#
+INF_unpacking_kernel		#BBLU#Entpacken des Kernel-Images nach '#YLLW#%s#RSET##BBLU#' ...#RSET#
+INF_storing_bootcore		#BBLU#Speichern des Bootcore-Images als '#YLLW#%s#RSET##BBLU#' ...#RSET#
+INF_no_error_found			#GRN#Kein(e) Fehler gefunden in der Datei '#YLLW#%s#RSET##GRN#'.#RSET#´\n
+INF_invalid_file			#RED#Fehler in der Datei '#YLLW#%s#RSET##RED#'.#RSET#\n
+
+ERR_ambiguous_options		#RED#Es wurde als Operation '%s' ausgewählt, obwohl zuvor schon '%s' angegeben wurde.#RSET#\n
+ERR_missing_action			#RED#Weder 'unpack' noch 'pack' oder 'check' als Operation ausgewählt.#RSET#\n
+ERR_missing_image_name		#RED#Es wurde keine Image-Datei angegeben beim Aufruf.#RSET#\n
+ERR_invalid_image_data		#RED#Die angegebene Image-Datei '%s' enthält ungültige Daten.#RSET#\n
+ERR_image_file_missing		#RED#Die angegebene Image-Datei #BWHT#%s#RED# existiert nicht.#RSET#\n
+ERR_invalid_option			#RED#Unbekannte Option #BWHT#%s#RED# angegeben beim Aufruf.#RSET#\n
+ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegeben: #BWHT#%s#RSET#\n
+ERR_missing_bc_file			#RED#Es wurde keine Datei für den Bootcore-Kernel angegeben.#RSET#\n
+ERR_invalid_bc_eva_file		#RED#Die Eingabedatei #BWHT#%s#RED# hat ein falsches Format ('#YLLW#%s#RSET##RED#' erwartet).#RSET#\n
+
+# YF_UI localization end
+EOM
+# shellcheck disable=SC1090
+. "$___yf_localization"
+rm -f "$___yf_localization" 2>/dev/null
+if [ -n "$YF_UI_DEBUG_MESSAGES" ]; then # show all defined messages and exit
+	set | sed -n -e "/^__YF_L10N/p" 1>&2
+	exit 0
+fi
+unset ___yf_localization
+#######################################################################################################
+#                                                                                                     #
+# usage screen, caller has to redirect output to STDERR if needed                                     #
+#                                                                                                     #
+#######################################################################################################
+usage()
+(
+	if [ "$__yf_language__" = "de" ]; then
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nEine deutsche Version des oben stehenden Textes findet man - nach der Übersetzung des Textes der\n"
+		__yf_help "Lizenzbestimmungen - unter dieser Adresse im Internet: https://www.gnu.de/documents/gpl-2.0.de.html\n"
+		__yf_help "\nZweck:\n\n#BBLU#Entpacken/Packen eines Kernel-Images für AVM's FRITZ!Boxen mit GRX5-Chipset#RSET#\n\n"
+		__yf_help "Aufruf:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "#BOLD#imagefile#RSET# [ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# ist eine optionale Angabe aus den folgenden Werten:\n\n"
+		__yf_help "#BOLD#-h#RSET# oder #BOLD#--help#RSET#     - zeigt diese Informationen auf STDOUT an\n"
+		__yf_help "#BOLD#-i#RSET# oder #BOLD#--in-place#RSET# - ändert die angegebene Image-Datei, anstatt eine signierte Kopie auf STDOUT\n"
+		__yf_help "                     auszugeben\n"
+		__yf_help "#BOLD#-b#RSET# oder #BOLD#--on-box#RSET#   - verwendet den privaten Schlüssel des FRITZ!OS auf dem Gerät (siehe Kommentare\n"
+		__yf_help "                     weiter unten) zum Signieren\n\n"
+		__yf_help "#BOLD#imagefile#RSET# ist die zu signierende Image-Datei, die bei ihrem Format ein paar Einschränkungen unter-\n"
+		__yf_help "liegt (siehe weiter unten). Wenn der Name als Bindestrich (-) angegeben wurde, wird der Inhalt von\n"
+		__yf_help "STDIN für die Dauer der Verarbeitung durch das Skript in eine temporäre Datei geschrieben und im\n"
+		__yf_help "weiteren Verlauf mit dieser Datei gearbeitet.\n\n"
+		__yf_help "#BOLD#password#RSET# ist das Kennwort für den privaten RSA-Schlüssel, der zum Signieren verwendet werden soll.\n"
+		__yf_help "Wenn es nicht beim Aufruf angegeben und der private Schlüssel mit einem Kennwort gesichert wurde,\n"
+		__yf_help "wird das Kennwort vom Terminal gelesen (ohne Anzeige der eingegebenen Zeichen). Alternativ kann das\n"
+		__yf_help "Kennwort auch über die Environment-Variable #BOLD#YF_SIGNIMAGE_KEYPASSWORD#RSET# bereitgestellt werden.\n\n"
+		__yf_help "Wenn die option #BOLD#-i#RSET# (lang: #BOLD#--in-place#RSET#) nicht angegeben wurde, wird die signierte Image-Datei auf\n"
+		__yf_help "STDOUT ausgegeben und der Aufrufer ist dafür zuständig, die Daten per Umleitung an einem passenden\n"
+		__yf_help "Ort zu speichern. Wenn STDOUT ein Terminal sein sollte, wird die Verarbeitung abgebrochen. Bei\n"
+		__yf_help "Verwendung der vorstehenden Option wird die angegebene Image-Datei nach dem zu signierenden Payload\n"
+		__yf_help "abgeschnitten und danach dieser Datei direkt die Signatur (und die notwendigen Blöcke zur Anzeige\n"
+		__yf_help "des Dateiendes) hinzugefügt.\n\n"
+		__yf_help "Standardmäßig wird zum Signieren ein MD5-Hash über den Dateiinhalt verwendet (weil das bei AVM auch\n"
+		__yf_help "der Fall ist). Wenn man beim Signieren schon sicher weiß, daß diese Signatur nicht mit Komponenten\n"
+		__yf_help "von AVM geprüft werden soll, kann man auch einen aktuelleren Hash-Algorithmus verwenden, ebenso wie\n"
+		__yf_help "einen längeren RSA-Key (AVM nutzt nur 1024-Bit Schlüssellänge bei Signieren). Die Angabe eines\n"
+		__yf_help "anderen Hash-Algorithmus (der von #BOLD#openssl#RSET# auch unterstützt werden muß) erfolgt durch das Setzen der\n"
+		__yf_help "Environment-Variablen #BOLD#YF_SIGNIMAGE_HASH#RSET# auf den passenden Wert.\n\n"
+		__yf_help "Ein Spezialfall (der durch Angabe der Option #BOLD#-b#RSET# oder #BOLD#--on-box#RSET#) aktiviert wird, ist das Signieren\n"
+		__yf_help "der Datei auf einem Gerät mit FRITZ!OS von AVM, wenn auch die Signaturprüfung später wieder auf\n"
+		__yf_help "diesem Gerät erfolgen soll. Dann kann der vorhandene RSA-Key des Gerätes (in #BOLD#websrv_ssl_key.pem#RSET#),\n"
+		__yf_help "mit dem das Web-Interface im FRITZ!OS die TLS-Verbindungen absichert) zum Signieren herangezogen\n"
+		__yf_help "werden und es braucht keinen zusätzlichen RSA-Key und auch kein Kennwort für diesen Schlüssel, weil\n"
+		__yf_help "dieses Kennwort aus den Daten (der Hardware) des Gerätes errechnet wird.\n\n"
+		__yf_help "Um diesen Modus beim Signieren auch ohne die Angabe der oben genannten Option(en) zu aktivieren,\n"
+		__yf_help "kann die Environment-Variable #BOLD#YF_SIGNIMAGE_ON_BOX#RSET# auf den Wert '1' gesetzt werden. Auch dabei muß\n"
+		__yf_help "dann aber beachtet werden, daß die AVM-Komponenten nur mit RSA-Keys mit einer Schlüssellänge von\n"
+		__yf_help "1024 Bit umgehen können, während aktuelle RSA-Keys für AVM-Geräte aber 2048 Bit Schlüssellänge\n"
+		__yf_help "verwenden.\n\n"
+		__yf_help "Wenn man versucht, auf einem Gerät mit FRITZ!OS von AVM, wo im laufenden OS ein anderer Wert für\n"
+		__yf_help "#BOLD#HWRevision#RSET# verwendet wird, als derjenige, der im Bootloader hinterlegt wurde (wo also eine Firmware\n"
+		__yf_help "für ein anderes Modell verwendet wird), eine Image-Datei zu signieren, wird das Skript auch keine\n"
+		__yf_help "Signatur erstellen. Um auch in diesem Fall einen Signaturversuch zu erzwingen, kann man einen\n"
+		__yf_help "beliebigen (aber nicht leeren) Wert mit dem Namen #BOLD#YF_SIGNIMAGE_IGNORE_HWREVISION#RSET# im Environment\n"
+		__yf_help "setzen, in diesem Fall wird das Ergebnis dieser Prüfung ignoriert.\n\n"
+		__yf_help "Die zu signierende Image-Datei muß das traditionelle TAR-Format verwenden (ohne irgendwelche\n"
+		__yf_help "Erweiterungen). Wird zum Erstellen der Image-Datei die GNU-Implementierung des #BOLD#tar#RSET#-Kommandos\n"
+		__yf_help "verwendet (https://www.gnu.org/software/tar), muß man die Option #BOLD#--format=gnu#RSET# oder #BOLD#--format=oldgnu#RSET#\n"
+		__yf_help "angeben beim Aufruf.\n\n"
+		__yf_help "Außerdem muß der erste Eintrag im Image-File zwingend ein Verzeichnis mit dem Namen #BOLD#./var/#RSET# sein - \n"
+		__yf_help "der führende Punkt ist wichtig und das Skript wird kein Image signieren, welches nicht mit exakt so\n"
+		__yf_help "einem Eintrag startet. Die Komponenten von AVM filtern jeden Eintrag aus der Image-Datei, dessen\n"
+		__yf_help "Name nicht mit diesem Verzeichnis beginnt und der Haupteinsatzzweck dieses Skripts ist immer noch\n"
+		__yf_help "das Signieren von Firmware-Images in einer AVM-kompatiblen Art und Weise.\n\n"
+		__yf_help "Wenn die Image-Datei bereits einen Eintrag mit dem Namen #BOLD#./var/signature#RSET# enthält, muß das der\n"
+		__yf_help "allerletzte Eintrag in der Datei sein - diese Signatur wird dann durch eine neue ersetzt. Enthält\n"
+		__yf_help "die Datei noch keine Signatur, wird hinter den zu signierenden Daten eine solche hinzugefügt.\n\n"
+		__yf_help "Soll eine spezielle Version des #BOLD#OpenSSL#RSET#-Kommandozeilenprogramms vewendet werden, kann deren Datei-\n"
+		__yf_help "name mit der Variablen #BOLD#YF_SIGNIMAGE_OPENSSL#RSET# (im Environment oder der Konfigurationsdatei) über-\n"
+		__yf_help "schrieben werden.\n\n"
+		__yf_help "Der Ort im Dateisystem, wo zusätzliche Dateien für die Kryptographie-Operationen (private und\n"
+		__yf_help "öffentliche Schlüssel, Startwerte für Zufallszahlen, etc.) gesucht werden sollen, kann über eine\n"
+		__yf_help "Konfigurationsdatei mit dem Namen #BOLD#yf_signimage.conf#RSET# festgelegt werden. Die Datei wird in demselben\n"
+		__yf_help "Verzeichnis gesucht, wo sich auch dieses Skript befindet. Um den Pfad zu dieser Datei ebenfalls\n"
+		__yf_help "selbst festzulegen, kann eine Environment-Variable mit Namen #BOLD#YF_SIGNIMAGE_CONFIG#RSET# benutzt werden.\n"
+		__yf_help "Wird keine Konfigurationsdatei gefunden, werden entsprechende Standardwerte (sieher Vorlage für die\n"
+		__yf_help "Konfigurationsdatei) verwendet. Vor dem Ändern von Einstellungen bitte sorgfältig die Kommentare im\n"
+		__yf_help "bereitgestellten Muster für die Konfigurationsdatei lesen.\n\n"
+	else
+		__yf_show_version
+		__yf_show_copyright
+		__yf_show_license
+		__yf_help "\nPurpose:\n\n#BBLU#Unpack/pack a kernel image file for AVM's FRITZ!Box devices with a GRX5 chipset#RSET#\n\n"
+		__yf_help "Usage:\n\n"
+		__yf_help "#GRN#%s #RSET#" "$0"
+		__yf_help "[ #BOLD#options#RSET# ] "
+		__yf_help "#BOLD#imagefile#RSET# [ #BOLD#password#RSET# ]\n\n"
+		__yf_help "#BOLD#options#RSET# is an optional value out of the following:\n\n"
+		__yf_help "#BOLD#-h#RSET# or #BOLD#--help#RSET#     - show this info on STDOUT\n"
+		__yf_help "#BOLD#-i#RSET# or #BOLD#--in-place#RSET# - sign the image file in-place, do not output data to STDOUT\n"
+		__yf_help "#BOLD#-b#RSET# or #BOLD#--on-box#RSET#   - use FRITZ!OS device key (see comments below) to sign\n\n"
+		__yf_help "#BOLD#imagefile#RSET# is the archive to sign, it has to follow some rules according its format (see below).\n"
+		__yf_help "If name is specified as a dash (-), the image file is read from STDIN and saved to a temporary\n"
+		__yf_help "location, while the script is running.\n\n"
+		__yf_help "The #BOLD#password#RSET# is the one of your private key, which will be used to encrypt your signature. This\n"
+		__yf_help "password (if your private key was stored with encryption) will be read from terminal (without\n"
+		__yf_help "echoing typed characters), if it's not specified as parameter while calling the script or was\n"
+		__yf_help "preset using an environment value called #BOLD#YF_SIGNIMAGE_KEYPASSWORD#RSET#.\n\n"
+		__yf_help "If option #BOLD#-i#RSET# (long: #BOLD#--in-place#RSET#) is not specified, the signed image will be written to STDOUT and\n"
+		__yf_help "you're in charge to redirect it to the proper target location. If a terminal is connected there,\n"
+		__yf_help "the script will be aborted.\n\n"
+		__yf_help "The default hash algorithm used is MD5, as it's used by AVM's current implementation. If you know\n"
+		__yf_help "(for sure), that you will only use non-AVM scripts/components to sign and verify, you may specify\n"
+		__yf_help "a better hash algorithm (remember that #BOLD#openssl#RSET# binary still has to support it) with a variable\n"
+		__yf_help "#BOLD#YF_SIGNIMAGE_HASH#RSET# in the environment, which contains the name of algorithm to use.\n"
+		__yf_help "A special use case (which is activated by option #BOLD#-b#RSET# or #BOLD#--on-box#RSET#) is signing a TAR file directly\n"
+		__yf_help "in a FRITZ!OS environment, if such a signature is surely verified later only on the same device.\n"
+		__yf_help "Then the RSA key from #BOLD#websrv_ssl_key.pem#RSET# may be used instead of an additional key and there's no\n"
+		__yf_help "need to specify a password for the key, because it's computed from device (hardware) settings.\n\n"
+		__yf_help "To switch the script into this mode without the options above, you may set the environment\n"
+		__yf_help "variable #BOLD#YF_SIGNIMAGE_ON_BOX#RSET# to a value of '1' instead. But be aware in any case, that a key size\n"
+		__yf_help "other than 1024 bits would lead to impossibility to verify the signature with AVM's components -\n"
+		__yf_help "and newer FRITZ!OS versions use a 2048-bit RSA key to protect their TLS connections.\n\n"
+		__yf_help "If you're trying to sign using this mode on a FRITZ!OS device, where HWRevision values from the\n"
+		__yf_help "urlader and shell environment are different (due to an 'alien' firmware running, while the value\n"
+		__yf_help "from bootloader isn't changeable), the script will cease to detect the host system as a FRITZ!OS\n"
+		__yf_help "device. In this case you may provide any non-empty value with an environment variable named\n"
+		__yf_help "YF_SIGNIMAGE_IGNORE_HWREVISION - thus the result of this check will be ignored.\n\n"
+		__yf_help "The input image has to use the traditional TAR format without any extensions. If you'll use the\n"
+		__yf_help "GNU tar implementation (https://www.gnu.org/software/tar), you have to specify the #BOLD#--format=gnu#RSET#\n"
+		__yf_help "or #BOLD#--format=oldgnu#RSET# option while creating the file.\n\n"
+		__yf_help "Furthermore the first archived member has to be a directory entry with name #BOLD#./var/#RSET# - the first\n"
+		__yf_help "dot is important and this script will deny to sign an image, which isn't starting with exactly\n"
+		__yf_help "such an entry. AVM's components will filter out any names not starting with this path name and\n"
+		__yf_help "the main purpose of this script is still to sign images in a compatible manner to AVM's FRITZ!OS.\n\n"
+		__yf_help "If the provided input image already contains a member called #BOLD#./var/signature#RSET#, it has to be the\n"
+		__yf_help "very last entry and will be replaced by a new signature. If it's not the last entry, the script\n"
+		__yf_help "will abort the signing process. If no signature file was found on input archive, a new one is\n"
+		__yf_help "appended after the signed payload.\n\n"
+		__yf_help "To make integration of this script into a foreign toolchain easier, the location of the used\n"
+		__yf_help "OpenSSL command line utility may be overwritten with #BOLD#YF_SIGNIMAGE_OPENSSL#RSET# from environment or the\n"
+		__yf_help "configuration file.\n\n"
+		__yf_help "The location of crypto materials to be used (private and public keys, RNG seed, etc.), will be\n"
+		__yf_help "read from a configuration file with name #BOLD#yf_signimage.conf#RSET#. The file has to be stored in the\n"
+		__yf_help "same directory as this script. Please read the comments there, if you want to change the places,\n"
+		__yf_help "where other files will be searched. To change location, where the configuration file will be\n"
+		__yf_help "expected, you may use an environment value #BOLD#YF_SIGNIMAGE_CONFIG#RSET# with the (relative or absolute)\n"
+		__yf_help "path name of it. If no configuration file exists, default values (see configuration template)\n"
+		__yf_help "will be used.\n\n"
+	fi
+)
+#######################################################################################################
+#                                                                                                     #
+# some subfunctions                                                                                   #
+#                                                                                                     #
+#######################################################################################################
+show_error() ( __yf_emsg "ERR_show_error"; )
+show_ok() ( __yf_info "INF_show_ok"; )
+is_debug() { [ "$debug" -eq 1 ]; }
+debug() ( is_debug && __yf_info "$@"; )
+sbo() (
+	sbo_ro()
+	{
+		v1=0; v2=0; v3=0; v4=0
+		while read -r p _ rt; do
+			[ "$p" -gt 5 ] && exit 1
+			[ "$p" -eq 5 ] && [ "$rt" -ne 0377 ] && exit 1
+			if [ "$p" -eq 5 ]; then
+				for i in $v4 $v3 $v2 $v1; do
+					printf -- "%b" "\0$(printf -- "%o" "$i")"
+				done
+				exit 0
+			fi
+			eval "v$p"=$(( 0$rt ))
+		done
+		exit 1
+	}
+	( cat; printf -- "%b" "\377" ) | cmp -l -- /dev/zero - 2>/dev/null | sbo_ro
+)
+d2b_le() (
+	for i in 0 1 2 3; do
+		v=$(( ( $1 >> ( i * 8 ) ) & 255 ))
+		printf "%b" "\0$(( v >> 6 ))$(( ( v >> 3 ) & 7 ))$(( v & 7 ))"
+	done
+)
+b2d() (
+	b2d_ro()
+	{
+		i=1; v=0; ff=0
+		while read -r p _ rt; do
+			if [ "$ff" -eq 1 ]; then
+				v=$(( v * 256 ))
+				ff=255
+				v=$(( v + ff ))
+				i=$(( i + 1 ))
+				ff=0
+			fi
+			while [ "$i" -lt "$p" ]; do
+				v=$(( v * 256 ))
+				i=$(( i + 1 ))
+			done
+			if [ "$rt" = 377 ] && [ $ff -eq 0 ]; then
+				ff=1
+				continue
+			fi
+			v=$(( v * 256 ))
+			rt=$(( 0$rt ))
+			v=$(( v + rt ))
+			i=$(( p + 1 ))
+		done
+		printf -- "%d" $v
+	}
+	( cat; printf -- "%b" "\377" ) | cmp -l -- /dev/zero - 2>/dev/null | b2d_ro
+	return 0
+)
+is_valid_kernel_magic()
+(
+	for magic in $kernel_magics; do
+		[ "$1" = "$magic" ] && exit 0
+	done
+	exit 1
+)
+compute_checksum() ( cksum | sed -n -e "s|^\([0-9]*\).*|\1|p"; )
+compute_crc32_by_shell() (
+	poly() { eval l=\$poly_$(( ( $2 & 255 ) ^ ( 0$1 & 255 ) )); printf -- "%u\n" "$(( ( ( $2 & 0xFFFFFFFF ) >> 8 ) ^ l ))"; }
+	crc() { i=1; c=-1; while read -r p l _; do while [ "$p" -gt "$i" ]; do c=$(poly 0 "$c"); i=$(( i + 1 )); [ $(( i % 1024 )) -eq 0 ] && printf -- "." 1>&2; done; c=$(poly "$l" "$c"); i=$(( i + 1 )); [ $(( i % 1024 )) -eq 0 ] && printf -- "." 1>&2; done; c=$(( ~c )); printf -- "%u\n" "$(( c & 0xFFFFFFFF ))"; }
+	i=0; while [ $i -lt 256 ]; do r=$i; j=0; while [ $j -lt 8 ]; do [ $(( r & 1 )) -eq 1 ] && r=$(( ( ( r >> 1 ) & 0x7FFFFFFF ) ^ 0xEDB88320 )) || r=$(( ( r >> 1 ) & 0x7FFFFFFF )); j=$(( j + 1 )); done; eval poly_$i=$r; i=$(( i + 1 )); done;
+	cmp -l -- - /dev/zero 2>/dev/null | crc
+)
+check_compile_option_crc32()
+(
+	[ -n "$YF_DEBUG_NO_CC" ] && exit 1
+	obj="$tmp/$crc32_object_name"
+	c="$(command -v "$compiler" 2>/dev/null)"
+	{ [ -n "$c" ] && [ -x "$c" ]; } || exit 1
+	# shellcheck disable=SC2086
+	"$c" $compiler_options -x c -o "$obj" - <<'EndOfProgram'
+#include <stdio.h>
+int main() { unsigned int p=0xEDB88320, l[256], c=0, v; int i, j, o;
+for (i = 0; i < 256; i++) { v = i; for (j = 0; j < 8; j++) { o=(v & 1); v >>= 1; if (o) v ^= p; }; l[i] = v; }
+c = ~c;	while ((i = fgetc(stdin)) != EOF) { c = (c >> 8) ^ l[(c & 255) ^ (i & 255)]; } c = ~c;
+printf("%u\n", c); }
+EndOfProgram
+	[ -x "$obj" ] || exit 1
+	[ "$(printf -- "1234567890\n" | "$obj")" = "3801157066" ] || exit 1
+	printf -- "%s\n" "$obj"
+)
+compute_crc32le()
+(
+	p="$(check_compile_option_crc32 </dev/null)"
+	if [ -n "$p" ]; then
+		trap 'rm -f "$p" 2>/dev/null' EXIT
+		"$p"
+		exit 0
+	fi
+	if command -v busybox 2>/dev/null 1>&2; then
+		bb="$(command -v busybox 2>/dev/null)"
+		if [ -n "$("$bb" --list | sed -n -e "s|^\(crc32\)\$|\1|p")" ]; then
+			printf -- "%u\n" $(( 0x"$("$bb" crc32)" ))
+			exit 0
+		fi
+	fi
+	if command -v gzip 2>/dev/null 1>&2; then
+		gzip >"$tmp/gzip.out" 2>/dev/null
+		if [ -s "$tmp/gzip.out" ]; then
+			sz="$(wc -c <"$tmp/gzip.out")"
+			get_uint32_le "$tmp/gzip.out" $(( sz - 8 ))
+			rm -f "$tmp/gzip.out" 2>/dev/null
+			exit 0
+		fi
+	fi
+	compute_crc32_by_shell && exit 0 || exit 1
+)
+check_compile_option_bsum()
+(
+	[ -n "$YF_DEBUG_NO_CC" ] && exit 1
+	obj="$tmp/$bsum_object_name"
+	c="$(command -v "$compiler" 2>/dev/null)"
+	{ [ -n "$c" ] && [ -x "$c" ]; } || exit 1
+	# shellcheck disable=SC2086
+	"$c" $compiler_options -x c -o "$obj" - <<'EndOfProgram'
+#include <stdio.h>
+void main() { unsigned int c, s=0; while ((c = fgetc(stdin)) != EOF) s = s + c; printf("%u\n", s); }
+EndOfProgram
+	[ -x "$obj" ] || exit 1
+	[ "$(printf -- "1234567890\n" | "$obj")" = "535" ] || exit 1
+	printf -- "%s\n" "$obj"
+)
+compute_byte_sum()
+(
+	sum_bytes()
+	(
+		sum=0
+		while read -r p l _; do
+			sum=$(( sum + 0$l ))
+		done
+		printf -- "%u\n" "$sum"
+	)
+	p="$(check_compile_option_bsum </dev/null)"
+	if [ -n "$p" ]; then
+		trap 'rm -f "$p" 2>/dev/null' EXIT
+		"$p"
+		exit 0
+	fi
+	cmp -l -- - /dev/zero | sum_bytes
+)
+compute_lzma_checksum()
+(
+	s="$( (
+		bs="$2"
+		cnt=$(( $3 / bs ))
+		if [ "$cnt" -gt 0 ]; then
+			( dd if="$1" bs="$bs" skip=1 count="$cnt" 2>/dev/null; [ $(( $3 % bs )) -ne 0 ] && dd if="$1" bs=1 skip=$(( bs * ( cnt + 1 ) )) count=$(( $3 % bs )) 2>/dev/null ) >"$tmp/dd_out"
+		else
+			dd if="$1" of="$tmp/dd_out" bs="$bs" skip=1 count=1 conv=sync 2>/dev/null
+			dd if=/dev/null of="$tmp/dd_out" bs="$3" seek=1 2>/dev/null
+		fi
+		cat "$tmp/dd_out" 2>/dev/null
+	) | compute_crc32le)"
+	printf -- "%u\n" "$s"
+)
+compute_bytewise_checksum()
+(
+	v=$(( $(get_uint32_le "$1" "$2") + $(get_uint32_le "$1" $(( $2 + 4 ))) ))
+	s="$( (
+		bs=$(( $2 + 8 ))
+		cnt=$(( ( $3 - 8 ) / bs ))
+		if [ "$cnt" -gt 0 ]; then
+			( dd if="$1" bs=$bs skip=1 count=$cnt 2>/dev/null; [ $(( ( $3 - 8 ) % bs )) -ne 0 ] && dd if="$1" bs=1 skip=$(( bs * ( cnt + 1 ) )) count=$(( ( $3 - 8 ) % bs )) 2>/dev/null ) >"$tmp/dd_out"
+		else
+			dd if="$1" of="$tmp/dd_out" bs=$bs skip=1 count=1 conv=sync 2>/dev/null
+			dd if=/dev/null of="$tmp/dd_out" bs=$(( $3 - 8 )) seek=1 2>/dev/null
+		fi
+		cat "$tmp/dd_out" 2>/dev/null
+	) | compute_byte_sum)"
+	v=$(( v + s ))
+	v=$(( ~v + 1 ))
+	v=$(( v & ( ( 1 << 32 ) - 1 ) ))
+	printf -- "%d\n" "$v"
+)
+get_data()
+(
+	if [ "$3" -eq 0 ]; then
+		dd if="$1" bs="$2" count=1 2>/dev/null
+	else
+		dd if="$1" bs="$3" count=$(( ( $2 / $3 ) + 1 )) skip=1 2>/dev/null | dd bs=1 count="$2" 2>/dev/null
+	fi
+)
+get_uint32_be() ( get_data "$1" 4 "$2" | b2d; )
+get_uint32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
+#######################################################################################################
+#                                                                                                     #
+# processing                                                                                          #
+#                                                                                                     #
+#######################################################################################################
+check_grx5_kernel()
+(
+	image_file="$1"
+	offset=0
+	tichksum=0
+
+	# overall file size check
+	debug "INF_unpack_file_size"
+	slen="$(wc -c < "$image_file")"
+	debug "INF_show_dec_hex32" "$slen" "$slen"
+
+	# check magic value of image (0x1291edfe)
+	debug "INF_reading_shell_magic"
+	magic_s="$(get_uint32_be "$image_file" $offset)"
+	if ! [ "$magic_s" = "$shell_magic" ]; then
+		is_debug && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit $YF_GRX5_INVALID_IMAGE
+	else
+		is_debug && show_ok
+		offset=$(( offset + uint32_size ))
+	fi
+
+	# check, whether a TI checksum is present at end of file (magic at 'len - 8': 0x23de53c4 (BE), value at 'len - 4')
+	debug "INF_verify_crc32_magic"
+	timgc="$(get_uint32_be "$image_file" $(( slen - 8 )))"
+	if ! [ "$timgc" = "601772996" ]; then
+		debug "INF_missing"
+		tichksum=0
+	else
+		tichksum=1
+		if is_debug; then
+			show_ok
+			__yf_info "INF_read_shell_crc"
+			crc32_1="$(get_uint32_le "$image_file" $(( slen - 4 )))"
+			__yf_info "INF_show_hex32" "$crc32_1"
+		else
+			crc32_1="$(get_uint32_le "$image_file" $(( slen - 4 )))"
+		fi
+		# value is 'cksum' output over bytes 0 to (len - 8)
+		debug "INF_verify_shell_crc"
+		if __yf_check_required_command "cksum"; then
+			crc32_c="$(dd if="$image_file" bs=$(( slen - 8 )) count=1 2>/dev/null | compute_checksum)"
+			if [ "$crc32_1" = "$crc32_c" ]; then
+				is_debug && show_ok
+			else
+				is_debug && show_error
+				__yf_emsg "ERR_invalid_image_data" "$image_file"
+				exit $YF_GRX5_INVALID_IMAGE
+			fi
+		else
+			# TI checksum couldn't be verified -> no error
+			__yf_info "INF_verify_shell_crc"
+			__yf_info "INF_missing_cmd" "cksum"
+		fi
+	fi
+
+	# shell image size and load address
+	debug "INF_reading_shell_size"
+	len_s="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_dec_hex32" "$len_s" "$len_s"
+	offset=$(( offset + uint32_size ))
+	debug "INF_reading_shell_load"
+	load_s="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_hex32" "$load_s"
+	offset=$(( offset + uint32_size ))
+
+	shelloffset=$(( offset + len_s ))
+
+	# byte-wise checksum over shell image content
+	debug "INF_reading_shell_cksum"
+	cksum_s="$(get_uint32_be "$image_file" $shelloffset)"
+	debug "INF_show_hex32" "$cksum_s"
+	shelloffset=$(( shelloffset + uint32_size ))
+
+	# 4 nul bytes as first 32-bit of TI entry point record
+	debug "INF_reading_shell_entmark"
+	null_s="$(get_uint32_be "$image_file" $shelloffset)"
+	if ! [ "$null_s" = "0" ]; then
+		is_debug && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit $YF_GRX5_INVALID_IMAGE
+	else
+		is_debug && show_ok
+		shelloffset=$(( shelloffset + uint32_size ))
+	fi
+
+	# entry point (very old TI format)
+	debug "INF_reading_shell_entry"
+	entry_s="$(get_uint32_le "$image_file" $shelloffset)"
+	debug "INF_show_hex32" "$entry_s"
+	shelloffset=$(( shelloffset + uint32_size ))
+
+	# compute/check padding to next 256-byte boundary
+	debug "INF_padding_shell_image"
+	pad_s=$(( slen - ( tichksum * 8 ) - shelloffset ))
+	debug "INF_show_dec_hex32" "$pad_s" "$pad_s"
+
+	# inner images (usually the 'real' FRITZ!OS kernel + a bootcore kernel)
+	# shellcheck disable=SC2050
+	while [ 1 -eq 1 ]; do
+		kernel_file_name=""
+
+		# check magic - zero means no more images
+		magic="$(get_uint32_be "$image_file" $offset)"
+		[ "$magic" -eq 0 ] && break
+		debug "INF_new_inner_image"
+
+		# start of new image
+		image_offset=$offset
+
+		# next image header
+		debug "INF_reading_inner_magic"
+		if ! is_valid_kernel_magic "$magic"; then
+			is_debug && show_error
+			__yf_emsg "ERR_invalid_image_data" "$image_file"
+			exit $YF_GRX5_INVALID_IMAGE
+		else
+			is_debug && show_ok
+			offset=$(( offset + uint32_size ))
+
+			# show kernel type
+			# shellcheck disable=SC2086
+			s="$( set -- $kernel_magics_sources
+				for m in $kernel_magics; do
+					[ "$m" = "$magic" ] && break
+					shift
+				done
+				printf -- "%s\n" "$1")"
+			n=""
+			eval n="\$image_name_$s"
+			eval kernel_file_name="\$image_file_$s"
+			debug "INF_kernel_type"
+			debug "INF_show_type" "$n"
+		fi
+
+		# start of data for byte-wise checksum
+		bwcksum_start=$offset
+
+		# size of payload
+		debug "INF_reading_inner_size"
+		len="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_dec_hex32" "$len" "$len"
+		offset=$(( offset + uint32_size ))
+
+		# load address
+		debug "INF_reading_inner_load"
+		load="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_hex32" "$load"
+		offset=$(( offset + uint32_size ))
+
+		# size of data for byte-wise checksum
+		bwcksum_size=$(( len + 8 ))
+
+		# LZMA signature
+		debug "INF_reading_inner_lzma_sig"
+		lzma="$(get_uint32_be "$image_file" $offset)"
+		if ! [ "$lzma" = "$lzma_signature" ]; then
+			[ "$debug" -eq 1 ] && show_error
+			__yf_emsg "ERR_invalid_image_data" "$image_file"
+			exit $YF_GRX5_INVALID_IMAGE
+		else
+			[ "$debug" -eq 1 ] && show_ok
+			offset=$(( offset + uint32_size ))
+		fi
+
+		# compressed length
+		debug "INF_reading_inner_comp"
+		comp="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_dec_hex32" "$comp" "$comp"
+		offset=$(( offset + uint32_size ))
+
+		# uncompressed length
+		debug "INF_reading_inner_uncomp"
+		uncomp="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_dec_hex32" "$uncomp" "$uncomp"
+		offset=$(( offset + uint32_size ))
+
+		# CRC32 value over compressed data
+		debug "INF_reading_inner_crc32"
+		crc32="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_hex32" "$crc32"
+		offset=$(( offset + uint32_size ))
+
+		# offset of compressed data
+		lzma_hdr="$offset"
+		offset=$(( offset + lzma_header_size ))
+		data="$offset"
+		offset=$(( offset + comp ))
+
+		# byte-wise sum of compressed data
+		debug "INF_reading_inner_cksum"
+		checksum="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_hex32" "$checksum"
+		offset=$(( offset + uint32_size ))
+
+		# marker of TI entry point record
+		debug "INF_reading_inner_entmark"
+		value="$(get_uint32_be "$image_file" $offset)"
+		if ! [ "$value" = "$entry_record_signature" ]; then
+			is_debug && show_error
+			__yf_emsg "ERR_invalid_image_data" "$image_file"
+			exit "$YF_GRX5_INVALID_IMAGE"
+		else
+			is_debug && show_ok
+			offset=$(( offset + uint32_size ))
+		fi
+
+		# entry point for unpacked kernel
+		debug "INF_reading_inner_entry"
+		entry="$(get_uint32_le "$image_file" $offset)"
+		debug "INF_show_hex32" "$entry"
+		offset=$(( offset + uint32_size ))
+
+		# check byte-wise sum
+		if ! [ "$nosum" = "1" ]; then
+			debug "INF_computing_byte_sum"
+			ck="$(compute_bytewise_checksum "$image_file" "$bwcksum_start" "$bwcksum_size")"
+			if [ "$ck" = "$checksum" ]; then
+				is_debug && show_ok
+			else
+				is_debug && show_error
+				__yf_emsg "ERR_invalid_image_data" "$image_file"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
+		fi
+
+		# check LZMA data CRC32
+		debug "INF_computing_data_crc"
+		crc="$(compute_lzma_checksum "$image_file" "$data" "$comp")"
+		if [ "$crc" = "$crc32" ]; then
+			is_debug && show_ok
+		else
+			is_debug && show_error
+			__yf_emsg "ERR_invalid_image_data" "$image_file"
+			exit "$YF_GRX5_INVALID_IMAGE"
+		fi
+
+		# store image data
+		[ "$2" = "1" ] && continue
+		if ! [ "$magic" = "$bootcore_kernel_magic" ]; then
+			# unpack LZMA compressed data
+			__yf_info "INF_unpacking_kernel" "$kernel_file_name"
+			(
+				dd if="$image_file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
+				d2b_le "$uncomp"
+				d2b_le "0"
+				if [ "$(( comp / data ))" -gt 0 ]; then
+					dd if="$image_file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
+					dd if="$image_file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
+				else
+					dd if="$image_file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
+					dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
+					cat "$tmp/dd_out"
+				fi
+			) | lzma -d >"$kernel_file_name"
+			if [ "$(wc -c < "$kernel_file_name")" = "$uncomp" ]; then
+				show_ok
+			else
+				show_error
+			fi
+		else
+			__yf_info "INF_storing_bootcore" "$kernel_file_name"
+			# store bootcore kernel with EVA format - it doesn't change in most cases
+			off=$(( image_offset ))
+			size=$(( len + ( 6 * uint32_size ) ))
+			(
+				if [ "$(( size / off ))" -gt 0 ]; then
+					dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
+					dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
+				else
+					dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
+					dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
+					cat "$tmp/dd_out"
+				fi
+			) >"$kernel_file_name"
+			if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
+				show_ok
+			else
+				show_error
+			fi
+		fi
+	done
+)
+check_eva_kernel()
+(
+	image_file="$1"
+	offset="$2"
+	tichksum=0
+
+	kernel_file_name=""
+
+	# check magic - zero means no more images
+	magic="$(get_uint32_be "$image_file" $offset)"
+	debug "INF_new_inner_image"
+
+	# start of new image
+	image_offset=$offset
+
+	# next image header
+	debug "INF_reading_inner_magic"
+	if ! is_valid_kernel_magic "$magic"; then
+		is_debug && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit $YF_GRX5_INVALID_IMAGE
+	else
+		is_debug && show_ok
+		offset=$(( offset + uint32_size ))
+
+		# show kernel type
+		# shellcheck disable=SC2086
+		s="$( set -- $kernel_magics_sources
+			for m in $kernel_magics; do
+				[ "$m" = "$magic" ] && break
+				shift
+			done
+			printf -- "%s\n" "$1")"
+		n=""
+		eval n="\$image_name_$s"
+		eval kernel_file_name="\$image_file_$s"
+		debug "INF_kernel_type"
+		debug "INF_show_type" "$n"
+	fi
+
+	# start of data for byte-wise checksum
+	bwcksum_start=$offset
+
+	# size of payload
+	debug "INF_reading_inner_size"
+	len="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_dec_hex32" "$len" "$len"
+	offset=$(( offset + uint32_size ))
+
+	# load address
+	debug "INF_reading_inner_load"
+	load="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_hex32" "$load"
+	offset=$(( offset + uint32_size ))
+
+	# size of data for byte-wise checksum
+	bwcksum_size=$(( len + 8 ))
+
+	# byte-wise sum of compressed data
+	debug "INF_reading_inner_cksum"
+	checksum="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_hex32" "$checksum"
+	offset=$(( offset + uint32_size ))
+
+	# marker of TI entry point record
+	debug "INF_reading_inner_entmark"
+	value="$(get_uint32_be "$image_file" $offset)"
+	if ! [ "$value" = "$entry_record_signature" ]; then
+		is_debug && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit "$YF_GRX5_INVALID_IMAGE"
+	else
+		is_debug && show_ok
+		offset=$(( offset + uint32_size ))
+	fi
+
+	# entry point for unpacked kernel
+	debug "INF_reading_inner_entry"
+	entry="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_hex32" "$entry"
+	offset=$(( offset + uint32_size ))
+
+	# check byte-wise sum
+	if ! [ "$nosum" = "1" ]; then
+		debug "INF_computing_byte_sum"
+		ck="$(compute_bytewise_checksum "$image_file" "$bwcksum_start" "$bwcksum_size")"
+		if [ "$ck" = "$checksum" ]; then
+			is_debug && show_ok
+		else
+			is_debug && show_error
+			__yf_emsg "ERR_invalid_image_data" "$image_file"
+			exit "$YF_GRX5_INVALID_IMAGE"
+		fi
+	fi
+
+	check_lzma_kernel "$image_file" "$offset" "$kernel_file_name" "$magic"
+)
+check_lzma_kernel()
+(
+	image_file="$1"
+	offset="$2"
+	output_name="$3"
+	magic="$4"
+
+	# LZMA signature
+	debug "INF_reading_inner_lzma_sig"
+	lzma="$(get_uint32_be "$image_file" $offset)"
+	if ! [ "$lzma" = "$lzma_signature" ]; then
+		[ "$debug" -eq 1 ] && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit $YF_GRX5_INVALID_IMAGE
+	else
+		[ "$debug" -eq 1 ] && show_ok
+		offset=$(( offset + uint32_size ))
+	fi
+
+	# compressed length
+	debug "INF_reading_inner_comp"
+	comp="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_dec_hex32" "$comp" "$comp"
+	offset=$(( offset + uint32_size ))
+
+	# uncompressed length
+	debug "INF_reading_inner_uncomp"
+	uncomp="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_dec_hex32" "$uncomp" "$uncomp"
+	offset=$(( offset + uint32_size ))
+
+	# CRC32 value over compressed data
+	debug "INF_reading_inner_crc32"
+	crc32="$(get_uint32_le "$image_file" $offset)"
+	debug "INF_show_hex32" "$crc32"
+	offset=$(( offset + uint32_size ))
+
+	# offset of compressed data
+	lzma_hdr="$offset"
+	offset=$(( offset + lzma_header_size ))
+	data="$offset"
+	offset=$(( offset + comp ))
+
+	# check LZMA data CRC32
+	debug "INF_computing_data_crc"
+	crc="$(compute_lzma_checksum "$image_file" "$data" "$comp")"
+	if [ "$crc" = "$crc32" ]; then
+		is_debug && show_ok
+	else
+		is_debug && show_error
+		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		exit "$YF_GRX5_INVALID_IMAGE"
+	fi
+
+	# store image data
+	[ "$no_output" = "1" ] && exit 0
+	if ! [ "$magic" = "$bootcore_kernel_magic" ]; then
+		# unpack LZMA compressed data
+			__yf_info "INF_unpacking_kernel" "$kernel_file_name"
+			(
+				dd if="$image_file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
+				d2b_le "$uncomp"
+				d2b_le "0"
+				if [ "$(( comp / data ))" -gt 0 ]; then
+					dd if="$image_file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
+					dd if="$image_file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
+				else
+					dd if="$image_file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
+					dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
+					cat "$tmp/dd_out"
+				fi
+			) | lzma -d >"$kernel_file_name"
+			if [ "$(wc -c < "$kernel_file_name")" = "$uncomp" ]; then
+				show_ok
+			else
+				show_error
+			fi
+		else
+			__yf_info "INF_storing_bootcore" "$kernel_file_name"
+			# store bootcore kernel with EVA format - it doesn't change in most cases
+			off=$(( image_offset ))
+			size=$(( len + ( 6 * uint32_size ) ))
+			(
+				if [ "$(( size / off ))" -gt 0 ]; then
+					dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
+					dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
+				else
+					dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
+					dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
+					cat "$tmp/dd_out"
+				fi
+			) >"$kernel_file_name"
+			if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
+				show_ok
+			else
+				show_error
+			fi
+		fi
+	done
+)
+pack_lzma()
+(
+	:
+)
+pack_grx5_kernel()
+(
+	:
+)
+#######################################################################################################
+#                                                                                                     #
+# prepare a temporary directory and cleanup on exit                                                   #
+#                                                                                                     #
+#######################################################################################################
+tmp=$(__yf_mktmp -d)
+trap '[ -d "$tmp" ] && rm -r "$tmp" 2>/dev/null 1>&2' EXIT INT
+#######################################################################################################
+#                                                                                                     #
+# some output due to license terms                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	usage
+	exit "$YF_SIGN_SUCCESS"
+fi
+__yf_show_version 1>&2
+__yf_show_copyright 1>&2
+__yf_info "INF_license"
+#######################################################################################################
+#                                                                                                     #
+# check arguments for specified options                                                               #
+#                                                                                                     #
+#######################################################################################################
+pack=0
+unpack=0
+check=0
+debug=0
+nosum=0
+while [ -n "$(expr "$1" : "\(-.\+\).*")" ]; do
+	[ "$1" = "--" ] && break
+	if [ "$1" = "-u" ] || [ "$1" = "--unpack" ]; then
+		[ "$pack" = "1" ] && __yf_emsg "ERR_ambiguous_options" "unpack" "pack" && exit $YF_GRX5_INVALID_CALL
+		[ "$check" = "1" ] && __yf_emsg "ERR_ambiguous_options" "unpack" "check" && exit $YF_GRX5_INVALID_CALL
+		unpack=1
+		shift
+	elif [ "$1" = "-p" ] || [ "$1" = "--pack" ]; then
+		[ "$unpack" = "1" ] && __yf_emsg "ERR_ambiguous_options" "pack" "unpack" && exit $YF_GRX5_INVALID_CALL
+		[ "$check" = "1" ] && __yf_emsg "ERR_ambiguous_options" "pack" "check" && exit $YF_GRX5_INVALID_CALL
+		pack=1
+		shift
+	elif [ "$1" = "-c" ] || [ "$1" = "--check" ]; then
+		[ "$unpack" = "1" ] && __yf_emsg "ERR_ambiguous_options" "check" "unpack" && exit $YF_GRX5_INVALID_CALL
+		[ "$pack" = "1" ] && __yf_emsg "ERR_ambiguous_options" "check" "pack" && exit $YF_GRX5_INVALID_CALL
+		check=1
+		shift
+	elif [ "$1" = "-d" ] || [ "$1" = "--debug" ]; then
+		debug=1
+		shift
+	elif [ "$1" = "-n" ] || [ "$1" = "--no-sum-check" ]; then
+		nosum=1
+		shift
+	elif [ "$1" = "-b" ] || [ "$1" = "--bootcore-file" ]; then
+		bootcore_file="$2"
+		shift 2
+	elif [ "$1" = "-f" ] || [ "$1" = "--bootcore-format" ]; then
+		bootcore_format="$2"
+		shift 2
+		if ! [ "$bootcore_format" = "eva" ] && ! [ "$bootcore_format" = "lzma" ] && ! [ "$bootcore_format" = "vmlinux" ]; then
+			__yf_emsg "ERR_invalid_bc_format" "$bootcore_format"
+			exit "$YF_GRX5_INVALID_CALL"
+		fi
+	else
+		__yf_emsg "ERR_invalid_option" "$1"
+		exit "$YF_GRX5_INVALID_CALL"
+	fi
+done
+if [ "$pack" -eq 0 ] && [ "$unpack" -eq 0 ] && [ "$check" -eq 0 ]; then
+	__yf_emsg "ERR_missing_action"
+	exit "$YF_GRX5_INVALID_CALL"
+fi
+#######################################################################################################
+#                                                                                                     #
+# check input file                                                                                    #
+#                                                                                                     #
+#######################################################################################################
+if [ "$unpack" -eq 1 ] || [ "$check" -eq 1 ]; then
+	image="$1"
+	shift
+	[ "$unpack" -eq 1 ] && no_output=0 || no_output=1
+	if check_grx5_kernel "$image"; then
+		[ "$check" -eq 1 ] && __yf_info "INF_no_error_found" "$image"
+		exit "$YF_GRX5_SUCCESS"
+	else
+		[ "$check" -eq 1 ] && __yf_info "INF_invalid_file" "$image"
+		exit "$YF_GRX5_INVALID_IMAGE"
+	fi
+elif [ "$pack" -eq 1 ]; then
+	if [ -z "$bootcore_file" ]; then
+		__yf_emsg "ERR_missing_bc_file"
+		exit "$YF_GRX5_INVALID_CALL"
+	fi
+	if [ -z "$bootcore_format" ]; then # use extension as a hint
+		if [ "${bootcore_file##*.}" = "eva" ]; then
+			bootcore_format="eva" # already prepared with AR7 lzma header and entry record at the end
+			if check_eva_kernel "$bootcore_file"; then
+				__yf_emsg "ERR_invalid_bc_eva_file"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
+		elif [ "${bootcore_file##*.}" = "lzma" ]; then
+			bootcore_format="lzma" # LZMA compressed kernel data
+		else
+			bootcore_format="raw" # raw kernel, needs to be compressed first
+		fi
+	fi
+fi
+#######################################################################################################
+#                                                                                                     #
+# all done here                                                                                       #
+#                                                                                                     #
+#######################################################################################################
+exit "$YF_GRX5_SUCCESS"
+#######################################################################################################
+#                                                                                                     #
+# end of script                                                                                       #
+#                                                                                                     #
+#######################################################################################################
