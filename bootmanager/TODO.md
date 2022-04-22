@@ -8,9 +8,9 @@
 
 ## for version 0.8.3:
 
-- add (rudimental) support for IPQ8074 devices
-- add support for IPQ501x devices
-- add support for PRX300 devices
+- ~add (rudimental) support for IPQ8074 devices~
+- ~add support for IPQ501x devices~
+- ~add support for PRX300 devices~
 
 ## for next version (0.9.x):
 
