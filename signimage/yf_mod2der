@@ -30,7 +30,7 @@
 # General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
 #                                                                                                     #
 # If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
-# file, you HAVE TO KEEP these functions together as one single continous part in your script AND     #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
 # this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
 # end of this section HAS TO BE marked clearly.                                                       #
 #                                                                                                     #
