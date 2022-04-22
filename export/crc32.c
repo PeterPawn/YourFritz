@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <stdio.h>
 #include <inttypes.h>
+#include <unistd.h>
 int main()
 {
 	const uint32_t polynom=0xEDB88320;
@@ -20,7 +21,7 @@ int main()
 			val >>= 1;
 			if (isOne) {
 				val ^= polynom;
-			} 
+			}
 		}
 		lookupTable[i] = val;
 	}
