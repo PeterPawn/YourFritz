@@ -286,6 +286,7 @@ dissect_fit_image()
 		offset="$2"
 		parent="$3"
 		level="$4"
+		path="$5"
 		filesystem_found=0
 		ramdisk_found=0
 		kernel_found=0
@@ -315,7 +316,7 @@ dissect_fit_image()
 						krnl_node=""
 						msg "%sNew configuration:%s %s\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$cfg_name"
 					fi
-					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" 5>&1)"
+					eval "$(entry "$img" "$offset" "$name" "$(( level + 1 ))" "$(expr "$path" : "/*\(.*\)")/$name" 5>&1)"
 					[ "$dirs" = "1" ] && cd_msg
 					;;
 				("$fdt_end_node")
@@ -323,20 +324,20 @@ dissect_fit_image()
 					offset=$(( offset + fdt32_size ))
 					out "%s};\n" "$(indent "$(( level - 1 ))")" 1>&4
 					{
-						[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u " "$fs_node_name" "$fs_image" "$fs_size"
-						[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u " "$rd_node_name" "$rd_image" "$rd_size"
+						[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u fs_node_path=\"%s\" " "$fs_node_name" "$fs_image" "$fs_size" "$fs_node_path"
+						[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u rd_node_path=\"%s\" " "$rd_node_name" "$rd_image" "$rd_size" "$rd_node_path"
 						[ -n "$kernel_image" ] && printf -- "kernel_image=\"%s\" " "$kernel_image"
 						printf -- "offset=%u files=%u" "$offset" "$files"
 					} 1>&5
 					if [ "$filesystem_found" = "1" ] && [ "$type_found" = "$filesystem_type" ] && [ -n "$data_found" ]; then
 						msg "%sFilesystem image:%s %s - size=%u\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$data_found" "$data_size"
-						printf -- " fs_size=%u fs_image=\"%s\" fs_node_name=\"%s\"" "$data_size" "$data_found" "$parent" 1>&5
+						printf -- " fs_size=%u fs_image=\"%s\" fs_node_name=\"%s\" fs_node_path=\"%s\"" "$data_size" "$data_found" "$parent" "$path" 1>&5
 					fi
 					if [ "$ramdisk_found" = "1" ]; then
 						msg "%sRamdisk image:%s %s - size=%u, prev_size=%u\n" "$__yf_ansi_yellow__" "$__yf_ansi_reset__" "$data_found" "$data_size" "$rd_size"
 						if [ "$fs_size" -eq 0 ] && [ "$rd_size" -lt "$data_size" ]; then
 							msg "%sNew ramdisk image selected:%s %s\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$data_found"
-							printf -- " rd_size=%u rd_image=\"%s\" rd_node_name=\"%s\"" "$data_size" "$data_found" "$parent" 1>&5
+							printf -- " rd_size=%u rd_image=\"%s\" rd_node_name=\"%s\" rd_node_path=\"%s\"" "$data_size" "$data_found" "$parent" "$path" 1>&5
 						fi
 					fi
 					if [ -n "$data_found" ]; then
@@ -436,8 +437,8 @@ dissect_fit_image()
 			data=$(measure get_fdt32_be "$img" "$offset")
 		done
 		{
-			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u " "$fs_node_name" "$fs_image" "$fs_size"
-			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u " "$rd_node_name" "$rd_image" "$rd_size"
+			[ -n "$fs_node_name" ] && printf -- "fs_node_name=\"%s\" fs_image=\"%s\" fs_size=%u fs_node_path=\"%s\" " "$fs_node_name" "$fs_image" "$fs_size" "$fs_node_path"
+			[ -n "$rd_node_name" ] && printf -- "rd_node_name=\"%s\" rd_image=\"%s\" rd_size=%u rd_node_path=\"%s\" " "$rd_node_name" "$rd_image" "$rd_size" "$rd_node_path"
 			[ -n "$kernel_image" ] && printf -- "kernel_image=\"%s\" " "$kernel_image"
 			printf -- "offset=%u files=%u\n" "$offset" "$files"
 		} 1>&5
@@ -519,6 +520,7 @@ dissect_fit_image()
 	fs_image_name="filesystem.image"
 	rd_image_name="ramdisk.image"
 	kernel_image_name="kernel.image"
+	frontend_node_name="frontend"
 
 	debug=0
 	while [ "$(expr "$1" : "\(.\).*")" = "-" ]; do
@@ -702,7 +704,7 @@ dissect_fit_image()
 	offset=$(( fdt_start + fdt_off_dt_struct ))
 	# shellcheck disable=SC2164
 	[ "$dirs" = "1" ] && mkdir -p "$dump_dir/$image_dir_name" 2>"$null" && cd "$dump_dir/$image_dir_name"
-	eval "$(entry "$img" "$offset" "-" 0 5>&1)"
+	eval "$(entry "$img" "$offset" "-" 0 "" 5>&1)"
 
 	# restore CWD to '$dump_dir'
 	[ "$dirs" = "1" ] && cd_msg
@@ -715,8 +717,10 @@ dissect_fit_image()
 
 	if [ -n "$fs_image" ]; then
 		ln -s "$fs_image" "$fs_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$fs_image_name" "$fs_image" "$__yf_ansi_reset__"
+		[ "$dirs" = "1" ] && ln -s "$image_dir_name/$fs_node_path" "$frontend_node_name" 2>"$null" && msg "%sLinked '%s' to '%s/%s'%s\n" "$__yf_ansi_bright_green__" "$frontend_node_name" "$image_dir_name" "$fs_node_path" "$__yf_ansi_reset__"
 	elif [ -n "$rd_image" ]; then
 		ln -s "$rd_image" "$rd_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$rd_image_name" "$rd_image" "$__yf_ansi_reset__"
+		[ "$dirs" = "1" ] && ln -s "$image_dir_name/$rd_node_path" "$frontend_node_name" 2>"$null" && msg "%sLinked '%s' to '%s/%s'%s\n" "$__yf_ansi_bright_green__" "$frontend_node_name" "$image_dir_name" "$rd_node_path" "$__yf_ansi_reset__"
 	fi
 	if [ -n "$kernel_image" ]; then
 		ln -s "$kernel_image" "$kernel_image_name" 2>"$null" && msg "%sLinked '%s' to '%s'%s\n" "$__yf_ansi_bright_green__" "$kernel_image_name" "$kernel_image" "$__yf_ansi_reset__"
