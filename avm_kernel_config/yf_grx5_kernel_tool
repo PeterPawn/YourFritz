@@ -1,5 +1,5 @@
 #! /bin/sh
-# vim: set tabstop=4 syntax=sh :
+# vim: set tabstop=4 syntax=sh foldmethod=indent :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exceptions
 #######################################################################################################
 #                                                                                                     #
@@ -49,25 +49,29 @@
 # some constants                                                                                      #
 #                                                                                                     #
 #######################################################################################################
-# 0xfeed1281 (LE)
+# 0xfeed1281 (LE), read as BE
 kernel_magic="2165501438"
-# 0xfeedb007 (LE)
+# 0xfeedb007 (LE), read as BE
 bootcore_kernel_magic="129035774"
 # valid/expected magic values
 kernel_magics="$kernel_magic $bootcore_kernel_magic"
 # names in order of above collection
 kernel_magics_sources="kernel bootcore"
 # shellcheck disable=SC2034
-image_name_kernel="FRITZ!OS kernel"
+kernel_name="FRITZ!OS kernel"
 # shellcheck disable=SC2034
-image_name_bootcore="GRX5 bootcore kernel"
+bootcore_name="GRX5 bootcore kernel"
 # shellcheck disable=SC2034
-image_file_kernel="kernel.unpacked"
-# shellcheck disable=SC2034
-image_file_bootcore="bootcore.eva"
-# 0xfeed9112 (LE)
+bootcore_default_name="bootcore"
+bootcore_default_format="eva"
+kernel_default_name="kernel"
+kernel_default_format="vmlinux"
+image_name="kernel.image"
+# 0xfeed9112 (LE), read as BE
 shell_magic="311553534"
-# 0x075a0201 (LE)
+# 0xc453de23 (LE), read as BE
+ti_magic="601772996"
+# 0x075a0201 (LE), read as BE
 lzma_signature="16931335"
 # 0x5d00008000000000
 lzma_header_size=8
@@ -75,6 +79,8 @@ lzma_header_size=8
 lzma_header_data_size=5
 # 0x00000000
 entry_record_signature="0"
+# vmlinux kernel file type signature
+kernel_elf_mask="\(ELF .* executable\)"
 # simple C compiler needed for inline C code
 compiler="gcc"
 compiler_options=""
@@ -86,6 +92,14 @@ crc32_object_name="crc"
 YF_UI_LANGUAGES="en de"
 # size (in bytes) of unsigned integer with 32 bits
 uint32_size=4
+# size (in bytes) of unsigned integer with 64 bits
+uint64_size=8
+# LZMA encoder command
+lzma_encode="./lzma e -so"
+# LZMA decoder command
+lzma_decode="./lzma d -si -so"
+# LZMA encoder with support for 'known data size' (and without End Of Payload Marker in stream)
+lzma_eos_enforced=0
 #######################################################################################################
 #                                                                                                     #
 # exit code definitions                                                                               #
@@ -426,16 +440,24 @@ INF_unpacking_kernel		#BBLU#Unpacking kernel image to '#YLLW#%s#RSET##BBLU#' ...
 INF_storing_bootcore		#BBLU#Storing bootcore kernel image as '#YLLW#%s#RSET##BBLU#' ...#RSET#
 INF_no_error_found			#GRN#No error(s) found in file '#YLLW#%s#RSET##GRN#'.#RSET#\n
 INF_invalid_file			#RED#Error(s) found in file '#YLLW#%s#RSET##RED#'.#RSET#\n
+INF_packing_vmlinux			#BBLU#Packing file '#YLLW#%s#RSET##BBLU#' to '#YLLW#%s#RSET##BBLU#' ...#RSET#
+INF_wrapping_lzma			#BBLU#Converting file '#YLLW#%s#RSET##BBLU#' to '#YLLW#%s#RSET##BBLU#' ...#RSET#
 
 ERR_ambiguous_options		#RED#You've specified a '%s' operation, after a '%s' was selected previously.#RSET#\n
 ERR_missing_action			#RED#Neither 'pack' nor 'unpack' or 'check' operation selected.#RSET#\n
 ERR_missing_image_name		#RED#Missing image file name argument.#RSET#\n
+ERR_missing_option			#RED#Missing option '%s' for '%s' operation.#RSET#\n
+ERR_invalid_option			#RED#Invalid option '%s' for '%s' operation.#RSET#\n
+ERR_invalid_option_oper		#RED#Option '%s' is only valid for '%s' operation.#RSET#\n
 ERR_invalid_image_data		#RED#The provided image file '%s' contains invalid data.#RSET#\n
 ERR_image_file_missing		#RED#The specified image file #BWHT#%s#RED# does not exist.#RSET#\n
 ERR_invalid_option			#RED#Unknown option #BWHT#%s#RED# specified.#RSET#\n
 ERR_too_many_arguments		#RED#Too many arguments specified while calling: #BWHT#%s#RSET#\n
 ERR_missing_bc_file			#RED#Missing bootcore kernel file to pack.#RSET#\n
-ERR_invalid_bc_eva_file		#RED#Input file #BWHT#%s#RED# has an unexpected format ('#YLLW#%s#RSET##RED#' expected).#RSET#\n
+ERR_bc_file_not_found		#RED#The bootcore file '#BWHT#%s#RED#' does not exist.#RSET#\n
+ERR_invalid_bc_file			#RED#Input file #BWHT#%s#RED# has an unexpected format ('#YLLW#%s#RSET##RED#' expected).#RSET#\n
+ERR_missing_kernel_file		#RED#Missing FRITZ!OS kernel file to pack.#RSET#\n
+ERR_kernel_file_not_found	#RED#The FRITZ!OS kernel file '#BWHT#%s#RED#' does not exist.#RSET#\n
 
 language de
 
@@ -482,12 +504,18 @@ INF_invalid_file			#RED#Fehler in der Datei '#YLLW#%s#RSET##RED#'.#RSET#\n
 ERR_ambiguous_options		#RED#Es wurde als Operation '%s' ausgewählt, obwohl zuvor schon '%s' angegeben wurde.#RSET#\n
 ERR_missing_action			#RED#Weder 'unpack' noch 'pack' oder 'check' als Operation ausgewählt.#RSET#\n
 ERR_missing_image_name		#RED#Es wurde keine Image-Datei angegeben beim Aufruf.#RSET#\n
+ERR_missing_option			#RED#Die Option '%s' fehlt für die Operation '%s'.#RSET#\n
+ERR_invalid_option			#RED#Die Option '%s' ist ungültig für die Operation '%s'.#RSET#\n
+ERR_invalid_optio_oper		#RED#Die Option '%s' ist nur gültig für die Operation '%s'.#RSET#\n
 ERR_invalid_image_data		#RED#Die angegebene Image-Datei '%s' enthält ungültige Daten.#RSET#\n
 ERR_image_file_missing		#RED#Die angegebene Image-Datei #BWHT#%s#RED# existiert nicht.#RSET#\n
 ERR_invalid_option			#RED#Unbekannte Option #BWHT#%s#RED# angegeben beim Aufruf.#RSET#\n
 ERR_too_many_arguments		#RED#Beim Aufruf wurden überzählige Parameter angegeben: #BWHT#%s#RSET#\n
 ERR_missing_bc_file			#RED#Es wurde keine Datei für den Bootcore-Kernel angegeben.#RSET#\n
-ERR_invalid_bc_eva_file		#RED#Die Eingabedatei #BWHT#%s#RED# hat ein falsches Format ('#YLLW#%s#RSET##RED#' erwartet).#RSET#\n
+ERR_bc_file_not_found		#RED#Die Datei '#BWHT#%s#RED#' für den Bootcore-Kernel existiert nicht.#RSET#\n
+ERR_invalid_bc_file			#RED#Die Eingabedatei #BWHT#%s#RED# hat ein falsches Format ('#YLLW#%s#RSET##RED#' erwartet).#RSET#\n
+ERR_missing_kernel_file		#RED#Es wurde keine Datei für den FRITZ!OS-Kernel angegeben.#RSET#\n
+ERR_kernel_file_not_found	#RED#Die Datei '#BWHT#%s#RED#' für den FRITZ!OS-Kernel existiert nicht.#RSET#\n
 
 # YF_UI localization end
 EOM
@@ -845,6 +873,7 @@ get_data()
 )
 get_uint32_be() ( get_data "$1" 4 "$2" | b2d; )
 get_uint32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
+get_char() ( get_data "$1" 1 "$2" | b2d; )
 #######################################################################################################
 #                                                                                                     #
 # processing                                                                                          #
@@ -852,31 +881,31 @@ get_uint32_le() ( get_data "$1" 4 "$2" | sbo | b2d; )
 #######################################################################################################
 check_grx5_kernel()
 (
-	image_file="$1"
-	offset=0
+	shell_image="$1"
+	sh_offset=0
 	tichksum=0
 
 	# overall file size check
 	debug "INF_unpack_file_size"
-	slen="$(wc -c < "$image_file")"
+	slen="$(wc -c < "$shell_image")"
 	debug "INF_show_dec_hex32" "$slen" "$slen"
 
 	# check magic value of image (0x1291edfe)
 	debug "INF_reading_shell_magic"
-	magic_s="$(get_uint32_be "$image_file" $offset)"
+	magic_s="$(get_uint32_be "$shell_image" $sh_offset)"
 	if ! [ "$magic_s" = "$shell_magic" ]; then
 		is_debug && show_error
-		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		__yf_emsg "ERR_invalid_image_data" "$shell_image"
 		exit $YF_GRX5_INVALID_IMAGE
 	else
 		is_debug && show_ok
-		offset=$(( offset + uint32_size ))
+		sh_offset=$(( sh_offset + uint32_size ))
 	fi
 
 	# check, whether a TI checksum is present at end of file (magic at 'len - 8': 0x23de53c4 (BE), value at 'len - 4')
 	debug "INF_verify_crc32_magic"
-	timgc="$(get_uint32_be "$image_file" $(( slen - 8 )))"
-	if ! [ "$timgc" = "601772996" ]; then
+	timgc="$(get_uint32_be "$shell_image" $(( slen - 8 )))"
+	if ! [ "$timgc" = "$ti_magic" ]; then
 		debug "INF_missing"
 		tichksum=0
 	else
@@ -884,20 +913,20 @@ check_grx5_kernel()
 		if is_debug; then
 			show_ok
 			__yf_info "INF_read_shell_crc"
-			crc32_1="$(get_uint32_le "$image_file" $(( slen - 4 )))"
+			crc32_1="$(get_uint32_le "$shell_image" $(( slen - 4 )))"
 			__yf_info "INF_show_hex32" "$crc32_1"
 		else
-			crc32_1="$(get_uint32_le "$image_file" $(( slen - 4 )))"
+			crc32_1="$(get_uint32_le "$shell_image" $(( slen - 4 )))"
 		fi
 		# value is 'cksum' output over bytes 0 to (len - 8)
 		debug "INF_verify_shell_crc"
 		if __yf_check_required_command "cksum"; then
-			crc32_c="$(dd if="$image_file" bs=$(( slen - 8 )) count=1 2>/dev/null | compute_checksum)"
+			crc32_c="$(dd if="$shell_image" bs=$(( slen - 8 )) count=1 2>/dev/null | compute_checksum)"
 			if [ "$crc32_1" = "$crc32_c" ]; then
 				is_debug && show_ok
 			else
 				is_debug && show_error
-				__yf_emsg "ERR_invalid_image_data" "$image_file"
+				__yf_emsg "ERR_invalid_image_data" "$shell_image"
 				exit $YF_GRX5_INVALID_IMAGE
 			fi
 		else
@@ -909,245 +938,68 @@ check_grx5_kernel()
 
 	# shell image size and load address
 	debug "INF_reading_shell_size"
-	len_s="$(get_uint32_le "$image_file" $offset)"
+	len_s="$(get_uint32_le "$shell_image" $sh_offset)"
 	debug "INF_show_dec_hex32" "$len_s" "$len_s"
-	offset=$(( offset + uint32_size ))
+	sh_offset=$(( sh_offset + uint32_size ))
 	debug "INF_reading_shell_load"
-	load_s="$(get_uint32_le "$image_file" $offset)"
+	load_s="$(get_uint32_le "$shell_image" $sh_offset)"
 	debug "INF_show_hex32" "$load_s"
-	offset=$(( offset + uint32_size ))
+	sh_offset=$(( sh_offset + uint32_size ))
 
-	shelloffset=$(( offset + len_s ))
+	shell_offset=$(( sh_offset + len_s ))
 
 	# byte-wise checksum over shell image content
 	debug "INF_reading_shell_cksum"
-	cksum_s="$(get_uint32_be "$image_file" $shelloffset)"
+	cksum_s="$(get_uint32_be "$shell_image" $shell_offset)"
 	debug "INF_show_hex32" "$cksum_s"
-	shelloffset=$(( shelloffset + uint32_size ))
+	shell_offset=$(( shell_offset + uint32_size ))
 
 	# 4 nul bytes as first 32-bit of TI entry point record
 	debug "INF_reading_shell_entmark"
-	null_s="$(get_uint32_be "$image_file" $shelloffset)"
+	null_s="$(get_uint32_be "$shell_image" $shell_offset)"
 	if ! [ "$null_s" = "0" ]; then
 		is_debug && show_error
-		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		__yf_emsg "ERR_invalid_image_data" "$shell_image"
 		exit $YF_GRX5_INVALID_IMAGE
 	else
 		is_debug && show_ok
-		shelloffset=$(( shelloffset + uint32_size ))
+		shell_offset=$(( shell_offset + uint32_size ))
 	fi
 
 	# entry point (very old TI format)
 	debug "INF_reading_shell_entry"
-	entry_s="$(get_uint32_le "$image_file" $shelloffset)"
+	entry_s="$(get_uint32_le "$shell_image" $shell_offset)"
 	debug "INF_show_hex32" "$entry_s"
-	shelloffset=$(( shelloffset + uint32_size ))
+	shell_offset=$(( shell_offset + uint32_size ))
 
 	# compute/check padding to next 256-byte boundary
 	debug "INF_padding_shell_image"
-	pad_s=$(( slen - ( tichksum * 8 ) - shelloffset ))
+	pad_s=$(( slen - ( tichksum * 8 ) - shell_offset ))
 	debug "INF_show_dec_hex32" "$pad_s" "$pad_s"
 
 	# inner images (usually the 'real' FRITZ!OS kernel + a bootcore kernel)
 	# shellcheck disable=SC2050
 	while [ 1 -eq 1 ]; do
-		kernel_file_name=""
-
 		# check magic - zero means no more images
-		magic="$(get_uint32_be "$image_file" $offset)"
+		magic="$(get_uint32_be "$shell_image" $sh_offset)"
 		[ "$magic" -eq 0 ] && break
-		debug "INF_new_inner_image"
 
-		# start of new image
-		image_offset=$offset
-
-		# next image header
-		debug "INF_reading_inner_magic"
-		if ! is_valid_kernel_magic "$magic"; then
-			is_debug && show_error
-			__yf_emsg "ERR_invalid_image_data" "$image_file"
-			exit $YF_GRX5_INVALID_IMAGE
-		else
-			is_debug && show_ok
-			offset=$(( offset + uint32_size ))
-
-			# show kernel type
-			# shellcheck disable=SC2086
-			s="$( set -- $kernel_magics_sources
-				for m in $kernel_magics; do
-					[ "$m" = "$magic" ] && break
-					shift
-				done
-				printf -- "%s\n" "$1")"
-			n=""
-			eval n="\$image_name_$s"
-			eval kernel_file_name="\$image_file_$s"
-			debug "INF_kernel_type"
-			debug "INF_show_type" "$n"
-		fi
-
-		# start of data for byte-wise checksum
-		bwcksum_start=$offset
-
-		# size of payload
-		debug "INF_reading_inner_size"
-		len="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_dec_hex32" "$len" "$len"
-		offset=$(( offset + uint32_size ))
-
-		# load address
-		debug "INF_reading_inner_load"
-		load="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_hex32" "$load"
-		offset=$(( offset + uint32_size ))
-
-		# size of data for byte-wise checksum
-		bwcksum_size=$(( len + 8 ))
-
-		# LZMA signature
-		debug "INF_reading_inner_lzma_sig"
-		lzma="$(get_uint32_be "$image_file" $offset)"
-		if ! [ "$lzma" = "$lzma_signature" ]; then
-			[ "$debug" -eq 1 ] && show_error
-			__yf_emsg "ERR_invalid_image_data" "$image_file"
-			exit $YF_GRX5_INVALID_IMAGE
-		else
-			[ "$debug" -eq 1 ] && show_ok
-			offset=$(( offset + uint32_size ))
-		fi
-
-		# compressed length
-		debug "INF_reading_inner_comp"
-		comp="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_dec_hex32" "$comp" "$comp"
-		offset=$(( offset + uint32_size ))
-
-		# uncompressed length
-		debug "INF_reading_inner_uncomp"
-		uncomp="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_dec_hex32" "$uncomp" "$uncomp"
-		offset=$(( offset + uint32_size ))
-
-		# CRC32 value over compressed data
-		debug "INF_reading_inner_crc32"
-		crc32="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_hex32" "$crc32"
-		offset=$(( offset + uint32_size ))
-
-		# offset of compressed data
-		lzma_hdr="$offset"
-		offset=$(( offset + lzma_header_size ))
-		data="$offset"
-		offset=$(( offset + comp ))
-
-		# byte-wise sum of compressed data
-		debug "INF_reading_inner_cksum"
-		checksum="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_hex32" "$checksum"
-		offset=$(( offset + uint32_size ))
-
-		# marker of TI entry point record
-		debug "INF_reading_inner_entmark"
-		value="$(get_uint32_be "$image_file" $offset)"
-		if ! [ "$value" = "$entry_record_signature" ]; then
-			is_debug && show_error
-			__yf_emsg "ERR_invalid_image_data" "$image_file"
-			exit "$YF_GRX5_INVALID_IMAGE"
-		else
-			is_debug && show_ok
-			offset=$(( offset + uint32_size ))
-		fi
-
-		# entry point for unpacked kernel
-		debug "INF_reading_inner_entry"
-		entry="$(get_uint32_le "$image_file" $offset)"
-		debug "INF_show_hex32" "$entry"
-		offset=$(( offset + uint32_size ))
-
-		# check byte-wise sum
-		if ! [ "$nosum" = "1" ]; then
-			debug "INF_computing_byte_sum"
-			ck="$(compute_bytewise_checksum "$image_file" "$bwcksum_start" "$bwcksum_size")"
-			if [ "$ck" = "$checksum" ]; then
-				is_debug && show_ok
-			else
-				is_debug && show_error
-				__yf_emsg "ERR_invalid_image_data" "$image_file"
-				exit "$YF_GRX5_INVALID_IMAGE"
-			fi
-		fi
-
-		# check LZMA data CRC32
-		debug "INF_computing_data_crc"
-		crc="$(compute_lzma_checksum "$image_file" "$data" "$comp")"
-		if [ "$crc" = "$crc32" ]; then
-			is_debug && show_ok
-		else
-			is_debug && show_error
-			__yf_emsg "ERR_invalid_image_data" "$image_file"
-			exit "$YF_GRX5_INVALID_IMAGE"
-		fi
-
-		# store image data
-		[ "$2" = "1" ] && continue
-		if ! [ "$magic" = "$bootcore_kernel_magic" ]; then
-			# unpack LZMA compressed data
-			__yf_info "INF_unpacking_kernel" "$kernel_file_name"
-			(
-				dd if="$image_file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
-				d2b_le "$uncomp"
-				d2b_le "0"
-				if [ "$(( comp / data ))" -gt 0 ]; then
-					dd if="$image_file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
-					dd if="$image_file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
-				else
-					dd if="$image_file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
-					dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
-					cat "$tmp/dd_out"
-				fi
-			) | lzma -d >"$kernel_file_name"
-			if [ "$(wc -c < "$kernel_file_name")" = "$uncomp" ]; then
-				show_ok
-			else
-				show_error
-			fi
-		else
-			__yf_info "INF_storing_bootcore" "$kernel_file_name"
-			# store bootcore kernel with EVA format - it doesn't change in most cases
-			off=$(( image_offset ))
-			size=$(( len + ( 6 * uint32_size ) ))
-			(
-				if [ "$(( size / off ))" -gt 0 ]; then
-					dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
-					dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
-				else
-					dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
-					dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
-					cat "$tmp/dd_out"
-				fi
-			) >"$kernel_file_name"
-			if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
-				show_ok
-			else
-				show_error
-			fi
-		fi
+		sh_offset="$(check_eva_kernel "$shell_image" "$sh_offset")" || exit 1
 	done
 )
 check_eva_kernel()
 (
 	image_file="$1"
 	offset="$2"
-	tichksum=0
 
 	kernel_file_name=""
 
 	# check magic - zero means no more images
-	magic="$(get_uint32_be "$image_file" $offset)"
+	magic="$(get_uint32_be "$image_file" "$offset")"
 	debug "INF_new_inner_image"
 
 	# start of new image
-	image_offset=$offset
+	image_offset="$offset"
 
 	# next image header
 	debug "INF_reading_inner_magic"
@@ -1168,8 +1020,8 @@ check_eva_kernel()
 			done
 			printf -- "%s\n" "$1")"
 		n=""
-		eval n="\$image_name_$s"
-		eval kernel_file_name="\$image_file_$s"
+		eval n="\$${s}_name"
+		eval kernel_file_name="\$${s}_file"
 		debug "INF_kernel_type"
 		debug "INF_show_type" "$n"
 	fi
@@ -1189,8 +1041,12 @@ check_eva_kernel()
 	debug "INF_show_hex32" "$load"
 	offset=$(( offset + uint32_size ))
 
+	# save offset for LZMA processing
+	lzma_offset="$offset"
+
 	# size of data for byte-wise checksum
 	bwcksum_size=$(( len + 8 ))
+	offset=$(( offset + len ))
 
 	# byte-wise sum of compressed data
 	debug "INF_reading_inner_cksum"
@@ -1229,115 +1085,248 @@ check_eva_kernel()
 		fi
 	fi
 
-	check_lzma_kernel "$image_file" "$offset" "$kernel_file_name" "$magic"
+	check_lzma_kernel "$image_file" "$lzma_offset" "$kernel_file_name" "$magic" || exit 1
+
+	# store bootcore image
+	[ "$no_output" = "1" ] && printf -- "%u\n" "$offset" && exit 0
+	if [ "$magic" = "$bootcore_kernel_magic" ] && [ "$bootcore_format" = "eva" ]; then
+		__yf_info "INF_storing_bootcore" "$kernel_file_name"
+		# store bootcore kernel with EVA format - it doesn't change in most cases
+		off=$(( image_offset ))
+		size=$(( len + ( 6 * uint32_size ) ))
+		(
+			if [ "$(( size / off ))" -gt 0 ]; then
+				dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
+				dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
+			else
+				dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
+				dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
+				cat "$tmp/dd_out"
+			fi
+		) >"$kernel_file_name"
+		if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
+			show_ok
+		else
+			show_error
+		fi
+	elif [ "$magic" = "$kernel_magic" ] && [ "$kernel_format" = "eva" ]; then
+		__yf_info "INF_storing_bootcore" "$kernel_file_name"
+		# store kernel with EVA format
+		off=$(( image_offset ))
+		size=$(( len + ( 6 * uint32_size ) ))
+		(
+			if [ "$(( size / off ))" -gt 0 ]; then
+				dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
+				dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
+			else
+				dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
+				dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
+				cat "$tmp/dd_out"
+			fi
+		) >"$kernel_file_name"
+		if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
+			show_ok
+		else
+			show_error
+		fi
+	fi
+	printf -- "%u\n" "$offset" && exit 0
 )
 check_lzma_kernel()
 (
-	image_file="$1"
-	offset="$2"
-	output_name="$3"
-	magic="$4"
+	file="$1"
+	off="$2"
+	outname="$3"
+	kernelmagic="$4"
 
 	# LZMA signature
 	debug "INF_reading_inner_lzma_sig"
-	lzma="$(get_uint32_be "$image_file" $offset)"
+	lzma="$(get_uint32_be "$file" "$off")"
 	if ! [ "$lzma" = "$lzma_signature" ]; then
 		[ "$debug" -eq 1 ] && show_error
-		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		__yf_emsg "ERR_invalid_image_data" "$file"
 		exit $YF_GRX5_INVALID_IMAGE
 	else
 		[ "$debug" -eq 1 ] && show_ok
-		offset=$(( offset + uint32_size ))
+		off=$(( off + uint32_size ))
 	fi
 
 	# compressed length
 	debug "INF_reading_inner_comp"
-	comp="$(get_uint32_le "$image_file" $offset)"
+	comp="$(get_uint32_le "$file" $off)"
 	debug "INF_show_dec_hex32" "$comp" "$comp"
-	offset=$(( offset + uint32_size ))
+	off=$(( off + uint32_size ))
 
 	# uncompressed length
 	debug "INF_reading_inner_uncomp"
-	uncomp="$(get_uint32_le "$image_file" $offset)"
+	uncomp="$(get_uint32_le "$file" $off)"
 	debug "INF_show_dec_hex32" "$uncomp" "$uncomp"
-	offset=$(( offset + uint32_size ))
+	off=$(( off + uint32_size ))
 
 	# CRC32 value over compressed data
 	debug "INF_reading_inner_crc32"
-	crc32="$(get_uint32_le "$image_file" $offset)"
+	crc32="$(get_uint32_le "$file" $off)"
 	debug "INF_show_hex32" "$crc32"
-	offset=$(( offset + uint32_size ))
+	off=$(( off + uint32_size ))
 
 	# offset of compressed data
-	lzma_hdr="$offset"
-	offset=$(( offset + lzma_header_size ))
-	data="$offset"
-	offset=$(( offset + comp ))
+	lzma_hdr="$off"
+	off=$(( off + lzma_header_size ))
+	data="$off"
+	off=$(( off + comp ))
 
 	# check LZMA data CRC32
 	debug "INF_computing_data_crc"
-	crc="$(compute_lzma_checksum "$image_file" "$data" "$comp")"
+	crc="$(compute_lzma_checksum "$file" "$data" "$comp")"
 	if [ "$crc" = "$crc32" ]; then
 		is_debug && show_ok
 	else
 		is_debug && show_error
-		__yf_emsg "ERR_invalid_image_data" "$image_file"
+		__yf_emsg "ERR_invalid_image_data" "$file"
 		exit "$YF_GRX5_INVALID_IMAGE"
 	fi
 
 	# store image data
 	[ "$no_output" = "1" ] && exit 0
-	if ! [ "$magic" = "$bootcore_kernel_magic" ]; then
-		# unpack LZMA compressed data
-			__yf_info "INF_unpacking_kernel" "$kernel_file_name"
-			(
-				dd if="$image_file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
-				d2b_le "$uncomp"
-				d2b_le "0"
-				if [ "$(( comp / data ))" -gt 0 ]; then
-					dd if="$image_file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
-					dd if="$image_file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
-				else
-					dd if="$image_file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
-					dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
-					cat "$tmp/dd_out"
-				fi
-			) | lzma -d >"$kernel_file_name"
-			if [ "$(wc -c < "$kernel_file_name")" = "$uncomp" ]; then
-				show_ok
-			else
-				show_error
-			fi
+	if ! [ "$kernelmagic" = "$bootcore_kernel_magic" ] && { [ "$kernel_format" = "vmlinux" ] || [ "$kernel_format" = "lzma" ]; }; then
+		if [ "$kernel_format" = "vmlinux" ]; then
+			unpacker="$lzma_decode"
+			outsize="$uncomp"
 		else
-			__yf_info "INF_storing_bootcore" "$kernel_file_name"
-			# store bootcore kernel with EVA format - it doesn't change in most cases
-			off=$(( image_offset ))
-			size=$(( len + ( 6 * uint32_size ) ))
-			(
-				if [ "$(( size / off ))" -gt 0 ]; then
-					dd if="$image_file" bs=$off skip=1 count=$(( size / off )) 2>/dev/null
-					dd if="$image_file" bs=1 skip=$(( size - ( size % off ) )) count=$(( size % off )) 2>/dev/null
-				else
-					dd if="$image_file" of="$tmp/dd_out" bs=$off skip=1 count=1 conv=sync 2>/dev/null
-					dd if=/dev/null of="$tmp/dd_out" bs=$size seek=1 2>/dev/null
-					cat "$tmp/dd_out"
-				fi
-			) >"$kernel_file_name"
-			if [ "$(wc -c < "$kernel_file_name")" = "$size" ]; then
-				show_ok
-			else
-				show_error
-			fi
+			unpacker="cat"
+			outsize="$(( comp + 2 * uint32_size + lzma_header_data_size ))"
 		fi
-	done
+		# unpack LZMA compressed data
+		__yf_info "INF_unpacking_kernel" "$outname"
+		(
+			dd if="$file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
+			d2b_le "$uncomp"; d2b_le "0" # size of uncompressed data (64 bit)
+#			printf -- "\377\377\377\377\377\377\377\377" # size of uncompressed data is unknown
+			if [ "$(( comp / data ))" -gt 0 ]; then
+				dd if="$file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
+				dd if="$file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
+			else
+				dd if="$file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
+				dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
+				cat "$tmp/dd_out"
+			fi
+		) | $unpacker >"$outname" 2>/dev/null
+		if [ "$(wc -c < "$outname")" = "$outsize" ]; then
+			show_ok
+		else
+			show_error
+		fi
+	elif [ "$kernelmagic" = "$bootcore_kernel_magic" ] && { [ "$bootcore_format" = "vmlinux" ] || [ "$bootcore_format" = "lzma" ]; }; then
+		if [ "$bootcore_format" = "vmlinux" ]; then
+			unpacker="$lzma_decode"
+			outsize="$uncomp"
+		else
+			unpacker="cat"
+			outsize="$(( comp + 2 * uint32_size + lzma_header_data_size ))"
+		fi
+		# store bootcore kernel in vmlinux format
+		__yf_info "INF_storing_bootcore" "$outname"
+		(
+			dd if="$file" bs=1 skip=$lzma_hdr count=$lzma_header_data_size 2>/dev/null
+			d2b_le "$uncomp"; d2b_le "0" # size of uncompressed data (64 bit)
+#			printf -- "\377\377\377\377\377\377\377\377" # size of uncompressed data is unknown
+			if [ "$(( comp / data ))" -gt 0 ]; then
+				dd if="$file" bs=$data skip=1 count=$(( comp / data )) 2>/dev/null
+				dd if="$file" bs=1 skip=$(( comp - ( comp % data ) )) count=$(( comp % data )) 2>/dev/null
+			else
+				dd if="$file" of="$tmp/dd_out" bs="$data" skip=1 count=1 conv=sync 2>/dev/null
+				dd if=/dev/null of="$tmp/dd_out" bs="$comp" seek=1 2>/dev/null
+				cat "$tmp/dd_out"
+			fi
+		) | $unpacker >"$outname" 2>/dev/null
+		if [ "$(wc -c <"$outname")" = "$outsize" ]; then
+			show_ok
+		else
+			show_error
+		fi
+	fi
 )
-pack_lzma()
+check_vmlinux_kernel()
 (
-	:
+	image="$1"
+	offset=0
+	size="$(wc -c <"$image")"
+	size=$(( size - offset ))
+	i=1
+	while [ $i -le 256 ]; do
+		c="$(get_char "$image" "$(( size - i ))")"
+		{ [ "$c" -ne 10 ] && { [ "$c" -lt 32 ] || [ "$c" -gt 126 ]; }; } && printf "%02x" "$c" 1>&2 && break
+		i=$(( i + 1 ))
+	done
+	filetype=""
+	entries=""
+	i=$(( i - 1 ))
+	[ $i -gt 255 ] && exit 1
+	eval "$(get_data "$image" "$(( offset + ( size - i ) ))" "$(( size - i ))" | sed -e "1s|^\(.*\)|entries=\"\1\"|" -e "2s|^\(.*\)|filetype=\"\1\"|")"
+	[ -z "$(expr "$filetype" : "$kernel_elf_mask")" ] && exit 1
+	eval "$(printf -- "%s\n" "$entries" | sed -e "s|\([0-9a-f]\{8\} R [^ ]* \?\)|&\n|g" | sed -n -e "s|^\([0-9a-f]\{8\}\) R \([^ ]*\) \?|\2=\$(( 0x\1 ))|p")"
+	[ -z "$kallsyms_names" ] && exit 1
+	[ -z "$kallsyms_num_syms" ] && exit 1
+	[ -z "$kallsyms_offsets" ] && exit 1
+	[ -z "$kallsyms_relative_base" ] && exit 1
+	exit 0
+)
+pack_vmlinux_to_lzma()
+(
+	uncomp="$(wc -c <"$1" 2>/dev/null)"
+	$lzma_encode "$1" >"$2" 2>/dev/null
+	# ( d2b_le "$uncomp"; printf -- "\000\000\000\000"; ) | dd of="$2" seek="$lzma_header_data_size" bs=1 count="$uint64_size" conv=notrunc 2>/dev/null
+	printf -- "file=%s\nuncomp=%u\ncomp=%u\nresult=%u\n" "$2" "$uncomp" "$(( $(wc -c <"$2" 2>/dev/null) - lzma_header_data_size ))"
+)
+lzma_to_eva()
+(
+
 )
 pack_grx5_kernel()
 (
-	:
+	target="$1"
+	bootcore="$tmp/$bootcore_default_name"
+	kernel="$tmp/$kernel_default_name"
+	image="$tmp/$image_name"
+
+	if [ "$bootcore_format" = "vmlinux" ]; then
+		debug "INF_packing_vmlinux" "$bootcore_file" "$bootcore".lzma
+		r="$(pack_vmlinux_to_lzma "$bootcore_file" "$bootcore".lzma)"
+		unset result
+		eval "$r"
+		if [ "$result" = "0" ]; then
+			show_ok
+			bootcore_file="$bootcore".lzma
+		else
+			show_error
+			exit 1
+		fi
+	fi
+	if [ "$bootcore_format" = "lzma" ] || [ "$bootcore_format" = "vmlinux" ]; then
+		debug "INF_wrapping_lzma" "$bootcore_file" "$bootcore".eva
+		r="$(lzma_to_eva "$bootcore_file" "$bootcore".eva)"
+		unset result
+		eval "$r"
+		if [ "$result" = "0" ]; then
+			show_ok
+			bootcore_file="$bootcore".eva
+		else
+			show_error
+			exit 1
+		fi
+	fi
+	if [ "$bootcore_format" = "eva" ]; then
+		:
+	fi
+	if [ "$kernel_format" = "vmlinux" ]; then
+		:
+	fi
+	if [ "$kernel_format" = "lzma" ]; then
+		:
+	fi
+	if [ "$kernel_format" = "eva" ]; then
+		:
+	fi
 )
 #######################################################################################################
 #                                                                                                     #
@@ -1363,6 +1352,7 @@ __yf_info "INF_license"
 # check arguments for specified options                                                               #
 #                                                                                                     #
 #######################################################################################################
+no_output=1
 pack=0
 unpack=0
 check=0
@@ -1401,6 +1391,19 @@ while [ -n "$(expr "$1" : "\(-.\+\).*")" ]; do
 			__yf_emsg "ERR_invalid_bc_format" "$bootcore_format"
 			exit "$YF_GRX5_INVALID_CALL"
 		fi
+	elif [ "$1" = "-k" ] || [ "$1" = "--kernel-file" ]; then
+		kernel_file="$2"
+		shift 2
+	elif [ "$1" = "-t" ] || [ "$1" = "--kernel-format" ]; then
+		kernel_format="$2"
+		shift 2
+		if ! [ "$kernel_format" = "eva" ] && ! [ "$kernel_format" = "lzma" ] && ! [ "$kernel_format" = "vmlinux" ]; then
+			__yf_emsg "ERR_invalid_kernel_format" "$kernel_format"
+			exit "$YF_GRX5_INVALID_CALL"
+		fi
+	elif [ "$1" = "-o" ] || [ "$1" = "--output-kernel" ]; then
+		output_file="$2"
+		shift 2
 	else
 		__yf_emsg "ERR_invalid_option" "$1"
 		exit "$YF_GRX5_INVALID_CALL"
@@ -1410,15 +1413,31 @@ if [ "$pack" -eq 0 ] && [ "$unpack" -eq 0 ] && [ "$check" -eq 0 ]; then
 	__yf_emsg "ERR_missing_action"
 	exit "$YF_GRX5_INVALID_CALL"
 fi
+if [ "$pack" -eq 1 ] && [ -z "$output_file" ]; then
+	__yf_emsg "ERR_missing_option" "--output-kernel" "pack"
+	exit "$YF_GRX5_INVALID_CALL"
+fi
+if [ "$pack" -eq 0 ] && [ -n "$output_file" ]; then
+	__yf_emsg "ERR_invalid_option_oper" "--output-kernel" "pack"
+	exit "$YF_GRX5_INVALID_CALL"
+fi
 #######################################################################################################
 #                                                                                                     #
-# check input file                                                                                    #
+# check parameters and call functions to process the request                                          #
 #                                                                                                     #
 #######################################################################################################
 if [ "$unpack" -eq 1 ] || [ "$check" -eq 1 ]; then
 	image="$1"
 	shift
-	[ "$unpack" -eq 1 ] && no_output=0 || no_output=1
+	[ "$unpack" -eq 1 ] && no_output=0
+	[ -z "$bootcore_format" ] && bootcore_format="$bootcore_default_format"
+	[ -z "$bootcore_file" ] && bootcore_file="$bootcore_default_name"
+	ext="$(expr "$bootcore_file" : ".*\.\(eva\|lzma\|vmlinux\)\$")"
+	[ "$ext" = "$bootcore_format" ] || bootcore_file="$bootcore_file"."$bootcore_format"
+	[ -z "$kernel_format" ] && kernel_format="$kernel_default_format"
+	[ -z "$kernel_file" ] && kernel_file="$kernel_default_name"
+	ext="$(expr "$kernel_file" : ".*\.\(eva\|lzma\|vmlinux\)\$")"
+	[ "$ext" = "$kernel_format" ] || kernel_file="$kernel_file"."$kernel_format"
 	if check_grx5_kernel "$image"; then
 		[ "$check" -eq 1 ] && __yf_info "INF_no_error_found" "$image"
 		exit "$YF_GRX5_SUCCESS"
@@ -1427,22 +1446,85 @@ if [ "$unpack" -eq 1 ] || [ "$check" -eq 1 ]; then
 		exit "$YF_GRX5_INVALID_IMAGE"
 	fi
 elif [ "$pack" -eq 1 ]; then
+	dbg=$debug
+	debug=0
 	if [ -z "$bootcore_file" ]; then
-		__yf_emsg "ERR_missing_bc_file"
+		bootcore_file="$bootcore_default_name"
+		if [ -z "$bootcore_format" ]; then
+			bootcore_file="$bootcore_file"."$bootcore_default_format"
+		else
+			ext="${bootcore_file##*.}"
+			if ! [ "$ext" = "eva" ] && ! [ "$ext" = "lzma" ] && ! [ "$ext" = "vmlinux" ]; then
+				bootcore_file="$bootcore_file"."$bootcore_format"
+			fi
+		fi
+	fi
+	if ! [ -s "$bootcore_file" ]; then
+		__yf_emsg "ERR_bc_file_not_found" "$bootcore_file"
 		exit "$YF_GRX5_INVALID_CALL"
 	fi
 	if [ -z "$bootcore_format" ]; then # use extension as a hint
 		if [ "${bootcore_file##*.}" = "eva" ]; then
 			bootcore_format="eva" # already prepared with AR7 lzma header and entry record at the end
-			if check_eva_kernel "$bootcore_file"; then
-				__yf_emsg "ERR_invalid_bc_eva_file"
+			if ! check_eva_kernel "$bootcore_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_bc_file" "$bootcore_file" "eva"
 				exit "$YF_GRX5_INVALID_IMAGE"
 			fi
 		elif [ "${bootcore_file##*.}" = "lzma" ]; then
 			bootcore_format="lzma" # LZMA compressed kernel data
+			if ! check_lzma_kernel "$bootcore_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_bc_file" "$bootcore_file" "lzma"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
 		else
-			bootcore_format="raw" # raw kernel, needs to be compressed first
+			bootcore_format="vmlinux" # raw kernel, needs to be compressed first
+			if ! check_vmlinux_kernel "$bootcore_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_bc_file" "$bootcore_file" "vmlinux"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
 		fi
+	fi
+	if [ -z "$kernel_file" ]; then
+		kernel_file="$kernel_default_name"
+		if [ -z "$kernel_format" ]; then
+			kernel_file="$kernel_file"."$kernel_default_format"
+		else
+			ext="${kernel_file##*.}"
+			if ! [ "$ext" = "eva" ] && ! [ "$ext" = "lzma" ] && ! [ "$ext" = "vmlinux" ]; then
+				kernel_file="$kernel_file"."$kernel_format"
+			fi
+		fi
+	fi
+	if ! [ -s "$kernel_file" ]; then
+		__yf_emsg "ERR_kernel_file_not_found" "$kernel_file"
+		exit "$YF_GRX5_INVALID_CALL"
+	fi
+	if [ -z "$kernel_format" ]; then
+		if [ "${kernel_file##*.}" = "eva" ]; then
+			kernel_format="eva"
+			if ! check_eva_kernel "$kernel_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_kernel_file" "$kernel_file" "eva"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
+		elif [ "${kernel_file##*.}" = "lzma" ]; then
+			kernel_format="lzma"
+			if ! check_lzma_kernel "$kernel_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_kernel_file" "$kernel_file" "lzma"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
+		else
+			kernel_format="vmlinux"
+			if ! check_vmlinux_kernel "$kernel_file" 0 2>/dev/null 1>&2; then
+				__yf_emsg "ERR_invalid_kernel_file" "$kernel_file" "vmlinux"
+				exit "$YF_GRX5_INVALID_IMAGE"
+			fi
+		fi
+	fi
+	debug=$dbg
+	if pack_grx5_kernel "$output_file"; then
+		:
+	else
+		:
 	fi
 fi
 #######################################################################################################
