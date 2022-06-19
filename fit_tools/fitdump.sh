@@ -392,7 +392,7 @@ dissect_fit_image()
 						else
 							if [ "$name" = "$filesystem_indicator" ]; then
 								# filesystem entries with 'avm,kernel-args = [...]mtdparts_ext=[...]' are for the frontend
-								if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker\).*")" ]; then
+								if [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker1\).*")" ] || [ -n "$(expr "$str" : ".*\($filesystem_indicator_marker2\).*")" ]; then
 									filesystem_found=1
 									fs_size="$data_size"
 								fi
@@ -506,7 +506,8 @@ dissect_fit_image()
 	indent_template="$(dd if=$zeros bs=256 count=1 2>"$null" | tr '\000' ' ')"
 
 	filesystem_indicator="avm,kernel-args"
-	filesystem_indicator_marker="mtdparts_ext="
+	filesystem_indicator_marker1="mtdparts_ext="
+	filesystem_indicator_marker2="mtdram=rootfs_ram,"
 	data_name="data"
 	configurations_name="configurations"
 	kernel_cfg_name="kernel"
