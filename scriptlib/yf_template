@@ -73,7 +73,7 @@
 #                                                                                                     #
 # The names of these "special files" are built from the (new shell) script name, with a suffix of     #
 # ".yf_scriptlib" for YourFritz Shell Script library and a suffix of ".yf_ui" for YourFritz UI        #
-# Framework functions and these files are search for at two locations, while the first file with a    #
+# Framework functions and these files are searched for at two locations, while the first file with a  #
 # matching file name gets included, without further checks. The first location is the place, where    #
 # the current script was found - any (symbolic) links are solved to the "real file name" with a       #
 # "readlink -f" call. The second place is a sub-directory named "lib" at the location of the          #
@@ -98,9 +98,9 @@
 #                                                                                                     #
 # Embedding the code is done in these steps:                                                          #
 #                                                                                                     #
-# 1. The external library files are created, with a suffix                                            #
-#    of ".embed_lib" or ".embed_ui", at the same directory, where the original script file had been   #
-#    found. Any existing file(s) with such a name get(s) overwritten.                                 #
+# 1. The external library files are created, with a suffix of ".embed_lib" or ".embed_ui", at the     #
+#    same directory, where the original script file had been found. Any existing file(s) with such a  #
+#    name get(s) overwritten.                                                                         #
 # 2. The first part of the script file (up to the code used for library handling), the external       #
 #    library files (one or two, depending on the parts to include) and the rest of the script file    #
 #    (after the code used for library handling) are copied to a new file (with suffix ".embed") at    #
@@ -186,7 +186,7 @@ EOD
 # General Public License under http://www.gnu.org/licenses/gpl-2.0.html for more details.             #
 #                                                                                                     #
 # If you're including YF_UI functions in your own script(s) permanently, to deliver only one single   #
-# file, you HAVE TO KEEP these functions together as one single continous part in your script AND     #
+# file, you HAVE TO KEEP these functions together as one single continuous part in your script AND    #
 # this section HAS TO BE prefixed by its own header, like it's created by framework generator AND the #
 # end of this section HAS TO BE marked clearly.                                                       #
 #                                                                                                     #
