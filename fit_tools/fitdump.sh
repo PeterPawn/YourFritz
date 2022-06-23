@@ -348,7 +348,7 @@ dissect_fit_image()
 						msg "%sConfiguration using '%s' found:%s %s\n" "$__yf_ansi_bright_green__" "$fs_node_name" "$__yf_ansi_reset__" "$parent"
 						msg "%sKernel entry name:%s %s\n" "$__yf_ansi_bright_green__" "$__yf_ansi_reset__" "$krnl_node"
 						kernel_image_number="$(sed -n -e "s|^\([0-9]\{3\}\)=$krnl_node\$|\1|p" "$image_file_list")"
-						kernel_image="$(printf_ss "$image_file_mask" "$kernel_image_number")"
+						kernel_image="$(printf_ss "$kernel_image_file_mask" "$kernel_image_number")"
 						printf -- " kernel_image=\"%s\" " "$kernel_image" 1>&5
 					fi
 					exit 0
@@ -496,6 +496,7 @@ dissect_fit_image()
 	its_name="image.its"
 	its_file="$dump_dir/$its_name"
 	image_file_mask="image_%03u.bin"
+	kernel_image_file_mask="image_%s.bin"
 	image_file_list=".image_number_to_node_name"
 	properties_order_list=".order"
 	files=0
