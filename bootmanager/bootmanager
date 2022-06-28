@@ -2376,6 +2376,24 @@ get_modified_by()
 )
 #######################################################################################################
 #                                                                                                     #
+# guess modification version                                                                          #
+#                                                                                                     #
+# $1 - mounted system root directory (optional)                                                       #
+#                                                                                                     #
+#######################################################################################################
+get_modified_version()
+(
+	base="${1:-}"
+	i=1
+	for f in $version_files; do
+		[ -f "$base/$f" ] || continue
+		i="$(head -n1 "$base/$f")"
+		break
+	done
+	eval printf -- '%s' "$i"
+)
+#######################################################################################################
+#                                                                                                     #
 # convert binary value (from STDIN) to decimal representation                                         #
 #                                                                                                     #
 #######################################################################################################
@@ -2520,7 +2538,8 @@ collect_data()
 	running_fsdate_epoch="$(get_modified_date)"
 	running_fsdate="$(get_localized_date "$datetime_mask" "$running_fsdate_epoch")"
 	running_modified="$(get_modified_by)"
-	readonly system_type running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified
+	running_mod_version="$(get_modified_version)"
+	readonly system_type running_version running_date_epoch running_date running_fsdate_epoch running_fsdate running_modified running_mod_version
 	running_cbs="$(change_branding_support)"
 	running_branding="$(get_system_branding "" "$running_cbs")"
 	running_brandings="$(get_brandings "" "$running_cbs")"
@@ -2546,7 +2565,8 @@ collect_data()
 					alternative_fsdate_epoch="$(get_modified_date "$mp")"
 					alternative_fsdate="$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
 					alternative_modified="$(get_modified_by "$mp")"
-					readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+					alternative_mod_version="$(get_modified_version "$mp")"
+					readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified alternative_mod_version
 					alternative_cbs="$(change_branding_support "$mp" "$running_cbs")"
 					alternative_branding="$(get_system_branding "$mp" "$alternative_cbs")"
 					alternative_brandings="$(get_brandings "$mp" "$alternative_cbs")"
@@ -2566,7 +2586,7 @@ collect_data()
 		fi
 		eval "$(find_fit_inactive_rootfs_parameters "$fpd")"
 		readonly alternative_is_missing alternative_version
-		readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified
+		readonly alternative_date_epoch alternative_date alternative_fsdate_epoch alternative_fsdate alternative_modified alternative_mod_version
 		readonly alternative_cbs alternative_branding alternative_brandings current_system_switch
 	fi
 }
@@ -2581,6 +2601,7 @@ get_values()
 	printf -- "active_date_epoch=\"%s\"\n" "$running_date_epoch"
 	printf -- "active_date=\"%s\"\n" "$running_date"
 	printf -- "active_modified_by=\"%s\"\n" "$running_modified"
+	printf -- "active_modified_version=\"%s\"\n" "$running_mod_version"
 	printf -- "active_modified_at_epoch=\"%s\"\n" "$running_fsdate_epoch"
 	printf -- "active_modified_at=\"%s\"\n" "$running_fsdate"
 	printf -- "active_brandings=\"%s\"\n" "$running_brandings"
@@ -2594,6 +2615,7 @@ get_values()
 		printf -- "inactive_date=\"%s\"\n" "$alternative_date"
 		printf -- "inactive_modified_by=\"%s\"\n" "$alternative_modified"
 		if ! [ "$alternative_modified" = "-" ]; then
+			printf -- "inactive_modified_version=\"%s\"\n" "$alternative_mod_version"
 			printf -- "inactive_modified_at_epoch=\"%s\"\n" "$alternative_fsdate_epoch"
 			printf -- "inactive_modified_at=\"%s\"\n" "$alternative_fsdate"
 		fi
@@ -2758,6 +2780,7 @@ get_inactive_slot_system_info()
 			printf -- "%s=%s\n"	"alternative_fsdate_epoch" "$alternative_fsdate_epoch"
 			printf -- "%s=\"%s\"\n"	"alternative_fsdate" "$(get_localized_date "$datetime_mask" "$alternative_fsdate_epoch")"
 			printf -- "%s=\"%s\"\n"	"alternative_modified" "$(get_modified_by "$mp")"
+			printf -- "%s=\"%s\"\n"	"alternative_mod_version" "$(get_modified_version "$mp")"
 			printf -- "%s=%s\n"	"alternative_cbs" "$(change_branding_support "$mp" "$running_cbs")"
 			printf -- "%s=%s\n"	"alternative_branding" "$(get_system_branding "$mp" "$alternative_cbs")"
 			printf -- "%s=\"%s\"\n"	"alternative_brandings" "$(get_brandings "$mp" "$alternative_cbs")"
@@ -2955,6 +2978,7 @@ case "$1" in
 			if [ "$modby" = "-" ]; then
 				debug "active system modification source = " "yellow" "%s" "(unmodified or unknown)"
 			else
+				debug "active system modification version = " "yellow" "%s" "$(get_modified_version)"
 				value="$(get_modified_date)"
 				debug "active system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 				debug "active system modification source = " "yellow" "%s" "$modby"
@@ -2988,6 +3012,7 @@ case "$1" in
 					if [ "$altmodby" = "-" ]; then
 						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
 					else
+						debug "inactive system modification version = " "yellow" "%s" "$(get_modified_version)"
 						value="$(get_modified_date "$mp")"
 						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
@@ -3018,6 +3043,7 @@ case "$1" in
 					if [ "$altmodby" = "-" ]; then
 						debug "inactive system modification source = " "yellow" "%s" "(unmodified or unknown)"
 					else
+						debug "inactive system modification version = " "yellow" "%s" "$alternative_mod_version"
 						value="$alternative_fsdate_epoch"
 						debug "inactive system modification date = " "yellow" "$(printf -- "%%s {green}(epoch: {yellow}%%s{green})" | colorize)" "$(get_localized_date "$datetime_mask" "$value")" "$value"
 						debug "inactive system modification source = " "yellow" "%s" "$altmodby"
