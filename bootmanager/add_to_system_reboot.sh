@@ -98,8 +98,8 @@ run_cp_for_file()
 		chmod "$5" "$1" 2>/dev/null || exit 1
 	fi
 	if [ -n "$3" ] && [ -n "$4" ]; then
-		chown "$3" "$1" 2>/dev/null || exit 1
-		chgrp "$4" "$1" 2>/dev/null || exit 1
+		chown "$3" "$1" 2>/dev/null
+		chgrp "$4" "$1" 2>/dev/null
 	fi
 	exit 0
 )
