@@ -35,8 +35,10 @@ cp:0:0:0:999:999:./bootmanager.msg:usr/bin/bootmanager.msg:0:0:444
 cp:0:0:0:999:999:./bootmanager:usr/bin/bootmanager:0:0:555
 # copy bootmanager_server script for versions since 07.08
 cp:0:7:8:999:999:./bootmanager_server:usr/bin/bootmanager_server:0:0:555
-# copy bootmanager.service script for versions since 07.08
-cp:0:7:8:999:999:./bootmanager.service:lib/systemd/system/bootmanager.service:0:0:444
+# copy bootmanager.service script for versions from 07.08 to (pre-)07.50
+cp:0:7:8:7:49:./bootmanager.service.old:lib/systemd/system/bootmanager.service:0:0:444
+# copy bootmanager.service script for versions since 07.50
+cp:0:7:50:999:999:./bootmanager.service:lib/systemd/system/bootmanager.service:0:0:444
 endofpatches
 )
 #
