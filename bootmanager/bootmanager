@@ -2863,6 +2863,7 @@ error_description=""
 error_code=0
 case "$1" in
 	("is_supported")
+		system_type="$(get_system_type)"
 		is_dualboot_supported && rc=0 || rc=1
 		;;
 	("is_blocked")
