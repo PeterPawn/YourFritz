@@ -158,10 +158,10 @@ reader "$input" &
 rd_pid="$!"
 printf "%u\n" "$rd_pid" >"$reader_pid"
 /usr/bin/$basename clear_cache 2>>"$log" 1>&2
+svctl notify $basename
 /usr/bin/$basename get_values 2>>"$log" 1>&2
 writer "$output" &
 printf "%u\n" "$!" >"$writer_pid"
-svctl notify $basename
 wait "$rd_pid"
 #######################################################################################################
 #                                                                                                     #
