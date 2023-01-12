@@ -2832,8 +2832,8 @@ load_device_configuration()
 		[ -n "$BM_DEBUG_EVA" ] && printf -- "EVA device configuration lookup lasted %s seconds.\n" "$(duration "$time1" "$time2")" 1>&2 && \
 			cat "$device_cache_file" 1>&2
 	else
-		device_cbs="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=.*\$|\1|p" "$device_cache_file")"
-		device_branding="$(sed -n -e "s|^\(immutable\|changeable\|undetectable\)=\(.*\)\$|\2|p" "$device_cache_file")"
+		device_cbs="$(sed -n -e "s;^\(immutable\|changeable\|undetectable\)=.*\$;\1;p" "$device_cache_file")"
+		device_branding="$(sed -n -e "s;^\(immutable\|changeable\|undetectable\)=\(.*\)\$;\2;p" "$device_cache_file")"
 		[ "$device_cbs" = "changeable" ] && device_branding_is_changeable="true" || device_branding_is_changeable="false"
 		[ -n "$BM_DEBUG_EVA" ] && printf -- "Device configuration info loaded from cache file.\n" 1>&2 && cat "$device_cache_file" 1>&2
 	fi
