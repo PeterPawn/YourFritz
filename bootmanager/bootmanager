@@ -2,7 +2,7 @@
 # vim: set tabstop=4 syntax=sh :
 # SPDX-License-Identifier: GPL-2.0-or-later WITH exception (do not use in other places) for functions imported from YourFritz shell framework
 yf_bootmanager_version="0.8.6"
-yf_bootmanager_timestamp=202301141230
+yf_bootmanager_timestamp=202301141521
 #######################################################################################################
 #                                                                                                     #
 # extension for the 'restart' page of AVM's FRITZ!OS GUI to provide a selection between the two       #
@@ -1391,7 +1391,7 @@ get_fdt_compatible_value()
 # (x) all VR9- and AR10-based devices with two slots for a system (kernel + filesystem)               #
 # (x) all GRX5-based devices (no single slot devices known so far)                                    #
 # (x) all Puma6 and Puma7 devices (no single slot devices found yet)                                  #
-# (x) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
+# ( ) IPQ4019-based devices (7520 and 7530 - single slot devices use IPQ4018)                         #
 # (x) IPQ8074-based devices with eMMC flash and using FIT images (4060, FR6000, 5590)                 #
 # ( ) BRCMA9 devices with nand flash (7581, 7582 - BCM963 family)                                     #
 # (X) BRCMA9 devices with nand flash and using FIT image format (7530ax - BCM963 family)              #
