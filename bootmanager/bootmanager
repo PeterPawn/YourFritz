@@ -1619,8 +1619,8 @@ is_loop_device_supported()
 	check_whether_module_loaded && exit 0 # had to be loaded only
 	find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) | \
 	while read -r lkm; do
-		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load %s\n" "$lkm" 1>&2
 		if [ -n "$BM_DEBUG_LOOP" ]; then
+			printf -- "Trying to load %s\n" "$lkm" 1>&2
 			insmod "$lkm"
 		else
 			insmod "$lkm" 2>"$null"
