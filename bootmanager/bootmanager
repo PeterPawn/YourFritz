@@ -1620,7 +1620,11 @@ is_loop_device_supported()
 	find "/lib/modules/$("$uname" -r)" /var \( ! -path "$nas_base/*" -a -name "${loop_driver_name}*.ko" \) | \
 	while read -r lkm; do
 		[ -n "$BM_DEBUG_LOOP" ] && printf -- "Trying to load %s\n" "$lkm" 1>&2
-		[ -n "$BM_DEBUG_LOOP" ] && insmod "$lkm" || insmod "$lkm" 2>"$null"
+		if [ -n "$BM_DEBUG_LOOP" ]; then
+			insmod "$lkm"
+		else
+			insmod "$lkm" 2>"$null"
+		fi
 		check_whether_module_loaded && break # present, but not in any dependencies file -> insmod needed instead of modprobe
 	done
 	check_whether_module_loaded && exit 0
@@ -1632,7 +1636,11 @@ is_loop_device_supported()
 	"$avm_downloader" packet "$yf_loop_repository_url" && rc=0 || rc=1
 	[ -n "$BM_DEBUG_LOOP" ] && show_avm_log_files
 	[ "$rc" -ne 0 ] && exit $rc
-	[ -n "$BM_DEBUG_LOOP" ] && insmod "/var/$loop_driver_name.ko" || insmod "/var/$loop_driver_name.ko" 2>"$null"
+	if [ -n "$BM_DEBUG_LOOP" ]; then
+		insmod "/var/$loop_driver_name.ko"
+	else
+		insmod "/var/$loop_driver_name.ko" 2>"$null"
+	fi
 	check_whether_module_loaded && exit 0 # downloaded from repository and finally loaded as module
 	exit 1
 )
