@@ -181,7 +181,7 @@ problems="$(get_patches | while read -r line; do
 					if run_sed_for_file "$target_dir$target_file" "$command_file"; then
 						printf "\033[32;1mAction ('%s' with commands from file '%s') from line %u of patch definitions applied to '%s'.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
 					else
-						printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+						printf "\033[31;1mAction ('%s' with commands from file '%s') from line %u of patch definitions failed on '%s'.\033[0m\a\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
 						printf "problem on line %u\n" "$i"
 					fi
 				fi
@@ -190,7 +190,7 @@ problems="$(get_patches | while read -r line; do
 				if run_sed_for_file "$target_dir$target_file" "$command_file"; then
 					printf "\033[32;1mAction ('%s' with commands from file '%s') from line %u of patch definitions applied to '%s'.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
 				else
-					printf "\033[32;1mAction ('%s' of file '%s' as '%s') from line %u of patch definitions succeeded.\033[0m\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
+					printf "\033[31;1mAction ('%s' with commands from file '%s') from line %u of patch definitions failed on '%s'.\033[0m\a\n" "$1" "$command_file" "$i" "$target_dir$target_file" 1>&2
 					printf "problem on line %u\n" "$i"
 				fi
 			fi
