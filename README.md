@@ -1,4 +1,4 @@
-![YourFritz-Logo](yourfritz_logo.png)				![YourFritz-QR](www.yourfritz.de.png)
+![YourFritz-Logo](yourfritz_logo.png)
 
 The final target of this project is to provide a really dynamic package management for SOHO/consumer IADs built by
 well-known vendor (at least known in Germany) AVM from Berlin.
