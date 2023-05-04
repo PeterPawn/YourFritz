@@ -343,6 +343,7 @@ function WriteFile {
     try {
         $path = Resolve-Path $filename
         $file = [System.IO.File]::Open($path, "Open", "Read")
+        $size = $file.Length
     }
     catch {
         $ex = New-Object System.IO.IOException "Unable to locate or open input file."
@@ -404,7 +405,14 @@ function WriteFile {
                     $sending = $False
                     # try to get an answer from the device after closing the data stream and the connection, the response from the device was
                     # very late during my tests
-                    Start-Sleep -Milliseconds 5000
+                    if ($size -gt (1024*1024)) {
+                        $wait = 15
+                    }
+                    else {
+                        $wait = 5
+                    }
+                    Write-Debug "Upload completed, waiting $wait seconds for acknowledgement ..."
+                    Start-Sleep -Milliseconds ($wait * 1000)
                 }
                 $answer = [String]::Empty
                 $answer = ReadAnswer
