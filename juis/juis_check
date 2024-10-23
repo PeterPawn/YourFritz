@@ -1631,7 +1631,6 @@ if [ -z "$HW" ]; then
 	__emsg "$(__get_localized ERR_014)"
 	exit 4
 fi
-hostname="$HW.$hostbase"
 [ -z "$nonce" ] && nonce=$(get_nonce)
 Flag_XML=""
 for f in $Flag; do
@@ -1663,6 +1662,16 @@ if [ $__get_current -eq 1 ]; then
 fi
 eval $version_name="$version_string"
 __debug "$(__get_localized DBG_011)" "$(eval printf "%s" "\$$version_name")"
+#######################################################################################################
+#                                                                                                     #
+# AVM changed the hostname of the service meanwhile - for devices, where HWRevision is equal major    #
+# version, use a unified server name. This could be working for older models, too - but to be on the  #
+# safe side, we use that unified name only for models without the "offset" (usually 72) between the   #
+# values of VERSION_MAJOR and HWRevision.                                                             #
+# This has to be moved here, because the value of $Major is unknown earlier.                          #
+#                                                                                                     #
+#######################################################################################################
+[ "$Major" == "$HW" ] && hostname="$hostbase" || hostname="$HW.$hostbase"
 #######################################################################################################
 #                                                                                                     #
 # show debug info regarding final variable content                                                    #
